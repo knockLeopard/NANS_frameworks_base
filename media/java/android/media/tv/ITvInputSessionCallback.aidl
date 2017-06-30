@@ -37,4 +37,12 @@ oneway interface ITvInputSessionCallback {
     void onContentAllowed();
     void onContentBlocked(in String rating);
     void onLayoutSurface(int left, int top, int right, int bottom);
+    void onTimeShiftStatusChanged(int status);
+    void onTimeShiftStartPositionChanged(long timeMs);
+    void onTimeShiftCurrentPositionChanged(long timeMs);
+
+    // For the recording session
+    void onTuned(in Uri channelUri);
+    void onRecordingStopped(in Uri recordedProgramUri);
+    void onError(int error);
 }

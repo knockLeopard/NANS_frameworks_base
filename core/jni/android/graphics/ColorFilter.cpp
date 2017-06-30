@@ -17,11 +17,11 @@
 
 #include "jni.h"
 #include "GraphicsJNI.h"
-#include <android_runtime/AndroidRuntime.h>
+#include "core_jni_helpers.h"
 
 #include "SkColorFilter.h"
 #include "SkColorMatrixFilter.h"
-#include "SkPorterDuff.h"
+#include "SkXfermode.h"
 
 #include <Caches.h>
 
@@ -36,14 +36,13 @@ public:
         if (filter) SkSafeUnref(filter);
     }
 
-    static jlong CreatePorterDuffFilter(JNIEnv* env, jobject, jint srcColor,
-            jint modeHandle) {
-        SkPorterDuff::Mode mode = (SkPorterDuff::Mode) modeHandle;
-        return reinterpret_cast<jlong>(SkColorFilter::CreateModeFilter(srcColor, SkPorterDuff::ToXfermodeMode(mode)));
+    static jlong CreatePorterDuffFilter(JNIEnv* env, jobject, jint srcColor, jint modeHandle) {
+        SkXfermode::Mode mode = static_cast<SkXfermode::Mode>(modeHandle);
+        return reinterpret_cast<jlong>(SkColorFilter::CreateModeFilter(srcColor, mode));
     }
 
     static jlong CreateLightingFilter(JNIEnv* env, jobject, jint mul, jint add) {
-        return reinterpret_cast<jlong>(SkColorFilter::CreateLightingFilter(mul, add));
+        return reinterpret_cast<jlong>(SkColorMatrixFilter::CreateLightingFilter(mul, add));
     }
 
     static jlong CreateColorMatrixFilter(JNIEnv* env, jobject, jfloatArray jarray) {
@@ -58,34 +57,31 @@ public:
     }
 };
 
-static JNINativeMethod colorfilter_methods[] = {
+static const JNINativeMethod colorfilter_methods[] = {
     {"destroyFilter", "(J)V", (void*) SkColorFilterGlue::finalizer}
 };
 
-static JNINativeMethod porterduff_methods[] = {
+static const JNINativeMethod porterduff_methods[] = {
     { "native_CreatePorterDuffFilter", "(II)J", (void*) SkColorFilterGlue::CreatePorterDuffFilter   },
 };
 
-static JNINativeMethod lighting_methods[] = {
+static const JNINativeMethod lighting_methods[] = {
     { "native_CreateLightingFilter", "(II)J", (void*) SkColorFilterGlue::CreateLightingFilter   },
 };
 
-static JNINativeMethod colormatrix_methods[] = {
+static const JNINativeMethod colormatrix_methods[] = {
     { "nativeColorMatrixFilter", "([F)J", (void*) SkColorFilterGlue::CreateColorMatrixFilter   },
 };
 
-#define REG(env, name, array) \
-    result = android::AndroidRuntime::registerNativeMethods(env, name, array, \
-                                                    SK_ARRAY_COUNT(array));  \
-    if (result < 0) return result
-
 int register_android_graphics_ColorFilter(JNIEnv* env) {
-    int result;
-    
-    REG(env, "android/graphics/ColorFilter", colorfilter_methods);
-    REG(env, "android/graphics/PorterDuffColorFilter", porterduff_methods);
-    REG(env, "android/graphics/LightingColorFilter", lighting_methods);
-    REG(env, "android/graphics/ColorMatrixColorFilter", colormatrix_methods);
+    android::RegisterMethodsOrDie(env, "android/graphics/ColorFilter", colorfilter_methods,
+                                  NELEM(colorfilter_methods));
+    android::RegisterMethodsOrDie(env, "android/graphics/PorterDuffColorFilter", porterduff_methods,
+                                  NELEM(porterduff_methods));
+    android::RegisterMethodsOrDie(env, "android/graphics/LightingColorFilter", lighting_methods,
+                                  NELEM(lighting_methods));
+    android::RegisterMethodsOrDie(env, "android/graphics/ColorMatrixColorFilter",
+                                  colormatrix_methods, NELEM(colormatrix_methods));
     
     return 0;
 }

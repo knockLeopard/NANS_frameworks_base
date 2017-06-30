@@ -37,35 +37,6 @@
 
       <li class="nav-section">
         <div class="nav-section-header">
-          <a href="<?cs var:toroot ?>training/basics/actionbar/index.html"
-             description=
-             "The action bar is one of the most important design elements you can implement for your
-app's activities. Although first introduced with API level 11, you can use the Support Library to
-include the action bar on devices running Android 2.1 or higher."
-            >Adding the Action Bar</a>
-        </div>
-        <ul>
-          <li><a href="<?cs var:toroot ?>training/basics/actionbar/setting-up.html">
-            Setting Up the Action Bar
-          </a>
-          </li>
-          <li><a href="<?cs var:toroot ?>training/basics/actionbar/adding-buttons.html">
-            Adding Action Buttons
-          </a>
-          </li>
-          <li><a href="<?cs var:toroot ?>training/basics/actionbar/styling.html">
-            Styling the Action Bar
-          </a>
-          </li>
-          <li><a href="<?cs var:toroot ?>training/basics/actionbar/overlaying.html">
-            Overlaying the Action Bar
-          </a>
-          </li>
-        </ul>
-      </li>
-
-      <li class="nav-section">
-        <div class="nav-section-header">
           <a href="<?cs var:toroot ?>training/basics/supporting-devices/index.html"
              description=
              "How to build your app with alternative resources that provide an
@@ -91,13 +62,25 @@ include the action bar on devices running Android 2.1 or higher."
       <li class="nav-section">
         <div class="nav-section-header">
           <a href="<?cs var:toroot ?>training/basics/activity-lifecycle/index.html"
+             ja-lang="アクティビティのライフサイクル 管理"
+             ko-lang="액티비티 수명 주기 관리하기"
+             pt-br-lang="Como gerenciar o ciclo de vida da atividade"
+             ru-lang="Управление жизненным циклом операций"
+             zh-cn-lang="管理活动生命周期"
+             zh-tw-lang="管理應用行為顯示生命週期"
              description=
              "How Android activities live and die and how to create
              a seamless user experience by implementing lifecycle callback methods."
             >Managing the Activity Lifecycle</a>
         </div>
         <ul>
-          <li><a href="<?cs var:toroot ?>training/basics/activity-lifecycle/starting.html">
+          <li><a href="<?cs var:toroot ?>training/basics/activity-lifecycle/starting.html"
+             ja-lang="アクティビティを開始する"
+             ko-lang="액티비티 시작하기"
+             pt-br-lang="Iniciando uma atividade"
+             ru-lang="Запуск операции"
+             zh-cn-lang="开始活动"
+             zh-tw-lang="啟動應用行為顯示">
             Starting an Activity
           </a>
           </li>
@@ -105,11 +88,23 @@ include the action bar on devices running Android 2.1 or higher."
             Pausing and Resuming an Activity
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/basics/activity-lifecycle/stopping.html">
+          <li><a href="<?cs var:toroot ?>training/basics/activity-lifecycle/stopping.html"
+             ja-lang="アクティビティの一時停止と再開"
+             ko-lang="액티비티 일시정지 및 재개하기"
+             pt-br-lang="Pausando e reiniciando uma atividade"
+             ru-lang="Приостановка и возобновление операции"
+             zh-cn-lang="暂停和继续活动"
+             zh-tw-lang="暫停並繼續應用行為顯示">
             Stopping and Restarting an Activity
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/basics/activity-lifecycle/recreating.html">
+          <li><a href="<?cs var:toroot ?>training/basics/activity-lifecycle/recreating.html"
+             ja-lang="アクティビティを再作成する"
+             ko-lang="액티비티 재생성하기"
+             pt-br-lang="Recriando uma atividade"
+             ru-lang="Воссоздание операции"
+             zh-cn-lang="重新创建活动"
+             zh-tw-lang="重新建立應用行為顯示">
             Recreating an Activity
           </a>
           </li>
@@ -144,21 +139,45 @@ include the action bar on devices running Android 2.1 or higher."
 
       <li class="nav-section">
         <div class="nav-section-header"><a href="<?cs var:toroot?>training/basics/data-storage/index.html"
+             ja-lang="データの保存"
+             ko-lang="데이터 저장하기"
+             pt-br-lang="Salvando dados"
+             ru-lang="Сохранение данных"
+             zh-cn-lang="保存数据"
+             zh-tw-lang="儲存資料"
              description=
              "How to save data on the device, whether it's temporary files, downloaded
              app assets, user media, structured data, or something else."
             >Saving Data</a>
         </div>
         <ul>
-          <li><a href="<?cs var:toroot ?>training/basics/data-storage/shared-preferences.html">
+          <li><a href="<?cs var:toroot ?>training/basics/data-storage/shared-preferences.html"
+             ja-lang="キー値セットを保存する"
+             ko-lang="키-값 세트 저장하기"
+             pt-br-lang="Salvando conjuntos de valor-chave"
+             ru-lang="Сохранение наборов "\"ключ-значение\""
+             zh-cn-lang="保存键值集"
+             zh-tw-lang="儲存索引鍵值組">
             Saving Key-Value Sets
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/basics/data-storage/files.html">
+          <li><a href="<?cs var:toroot ?>training/basics/data-storage/files.html"
+             ja-lang="ファイルを保存する"
+             ko-lang="파일 저장하기"
+             pt-br-lang="Salvando arquivos"
+             ru-lang="Сохранение файлов"
+             zh-cn-lang="保存文件"
+             zh-tw-lang="儲存檔案">
             Saving Files
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/basics/data-storage/databases.html">
+          <li><a href="<?cs var:toroot ?>training/basics/data-storage/databases.html"
+             ja-lang="SQL データベースにデータを保存する"
+             ko-lang="SQL 데이터베이스에 데이터 저장하기"
+             pt-br-lang="Salvando dados em bancos de dados do SQL"
+             ru-lang="Сохранение данных в базах данных SQL"
+             zh-cn-lang="在 SQL 数据库中保存数据"
+             zh-tw-lang="在 SQL 資料庫中儲存資料">
             Saving Data in SQL Databases
           </a>
           </li>
@@ -168,6 +187,12 @@ include the action bar on devices running Android 2.1 or higher."
       <li class="nav-section">
         <div class="nav-section-header">
           <a href="<?cs var:toroot ?>training/basics/intents/index.html"
+             ja-lang="他のアプリとの相互操作"
+             ko-lang="액티비티 수명 주기 관리하기"
+             pt-br-lang="Interagindo com outros aplicativos"
+             ru-lang="Взаимодействие с другими приложениями"
+             zh-cn-lang="与其他应用交互"
+             zh-tw-lang="與其他應用程式互動"
              description=
              "How to build a user experience that leverages other apps available
              on the device to perform advanced user tasks, such as capture a photo or view
@@ -175,16 +200,58 @@ include the action bar on devices running Android 2.1 or higher."
             >Interacting with Other Apps</a>
         </div>
         <ul>
-          <li><a href="<?cs var:toroot ?>training/basics/intents/sending.html">
+          <li><a href="<?cs var:toroot ?>training/basics/intents/sending.html"
+             ja-lang="別のアプリにユーザーを送る"
+             ko-lang="다른 앱으로 사용자 보내기"
+             pt-br-lang="Enviando o usuário para outro aplicativo"
+             ru-lang="Направление пользователя в другое приложение"
+             zh-cn-lang="向另一个应用发送用户"
+             zh-tw-lang="將使用者傳送至其他應用程式">
             Sending the User to Another App
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/basics/intents/result.html">
+          <li><a href="<?cs var:toroot ?>training/basics/intents/result.html"
+             ja-lang="アクティビティから結果を取得する"
+             ko-lang="액티비티로부터 결과 가져오기"
+             pt-br-lang="Obtendo resultados de uma atividade"
+             ru-lang="Получение результата операции"
+             zh-cn-lang="获取活动的结果"
+             zh-tw-lang="從應用行為顯示取得結果">
             Getting a Result from the Activity
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/basics/intents/filters.html">
+          <li><a href="<?cs var:toroot ?>training/basics/intents/filters.html"
+             ja-lang="他のアプリからのアクティビティの開始を許可する"
+             ko-lang="다른 앱이 자신의 액티비티를 시작하도록 허용하기"
+             pt-br-lang="Permitindo que outros aplicativos iniciem sua atividade"
+             ru-lang="Разрешение другим приложениям на запуск вашей операции"
+             zh-cn-lang="允许其他应用开始您的活动"
+             zh-tw-lang="允許其他應用程式啟動您的應用行為顯示">
             Allowing Other Apps to Start Your Activity
+          </a>
+          </li>
+        </ul>
+      </li>
+      <li class="nav-section">
+        <div class="nav-section-header">
+          <a href="<?cs var:toroot ?>training/permissions/index.html"
+             description=
+             "How to declare that your app needs access to features and
+             resources outside of its 'sandbox', and how to request those
+             privileges at runtime."
+            >Working with System Permissions</a>
+        </div>
+        <ul>
+          <li><a href="<?cs var:toroot ?>training/permissions/declaring.html">
+            Declaring Permissions
+          </a>
+          </li>
+          <li><a href="<?cs var:toroot ?>training/permissions/requesting.html">
+            Requesting Permissions at Run Time
+          </a>
+          </li>
+          <li><a href="<?cs var:toroot ?>training/permissions/best-practices.html">
+            Best Practices for Runtime Permissions
           </a>
           </li>
         </ul>
@@ -582,25 +649,7 @@ include the action bar on devices running Android 2.1 or higher."
           </li>
         </ul>
       </li>
-
       <li class="nav-section">
-        <div class="nav-section-header">
-          <a href="<?cs var:toroot ?>training/cloudsync/index.html"
-             description=
-             "How to sync and back up app and user data to remote web services in the
-              cloud and how to restore the data back to multiple devices."
-            >Syncing to the Cloud</a>
-        </div>
-        <ul>
-          <li><a href="<?cs var:toroot ?>training/cloudsync/backupapi.html">
-            Using the Backup API
-          </a>
-          </li>
-          <li><a href="<?cs var:toroot ?>training/cloudsync/gcm.html">
-            Making the Most of Google Cloud Messaging
-          </a>
-          </li>
-        </ul>
         <li><a href="<?cs var:toroot ?>training/cloudsave/conflict-res.html"
            description=
            "How to design a robust conflict resolution strategy for apps that save data to the cloud."
@@ -672,12 +721,64 @@ include the action bar on devices running Android 2.1 or higher."
   <!-- End connectivity and cloud -->
 
 
+  <li class="nav-section">
+    <div class="nav-section-header">
+      <a href="<?cs var:toroot ?>training/building-location.html">
+      <span class="small">Building Apps with</span><br/>
+              Location &amp; Maps
+      </a>
+    </div>
+    <ul>
+      <li class="nav-section">
+        <div class="nav-section-header">
+          <a href="<?cs var:toroot ?>training/location/index.html"
+             description="How to add location-aware features to your app by getting the user's current location.">
+             Making Your App Location-Aware
+          </a>
+        </div>
+        <ul>
+          <li>
+            <a href="<?cs var:toroot ?>training/location/retrieve-current.html">
+            Getting the Last Known Location
+            </a>
+          </li>
+          <li>
+            <a href="<?cs var:toroot ?>training/location/change-location-settings.html">
+            Changing Location Settings
+            </a>
+          </li>
+          <li>
+            <a href="<?cs var:toroot ?>training/location/receive-location-updates.html">
+            Receiving Location Updates
+            </a>
+          </li>
+          <li>
+            <a href="<?cs var:toroot ?>training/location/display-address.html">
+            Displaying a Location Address
+          </a>
+          </li>
+          <li><a href="<?cs var:toroot ?>training/location/geofencing.html">
+            Creating and Monitoring Geofences
+          </a>
+          </li>
+        </ul>
+      </li>
+      <li class="nav-section">
+        <a href="<?cs var:toroot ?>training/maps/index.html"
+           description="How to add maps and mapping information to your app.">
+           Adding Maps
+        </a>
+      </li>
+    </ul>
+  </li>
+  <!-- End location and maps -->
+
 
   <li class="nav-section">
     <div class="nav-section-header">
       <a href="<?cs var:toroot ?>training/building-userinfo.html">
       <span class="small">Building Apps with</span><br/>
-              User Info &amp; Location
+              User Info &amp; Sign-In
       </a>
     </div>
     <ul>
@@ -712,35 +813,15 @@ include the action bar on devices running Android 2.1 or higher."
           </li>
         </ul>
       </li>
-
       <li class="nav-section">
-        <div class="nav-section-header">
-          <a href="<?cs var:toroot ?>training/location/index.html"
-             description="How to add location-aware features to your app by getting the user's current location.">
-             Making Your App Location-Aware
-          </a>
-        </div>
-        <ul>
-          <li>
-            <a href="<?cs var:toroot ?>training/location/retrieve-current.html">
-            Getting the Last Known Location
-            </a>
-          </li>
-          <li>
-            <a href="<?cs var:toroot ?>training/location/receive-location-updates.html">
-            Receiving Location Updates
-            </a>
-          </li>
-          <li>
-            <a href="<?cs var:toroot ?>training/location/display-address.html">
-            Displaying a Location Address
-          </a>
-          </li>
-        </ul>
+        <a href="<?cs var:toroot ?>training/sign-in/index.html"
+           description="How to add user sign-in functionality to your app.">
+           Adding Sign-In
+        </a>
       </li>
     </ul>
   </li>
-  <!-- End privacy and location -->
+  <!-- End user info and sign-in -->
 
 
   <li class="nav-section">
@@ -786,6 +867,9 @@ include the action bar on devices running Android 2.1 or higher."
           </li>
           <li>
             <a href="<?cs var:toroot ?>training/wearables/apps/layouts.html">Creating Custom Layouts</a>
+          </li>
+          <li>
+            <a href="<?cs var:toroot ?>training/wearables/apps/always-on.html">Keeping Your App Visible</a>
           </li>
           <li>
             <a href="<?cs var:toroot ?>training/wearables/apps/voice.html">Adding Voice Capabilities</a>
@@ -872,6 +956,9 @@ include the action bar on devices running Android 2.1 or higher."
             <a href="<?cs var:toroot ?>training/wearables/watch-faces/information.html">Showing Information in Watch Faces</a>
           </li>
           <li>
+            <a href="<?cs var:toroot ?>training/wearables/watch-faces/interacting.html">Creating Interactive Watch Faces</a>
+          </li>
+          <li>
             <a href="<?cs var:toroot ?>training/wearables/watch-faces/configuration.html">Providing Configuration Activities</a>
           </li>
           <li>
@@ -889,6 +976,21 @@ include the action bar on devices running Android 2.1 or higher."
            "How to detect location data on Android Wear devices."
           >Detecting Location</a>
       </li>
+
+      <li>
+        <a href="<?cs var:toroot ?>training/articles/wear-permissions.html"
+           description=
+           "How to request permissions on Android Wear devices."
+          >Requesting Permissions</a>
+      </li>
+
+      <li>
+        <a href="<?cs var:toroot ?>training/wearables/wearable-sounds.html"
+           description=
+           "How to use the speaker on Android Wear devices."
+          >Using the Speaker</a>
+      </li>
+
     </ul>
   </li>
   <!-- End Building for wearables -->
@@ -964,6 +1066,14 @@ include the action bar on devices running Android 2.1 or higher."
                ja-lang="再生中カードを表示する">
               Displaying a Now Playing Card</a>
           </li>
+          <li>
+            <a href="<?cs var:toroot ?>training/tv/playback/guided-step.html">
+              Adding a Guided Step</a>
+          </li>
+          <li>
+            <a href="<?cs var:toroot ?>training/tv/playback/options.html">
+              Enabling Background Playback</a>
+          </li>
         </ul>
       </li>
 
@@ -994,10 +1104,25 @@ include the action bar on devices running Android 2.1 or higher."
            Building TV Games</a>
       </li>
 
-      <li>
-        <a href="<?cs var:toroot ?>training/tv/tif/index.html"
-           description="How to build Live TV apps.">
-           Building Live TV Apps</a>
+      <li class="nav-section">
+        <div class="nav-section-header">
+          <a href="<?cs var:toroot ?>training/tv/tif/index.html"
+           description="How to build channels for TV.">
+           Building TV Channels</a>
+        </div>
+        <ul>
+          <li>
+            <a href="<?cs var:toroot ?>training/tv/tif/tvinput.html">
+              Developing a TV Input Service</a>
+          <li>
+            <a href="<?cs var:toroot ?>training/tv/tif/channel.html">
+              Working with Channel Data</a>
+          </li>
+          <li>
+            <a href="<?cs var:toroot ?>training/tv/tif/ui.html">
+              Managing User Interaction</a>
+          </li>
+        </ul>
       </li>
 
       <li>
@@ -1035,10 +1160,14 @@ include the action bar on devices running Android 2.1 or higher."
              description="How to extend text messaging apps to work with Auto devices.">
              Messaging for Auto</a>
       </li>
+      <li>
+       <a href="<?cs var:toroot ?>training/auto/testing/index.html" description=
+       "How to run and test Auto apps.">
+             Testing Auto Apps</a>
+      </li>
     </ul>
   </li>
   <!-- End: Building for Auto -->
-
 
   <li class="nav-section">
     <div class="nav-section-header">
@@ -1151,6 +1280,27 @@ include the action bar on devices running Android 2.1 or higher."
           </ul>
       </li>
 
+
+      <li class="nav-section">
+        <div class="nav-section-header">
+            <a href="<?cs var:toroot ?>training/swipe/index.html"
+            description=
+            "How to modify your app's layout to support manual content updates triggered by the
+             swipe-to-refresh gesture."
+            >Supporting Swipe-to-Refresh</a>
+        </div>
+        <ul>
+            <li>
+                <a href="<?cs var:toroot ?>training/swipe/add-swipe-interface.html"
+                >Adding Swipe-to-Refresh To Your App</a></li>
+            <li>
+                <a href="<?cs var:toroot ?>training/swipe/respond-refresh-request.html"
+                >Responding to a Refresh Gesture</a>
+            </li>
+        </ul>
+      </li>
+
+
       <li class="nav-section">
         <div class="nav-section-header">
           <a href="<?cs var:toroot ?>training/search/index.html"
@@ -1189,17 +1339,30 @@ results."
           </a>
           </li>
           <li><a href="<?cs var:toroot ?>training/app-indexing/enabling-app-indexing.html">
-            Specifying  App Content for Indexing
+            Specifying App Content for Indexing
           </a>
           </li>
         </ul>
-      </li>
-    </ul>
   </li>
+
+      <li>
+        <a href="<?cs var:toroot ?>training/articles/assistant.html"
+           description=
+           "Support contextually relevant actions through the Assist API."
+          >Optimizing Content for the Assistant</a>
+      </li>
+       <li class="nav-section">
+        <div class="nav-section">
+          <a href="<?cs var:toroot ?>training/app-links/index.html"
+             description=
+             "How to enable the system to handle web requests by taking the user directly
+             to your app instead of your website."
+            >Handling App Links</a>
+        </div>
+      </li>
   <!-- End Interaction and Engagement -->
 
-
-
+</ul>
 
   <li class="nav-section">
     <div class="nav-section-header">
@@ -1242,6 +1405,48 @@ results."
             ja-lang="順応性のある UI フローの実装"
             es-lang="Cómo implementar interfaces de usuario adaptables"
             >Implementing Adaptive UI Flows</a>
+          </li>
+        </ul>
+      </li>
+
+      <li class="nav-section">
+        <div class="nav-section-header">
+          <a href="<?cs var:toroot ?>training/appbar/index.html"
+             description=
+             "How to use the support library's toolbar widget to implement an
+             app bar that displays properly on a wide range of devices."
+            >Adding the App Bar</a>
+        </div>
+        <ul>
+          <li><a href="<?cs var:toroot ?>training/appbar/setting-up.html"
+            >Setting Up the App Bar</a>
+          </li>
+          <li><a href="<?cs var:toroot ?>training/appbar/actions.html"
+            >Adding and Handling Actions</a>
+          </li>
+          <li><a href="<?cs var:toroot ?>training/appbar/up-action.html"
+            >Adding an Up Action</a>
+          </li>
+          <li><a href="<?cs var:toroot ?>training/appbar/action-views.html"
+            >Action Views and Action Providers</a>
+          </li>
+        </ul>
+      </li>
+
+            <li class="nav-section">
+        <div class="nav-section-header">
+          <a href="<?cs var:toroot ?>training/snackbar/index.html"
+             description=
+             "How to use the support library's Snackbar widget to display a
+             brief pop-up message."
+            >Showing Pop-Up Messages</a>
+        </div>
+        <ul>
+          <li><a href="<?cs var:toroot ?>training/snackbar/showing.html"
+            >Building and Displaying a Pop-Up Message</a>
+          </li>
+          <li><a href="<?cs var:toroot ?>training/snackbar/action.html"
+            >Adding an Action to a Message</a>
           </li>
         </ul>
       </li>
@@ -1318,6 +1523,10 @@ results."
             Developing Accessibility Services
           </a>
           </li>
+          <li><a href="<?cs var:toroot ?>training/accessibility/testing.html">
+            Accessibility Testing Checklist
+          </a>
+          </li>
         </ul>
       </li>
 
@@ -1358,34 +1567,113 @@ results."
           <a href="<?cs var:toroot ?>training/material/index.html"
              description=
              "How to implement material design on Android."
+            zh-cn-lang="面向开发者的材料设计"
+            zh-tw-lang="開發人員材料設計"
+            ja-lang="マテリアル デザインでのアプリ作成"
+            es-lang="Crear aplicaciones con Material Design"
+            pt-br-lang="Material Design para desenvolvedores"
+            ko-lang="개발자를 위한 머티리얼 디자인"
+            ru-lang="Создание приложений с помощью Material Design"
+            in-lang="Desain Bahan untuk Pengembang"
+            vi-lang="Material Design cho Nhà phát triển"
             >Creating Apps with Material Design</a>
         </div>
         <ul>
-          <li><a href="<?cs var:toroot ?>training/material/get-started.html">
+          <li><a href="<?cs var:toroot ?>training/material/get-started.html"
+            zh-cn-lang="入门指南"
+            zh-tw-lang="開始使用"
+            ja-lang="スタート ガイド"
+            es-lang="Comencemos"
+            pt-br-lang="Como iniciar"
+            ko-lang="시작하기"
+            ru-lang="Начало работы"
+            in-lang="Memulai"
+            vi-lang="Bắt đầu"
+            >
             Getting Started
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/material/theme.html">
+          <li><a href="<?cs var:toroot ?>training/material/theme.html"
+            zh-cn-lang="使用材料主题"
+            zh-tw-lang="使用材料設計風格"
+            ja-lang="マテリアル テーマの使用"
+            es-lang="Usar el tema Material"
+            pt-br-lang="Como usar o tema do Material"
+            ko-lang="머티어리얼 테마 사용"
+            ru-lang="Использование темы Material Design"
+            in-lang="Menggunakan Tema Bahan"
+            vi-lang="Sử dụng Chủ đề Material"
+            >
             Using the Material Theme
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/material/lists-cards.html">
+          <li><a href="<?cs var:toroot ?>training/material/lists-cards.html"
+            zh-cn-lang="创建列表与卡片"
+            zh-tw-lang="建立清單和卡片"
+            ja-lang="リストとカードの作成"
+            es-lang="Crear listas y tarjetas"
+            pt-br-lang="Como criar listas e cartões"
+            ko-lang="목록 및 카드 생성"
+            ru-lang="Создание списков и подсказок"
+            in-lang="Membuat Daftar dan Kartu"
+            vi-lang="Tạo Danh sách và Thẻ"
+            >
             Creating Lists and Cards
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/material/shadows-clipping.html">
+          <li><a href="<?cs var:toroot ?>training/material/shadows-clipping.html"
+            zh-cn-lang="定义阴影与裁剪视图"
+            zh-tw-lang="定義陰影和裁剪檢視"
+            ja-lang="シャドウとクリッピング ビューの定義"
+            es-lang="Definir vistas de recorte y sombras"
+            pt-br-lang="Como definir sombras e recortar visualizações"
+            ko-lang="그림자 정의 및 뷰 클리핑"
+            ru-lang="Определение теней и обрезка представлений"
+            in-lang="Mendefinisikan Bayangan dan Memangkas Tampilan"
+            vi-lang="Định nghĩa Đổ bóng và Dạng xem Cắt hình"
+            >
             Defining Shadows and Clipping Views
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/material/drawables.html">
+          <li><a href="<?cs var:toroot ?>training/material/drawables.html"
+            zh-cn-lang="使用 Drawables"
+            zh-tw-lang="使用可繪項目"
+            ja-lang="ドローアブルの使用"
+            es-lang="Trabajar con interfaces dibujables"
+            pt-br-lang="Como trabalhar com desenháveis"
+            ko-lang="Drawable 사용"
+            ru-lang="Работа с элементами дизайна"
+            in-lang="Bekerja dengan Drawable"
+            vi-lang="Làm việc với Nội dung vẽ được"
+            >
             Working with Drawables
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/material/animations.html">
+          <li><a href="<?cs var:toroot ?>training/material/animations.html"
+            zh-cn-lang="定义定制动画"
+            zh-tw-lang="定義自訂動畫"
+            ja-lang="カスタム アニメーションの定義"
+            es-lang="Definir animaciones personalizadas"
+            pt-br-lang="Como definir animações personalizadas"
+            ko-lang="사용자지정 애니메이션 정의"
+            ru-lang="Определение настраиваемой анимации"
+            in-lang="Mendefinisikan Animasi Custom"
+            vi-lang="Định nghĩa Hoạt hình Tùy chỉnh"
+            >
             Defining Custom Animations
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/material/compatibility.html">
+          <li><a href="<?cs var:toroot ?>training/material/compatibility.html"
+            zh-cn-lang="维护兼容性"
+            zh-tw-lang="維持相容性"
+            ja-lang="互換性の維持"
+            es-lang="Mantener la compatibilidad"
+            pt-br-lang="Como manter a compatibilidade"
+            ko-lang="호환성 유지"
+            ru-lang="Обеспечение совместимости"
+            in-lang="Mempertahankan Kompatibilitas"
+            vi-lang="Duy trì Tính tương thích"
+            >
             Maintaining Compatibility
           </a>
           </li>
@@ -1574,15 +1862,19 @@ results."
       </a>
     </div>
     <ul>
-
       <li>
         <a href="<?cs var:toroot ?>training/articles/memory.html"
-           description=
-           "How to keep your app's memory footprint small in order to improve performance
-           on a variety of mobile devices."
+          description=
+          "How to keep your app's memory footprint small in order to improve performance
+          on a variety of mobile devices."
           >Managing Your App's Memory</a>
       </li>
-
+      <li>
+        <a href="<?cs var:toroot ?>training/articles/memory-overview.html"
+          description=
+          "How Android manages app process and memory allocation."
+          >Overview of Android Memory Management</a>
+      </li>
       <li>
         <a href="<?cs var:toroot ?>training/articles/perf-tips.html"
            description=
@@ -1590,7 +1882,6 @@ results."
            responsiveness and battery efficiency."
           >Performance Tips</a>
       </li>
-
       <li class="nav-section">
         <div class="nav-section-header">
           <a href="<?cs var:toroot ?>training/improving-layouts/index.html"
@@ -1628,9 +1919,48 @@ results."
              description=
              "How to minimize the amount of power your app requires by adapting to current
              power conditions and performing power-hungry tasks at proper intervals."
-            >Optimizing Battery Life</a>
+            >Optimizing Battery Life
+            </a>
         </div>
         <ul>
+
+          <li class="nav-section">
+            <div class="nav-section-header">
+              <a href="<?cs var:toroot ?>training/performance/battery/network/index.html">
+                Reducing Network Battery Drain
+              </a>
+            </div>
+            <ul>
+              <li><a href="<?cs var:toroot ?>training/performance/battery/network/gather-data.html">
+                Collecting Network Traffic Data
+              </a>
+              </li>
+              <li><a href="<?cs var:toroot ?>training/performance/battery/network/analyze-data.html">
+                Analyzing Network Traffic Data
+              </a>
+              </li>
+              <li><a href="<?cs var:toroot ?>training/performance/battery/network/action-user-traffic.html">
+                Optimizing User-Initiated Network Use
+              </a>
+              </li>
+              <li><a href="<?cs var:toroot ?>training/performance/battery/network/action-app-traffic.html">
+                Optimizing App-Initiated Network Use
+              </a>
+              </li>
+              <li><a href="<?cs var:toroot ?>training/performance/battery/network/action-server-traffic.html">
+                Optimizing Server-Initiated Network Use
+              </a>
+              </li>
+              <li><a href="<?cs var:toroot ?>training/performance/battery/network/action-any-traffic.html">
+                Optimizing General Network Use
+              </a>
+              </li>
+            </ul>
+          </li> <!-- End of Reducing Network Battery Drain -->
+
+          <li><a href="<?cs var:toroot ?>training/monitoring-device-state/doze-standby.html"
+            >Optimizing for Doze and App Standby</a>
+          </li>
           <li><a href="<?cs var:toroot ?>training/monitoring-device-state/battery-monitoring.html"
             zh-cn-lang="监控电池电量和充电状态"
             ja-lang="電池残量と充電状態の監視"
@@ -1684,7 +2014,6 @@ results."
           </li>
         </ul>
       </li>
-
       <li>
         <a href="<?cs var:toroot ?>training/articles/perf-anr.html"
            description=
@@ -1692,7 +2021,6 @@ results."
            display an &quot;Application Not Responding&quot; dialog."
           >Keeping Your App Responsive</a>
       </li>
-
       <li>
         <a href="<?cs var:toroot ?>training/articles/perf-jni.html"
            description=
@@ -1707,8 +2035,6 @@ results."
       </li>
     </ul>
   </li> <!-- end of Performance -->
-
-
 
   <li class="nav-section">
     <div class="nav-section-header">
@@ -1740,23 +2066,18 @@ results."
           >Updating Your Security Provider to Protect Against SSL Exploits</a>
       </li>
 
-      <li class="nav-section">
-        <div class="nav-section-header">
-          <a href="<?cs var:toroot ?>training/enterprise/index.html"
-             description=
-             "How to implement device management policies for enterprise-oriented apps."
-            >Developing for Enterprise</a>
-        </div>
-        <ul>
-          <li><a href="<?cs var:toroot ?>training/enterprise/device-management-policy.html">
-            Enhancing Security with Device Management Policies
-          </a>
-          </li>
-          <li><a href="<?cs var:toroot ?>training/enterprise/app-compatibility.html">
-            Ensuring Compatibility with Managed Profiles
-          </a>
-          </li>
-        </ul>
+      <li>
+        <a href="<?cs var:toroot ?>training/safetynet/index.html"
+           description=
+           "How to use the SafetyNet service to analyze a device where your app is running
+            and get information about its compatibility with your app."
+          >Checking Device Compatibility with SafetyNet</a>
+      </li>
+
+      <li>
+        <a href="<?cs var:toroot ?>work/device-management-policy.html"
+            description="How to create an application that enforces security policies on devices."
+            >Enhancing Security with Device Management Policies</a>
       </li>
     </ul>
   </li>
@@ -1764,39 +2085,94 @@ results."
 
   <li class="nav-section">
     <div class="nav-section-header">
-      <a href="<?cs var:toroot ?>training/testing.html">
+      <a href="<?cs var:toroot ?>training/best-permissions-ids.html">
+      <span class="small">Best Practices for</span><br/>
+              Permissions &amp; Identifiers
+      </a>
+    </div>
+    <ul>
+      <li>
+        <a href="<?cs var:toroot ?>training/articles/user-data-overview.html"
+           description=
+           "Overview of app permissions on Android and how they affect your users."
+          >Permissions and User Data</a>
+      </li>
+      <li>
+        <a href="<?cs var:toroot ?>training/articles/user-data-permissions.html"
+           description=
+           "How to manage permissions the right way for users."
+          >Best Practices for App Permissions</a>
+      </li>
+      <li>
+        <a href="<?cs var:toroot ?>training/articles/user-data-ids.html"
+           description=
+           "Unique identifiers available and how to choose the right one for your use case."
+          >Best Practices for Unique Identifiers</a>
+      </li>
+    </ul>
+  </li>
+  <!-- End Permissions and identifiers -->
+
+  <li class="nav-section">
+    <div class="nav-section-header">
+      <a href="<?cs var:toroot ?>training/testing/index.html">
       <span class="small">Best Practices for</span><br/>
               Testing
       </a>
     </div>
     <ul>
+      <li>
+      <a href="<?cs var:toroot ?>training/testing/start/index.html"
+         description="How to get started with testing your Android applications.">
+            Getting Started with Testing
+          </a>
+      </li>
       <li class="nav-section">
-      <div class="nav-section-header"><a href="<?cs var:toroot ?>training/activity-testing/index.html"
-         description="How to test Activities in your Android applications.">
-            Testing Your Activity
+      <div class="nav-section-header"><a href="<?cs var:toroot ?>training/testing/unit-testing/index.html"
+         description="How to build effective unit tests for Android apps.">
+            Building Effective Unit Tests
           </a></div>
         <ul>
-          <li><a href="<?cs var:toroot ?>training/activity-testing/preparing-activity-testing.html">
-            <span class="en">Setting Up Your Test Environment</span>
+          <li><a href="<?cs var:toroot ?>training/testing/unit-testing/local-unit-tests.html">
+            <span class="en">Building Local Unit Tests</span>
+            </a>
+          </li>
+          <li><a href="<?cs var:toroot ?>training/testing/unit-testing/instrumented-unit-tests.html">
+            <span class="en">Building Instrumented Unit Tests</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li class="nav-section">
+      <div class="nav-section-header"><a href="<?cs var:toroot ?>training/testing/ui-testing/index.html"
+         description="How to automate your user interface tests for Android apps.">
+            Automating UI Tests
+          </a></div>
+        <ul>
+          <li><a href="<?cs var:toroot ?>training/testing/ui-testing/espresso-testing.html">
+            <span class="en">Testing UI for a Single App</span>
           </a>
           </li>
-          <li><a href="<?cs var:toroot ?>training/activity-testing/activity-basic-testing.html">
-            <span class="en">Creating and Running a Test Case</span>
-          </a>
-          </li>
-          <li><a href="<?cs var:toroot ?>training/activity-testing/activity-ui-testing.html">
-            <span class="en">Testing UI Components</span>
-          </a>
-          </li>
-          <li><a href="<?cs var:toroot ?>training/activity-testing/activity-unit-testing.html">
-            <span class="en">Creating Unit Tests</span>
-          </a>
-          </li>
-          <li><a href="<?cs var:toroot ?>training/activity-testing/activity-functional-testing.html">
-            <span class="en">Creating Functional Tests</span>
+          <li><a href="<?cs var:toroot ?>training/testing/ui-testing/uiautomator-testing.html">
+            <span class="en">Testing UI for Multiple Apps</span>
           </a>
           </li>
         </ul>
+      </li>
+      <li class="nav-section">
+      <div class="nav-section-header"><a href="<?cs var:toroot ?>training/testing/integration-testing/index.html"
+         description="How to build effective integration tests for Android apps.">
+            Testing App Component Integrations
+          </a></div>
+        <ul>
+         <li><a href="<?cs var:toroot ?>training/testing/integration-testing/service-testing.html">
+           <span class="en">Testing Your Service</span></a></li>
+         <li><a href="<?cs var:toroot ?>training/testing/integration-testing/content-provider-testing.html">
+           <span class="en">Testing Your Content Provider</span></a></li>
+        </ul>
+      </li>
+      <li><a href="<?cs var:toroot ?>training/testing/performance.html"
+          description="How to automate UI performance testing.">Testing Display Performance</a>
       </li>
     </ul>
   </li>
@@ -1858,21 +2234,6 @@ results."
           </li>
           <li><a href="<?cs var:toroot ?>training/multiple-apks/multiple.html">
             Creating Multiple APKs with 2+ Dimensions
-          </a>
-          </li>
-        </ul>
-      </li>
-      <li class="nav-section">
-        <div class="nav-section-header">
-          <a href="<?cs var:toroot ?>training/monetization/index.html"
-             description=
-             "How to implement monetization strategies for your app without compromising
-             the user experience."
-            >Monetizing Your App</a>
-        </div>
-        <ul>
-          <li><a href="<?cs var:toroot ?>training/monetization/ads-and-ux.html">
-            Advertising without Compromising User Experience
           </a>
           </li>
         </ul>

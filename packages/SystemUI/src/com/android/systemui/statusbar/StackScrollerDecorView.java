@@ -21,7 +21,7 @@ import android.util.AttributeSet;
 import android.view.View;
 import android.view.animation.Interpolator;
 
-import com.android.systemui.statusbar.phone.PhoneStatusBar;
+import com.android.systemui.Interpolators;
 
 /**
  * A common base class for all views in the notification stack scroller which don't have a
@@ -32,7 +32,6 @@ public abstract class StackScrollerDecorView extends ExpandableView {
     protected View mContent;
     private boolean mIsVisible;
     private boolean mAnimating;
-    private boolean mWillBeGone;
 
     public StackScrollerDecorView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -81,9 +80,9 @@ public abstract class StackScrollerDecorView extends ExpandableView {
             float endValue = nowVisible ? 1.0f : 0.0f;
             Interpolator interpolator;
             if (nowVisible) {
-                interpolator = PhoneStatusBar.ALPHA_IN;
+                interpolator = Interpolators.ALPHA_IN;
             } else {
-                interpolator = PhoneStatusBar.ALPHA_OUT;
+                interpolator = Interpolators.ALPHA_OUT;
             }
             mAnimating = true;
             mContent.animate()
@@ -132,14 +131,6 @@ public abstract class StackScrollerDecorView extends ExpandableView {
 
     public void cancelAnimation() {
         mContent.animate().cancel();
-    }
-
-    public boolean willBeGone() {
-        return mWillBeGone;
-    }
-
-    public void setWillBeGone(boolean willBeGone) {
-        mWillBeGone = willBeGone;
     }
 
     protected abstract View findContentView();

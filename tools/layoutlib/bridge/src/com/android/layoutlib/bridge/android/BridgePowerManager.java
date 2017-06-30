@@ -86,7 +86,12 @@ public class BridgePowerManager implements IPowerManager {
     }
 
     @Override
-    public void shutdown(boolean confirm, boolean wait) {
+    public void rebootSafeMode(boolean confirm, boolean wait) {
+        // pass for now.
+    }
+
+    @Override
+    public void shutdown(boolean confirm, String reason, boolean wait) {
         // pass for now.
     }
 
@@ -137,7 +142,7 @@ public class BridgePowerManager implements IPowerManager {
     }
 
     @Override
-    public void wakeUp(long time) throws RemoteException {
+    public void wakeUp(long time, String reason, String opPackageName) throws RemoteException {
         // pass for now.
     }
 
@@ -146,25 +151,18 @@ public class BridgePowerManager implements IPowerManager {
         // pass for now.
     }
 
-	// RUBIS ockwon
-	@Override
-	public void activityResumed(String componentName) {
+    @Override
+    public boolean isDeviceIdleMode() throws RemoteException {
+        return false;
+    }
 
-	}
+    @Override
+    public boolean isLightDeviceIdleMode() throws RemoteException {
+        return false;
+    }
 
-	@Override
-	public String getPowerProfile() {
-		return null;
-	}
-
-	@Override
-	public boolean setPowerProfile(String profile) {
-		return false;
-	}
-
-	@Override
-	public void wakeUpWithProximityCheck(long time) {
-	
-	}
-	// END
+    @Override
+    public boolean isScreenBrightnessBoosted() throws RemoteException {
+        return false;
+    }
 }

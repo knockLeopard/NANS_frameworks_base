@@ -14,9 +14,12 @@
 
 package android.telecom;
 
+import android.Manifest;
+import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.RemoteException;
@@ -55,8 +58,6 @@ public class TelecomManager {
      * Input: get*Extra field {@link #EXTRA_PHONE_ACCOUNT_HANDLE} contains the component name of the
      * {@link android.telecom.ConnectionService} that Telecom should bind to. Telecom will then
      * ask the connection service for more information about the call prior to showing any UI.
-     *
-     * @hide
      */
     public static final String ACTION_INCOMING_CALL = "android.telecom.action.INCOMING_CALL";
 
@@ -68,13 +69,25 @@ public class TelecomManager {
     public static final String ACTION_NEW_UNKNOWN_CALL = "android.telecom.action.NEW_UNKNOWN_CALL";
 
     /**
-     * The {@link android.content.Intent} action used to configure a
-     * {@link android.telecom.ConnectionService}.
-     * @hide
+     * An {@link android.content.Intent} action sent by the telecom framework to start a
+     * configuration dialog for a registered {@link PhoneAccount}. There is no default dialog
+     * and each app that registers a {@link PhoneAccount} should provide one if desired.
+     * <p>
+     * A user can access the list of enabled {@link android.telecom.PhoneAccount}s through the Phone
+     * app's settings menu. For each entry, the settings app will add a click action. When
+     * triggered, the click-action will start this intent along with the extra
+     * {@link #EXTRA_PHONE_ACCOUNT_HANDLE} to indicate the {@link PhoneAccount} to configure. If the
+     * {@link PhoneAccount} package does not register an {@link android.app.Activity} for this
+     * intent, then it will not be sent.
      */
-    @SystemApi
-    public static final String ACTION_CONNECTION_SERVICE_CONFIGURE =
-            "android.telecom.action.CONNECTION_SERVICE_CONFIGURE";
+    public static final String ACTION_CONFIGURE_PHONE_ACCOUNT =
+            "android.telecom.action.CONFIGURE_PHONE_ACCOUNT";
+
+    /**
+     * The {@link android.content.Intent} action used to show the call accessibility settings page.
+     */
+    public static final String ACTION_SHOW_CALL_ACCESSIBILITY_SETTINGS =
+            "android.telecom.action.SHOW_CALL_ACCESSIBILITY_SETTINGS";
 
     /**
      * The {@link android.content.Intent} action used to show the call settings page.
@@ -83,13 +96,67 @@ public class TelecomManager {
             "android.telecom.action.SHOW_CALL_SETTINGS";
 
     /**
+     * The {@link android.content.Intent} action used to show the respond via SMS settings page.
+     */
+    public static final String ACTION_SHOW_RESPOND_VIA_SMS_SETTINGS =
+            "android.telecom.action.SHOW_RESPOND_VIA_SMS_SETTINGS";
+
+    /**
      * The {@link android.content.Intent} action used to show the settings page used to configure
      * {@link PhoneAccount} preferences.
+     */
+    public static final String ACTION_CHANGE_PHONE_ACCOUNTS =
+            "android.telecom.action.CHANGE_PHONE_ACCOUNTS";
+
+    /**
+     * The {@link android.content.Intent} action used indicate that a new phone account was
+     * just registered.
      * @hide
      */
     @SystemApi
-    public static final String ACTION_CHANGE_PHONE_ACCOUNTS =
-            "android.telecom.action.CHANGE_PHONE_ACCOUNTS";
+    public static final String ACTION_PHONE_ACCOUNT_REGISTERED =
+            "android.telecom.action.PHONE_ACCOUNT_REGISTERED";
+
+    /**
+     * The {@link android.content.Intent} action used indicate that a phone account was
+     * just unregistered.
+     * @hide
+     */
+    @SystemApi
+    public static final String ACTION_PHONE_ACCOUNT_UNREGISTERED =
+            "android.telecom.action.PHONE_ACCOUNT_UNREGISTERED";
+
+    /**
+     * Activity action: Shows a dialog asking the user whether or not they want to replace the
+     * current default Dialer with the one specified in
+     * {@link #EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME}.
+     *
+     * Usage example:
+     * <pre>
+     * Intent intent = new Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER);
+     * intent.putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME,
+     *         getActivity().getPackageName());
+     * startActivity(intent);
+     * </pre>
+     */
+    public static final String ACTION_CHANGE_DEFAULT_DIALER =
+            "android.telecom.action.CHANGE_DEFAULT_DIALER";
+
+    /**
+     * Broadcast intent action indicating that the current default dialer has changed.
+     * The string extra {@link #EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME} will contain the
+     * name of the package that the default dialer was changed to.
+     *
+     * @see #EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME
+     */
+    public static final String ACTION_DEFAULT_DIALER_CHANGED =
+            "android.telecom.action.DEFAULT_DIALER_CHANGED";
+
+    /**
+     * Extra value used to provide the package name for {@link #ACTION_CHANGE_DEFAULT_DIALER}.
+     */
+    public static final String EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME =
+            "android.telecom.extra.CHANGE_DEFAULT_DIALER_PACKAGE_NAME";
 
     /**
      * Optional extra for {@link android.content.Intent#ACTION_CALL} containing a boolean that
@@ -102,11 +169,10 @@ public class TelecomManager {
      * Optional extra for {@link android.content.Intent#ACTION_CALL} containing an integer that
      * determines the desired video state for an outgoing call.
      * Valid options:
-     * {@link VideoProfile.VideoState#AUDIO_ONLY},
-     * {@link VideoProfile.VideoState#BIDIRECTIONAL},
-     * {@link VideoProfile.VideoState#RX_ENABLED},
-     * {@link VideoProfile.VideoState#TX_ENABLED}.
-     * @hide
+     * {@link VideoProfile#STATE_AUDIO_ONLY},
+     * {@link VideoProfile#STATE_BIDIRECTIONAL},
+     * {@link VideoProfile#STATE_RX_ENABLED},
+     * {@link VideoProfile#STATE_TX_ENABLED}.
      */
     public static final String EXTRA_START_CALL_WITH_VIDEO_STATE =
             "android.telecom.extra.START_CALL_WITH_VIDEO_STATE";
@@ -117,20 +183,29 @@ public class TelecomManager {
      * {@link PhoneAccountHandle} to use when making the call.
      * <p class="note">
      * Retrieve with {@link android.content.Intent#getParcelableExtra(String)}.
-     * @hide
      */
-    @SystemApi
     public static final String EXTRA_PHONE_ACCOUNT_HANDLE =
             "android.telecom.extra.PHONE_ACCOUNT_HANDLE";
+
+    /**
+     * Optional extra for {@link android.content.Intent#ACTION_CALL} containing a string call
+     * subject which will be associated with an outgoing call.  Should only be specified if the
+     * {@link PhoneAccount} supports the capability {@link PhoneAccount#CAPABILITY_CALL_SUBJECT}.
+     */
+    public static final String EXTRA_CALL_SUBJECT = "android.telecom.extra.CALL_SUBJECT";
+
+    /**
+     * The extra used by a {@link ConnectionService} to provide the handle of the caller that
+     * has initiated a new incoming call.
+     */
+    public static final String EXTRA_INCOMING_CALL_ADDRESS =
+            "android.telecom.extra.INCOMING_CALL_ADDRESS";
 
     /**
      * Optional extra for {@link #ACTION_INCOMING_CALL} containing a {@link Bundle} which contains
      * metadata about the call. This {@link Bundle} will be returned to the
      * {@link ConnectionService}.
-     *
-     * @hide
      */
-    @SystemApi
     public static final String EXTRA_INCOMING_CALL_EXTRAS =
             "android.telecom.extra.INCOMING_CALL_EXTRAS";
 
@@ -138,11 +213,8 @@ public class TelecomManager {
      * Optional extra for {@link android.content.Intent#ACTION_CALL} and
      * {@link android.content.Intent#ACTION_DIAL} {@code Intent} containing a {@link Bundle}
      * which contains metadata about the call. This {@link Bundle} will be saved into
-     * {@code Call.Details}.
-     *
-     * @hide
+     * {@code Call.Details} and passed to the {@link ConnectionService} when placing the call.
      */
-    @SystemApi
     public static final String EXTRA_OUTGOING_CALL_EXTRAS =
             "android.telecom.extra.OUTGOING_CALL_EXTRAS";
 
@@ -151,6 +223,30 @@ public class TelecomManager {
      */
     public static final String EXTRA_UNKNOWN_CALL_HANDLE =
             "android.telecom.extra.UNKNOWN_CALL_HANDLE";
+
+    /**
+     * Optional extra for incoming and outgoing calls containing a long which specifies the time the
+     * call was created. This value is in milliseconds since boot.
+     * @hide
+     */
+    public static final String EXTRA_CALL_CREATED_TIME_MILLIS =
+            "android.telecom.extra.CALL_CREATED_TIME_MILLIS";
+
+    /**
+     * Optional extra for incoming and outgoing calls containing a long which specifies the time
+     * telecom began routing the call. This value is in milliseconds since boot.
+     * @hide
+     */
+    public static final String EXTRA_CALL_TELECOM_ROUTING_START_TIME_MILLIS =
+            "android.telecom.extra.CALL_TELECOM_ROUTING_START_TIME_MILLIS";
+
+    /**
+     * Optional extra for incoming and outgoing calls containing a long which specifies the time
+     * telecom finished routing the call. This value is in milliseconds since boot.
+     * @hide
+     */
+    public static final String EXTRA_CALL_TELECOM_ROUTING_END_TIME_MILLIS =
+            "android.telecom.extra.CALL_TELECOM_ROUTING_END_TIME_MILLIS";
 
     /**
      * Optional extra for {@link android.telephony.TelephonyManager#ACTION_PHONE_STATE_CHANGED}
@@ -174,6 +270,14 @@ public class TelecomManager {
     @SystemApi
     public static final String EXTRA_CONNECTION_SERVICE =
             "android.telecom.extra.CONNECTION_SERVICE";
+
+    /**
+     * Optional extra for communicating the call technology used by a
+     * {@link com.android.internal.telephony.Connection} to Telecom
+     * @hide
+     */
+    public static final String EXTRA_CALL_TECHNOLOGY_TYPE =
+            "android.telecom.extra.CALL_TECHNOLOGY_TYPE";
 
     /**
      * An optional {@link android.content.Intent#ACTION_CALL} intent extra denoting the
@@ -206,10 +310,56 @@ public class TelecomManager {
      * {@link ConnectionService}s which interact with {@link RemoteConnection}s should only populate
      * this if the {@link android.telephony.TelephonyManager#getLine1Number()} value, as that is the
      * user's expected caller ID.
+     */
+    public static final String EXTRA_CALL_BACK_NUMBER = "android.telecom.extra.CALL_BACK_NUMBER";
+
+    /**
+     * The number of milliseconds that Telecom should wait after disconnecting a call via the
+     * ACTION_NEW_OUTGOING_CALL broadcast, in order to wait for the app which cancelled the call
+     * to make a new one.
      * @hide
      */
-    @SystemApi
-    public static final String EXTRA_CALL_BACK_NUMBER = "android.telecom.extra.CALL_BACK_NUMBER";
+    public static final String EXTRA_NEW_OUTGOING_CALL_CANCEL_TIMEOUT =
+            "android.telecom.extra.NEW_OUTGOING_CALL_CANCEL_TIMEOUT";
+
+    /**
+     * A boolean meta-data value indicating whether an {@link InCallService} implements an
+     * in-call user interface. Dialer implementations (see {@link #getDefaultDialerPackage()}) which
+     * would also like to replace the in-call interface should set this meta-data to {@code true} in
+     * the manifest registration of their {@link InCallService}.
+     */
+    public static final String METADATA_IN_CALL_SERVICE_UI = "android.telecom.IN_CALL_SERVICE_UI";
+
+    /**
+     * A boolean meta-data value indicating whether an {@link InCallService} implements an
+     * in-call user interface to be used while the device is in car-mode (see
+     * {@link android.content.res.Configuration.UI_MODE_TYPE_CAR}).
+     *
+     * @hide
+     */
+    public static final String METADATA_IN_CALL_SERVICE_CAR_MODE_UI =
+            "android.telecom.IN_CALL_SERVICE_CAR_MODE_UI";
+
+    /**
+     * A boolean meta-data value indicating whether an {@link InCallService} implements ringing.
+     * Dialer implementations (see {@link #getDefaultDialerPackage()}) which would also like to
+     * override the system provided ringing should set this meta-data to {@code true} in the
+     * manifest registration of their {@link InCallService}.
+     */
+    public static final String METADATA_IN_CALL_SERVICE_RINGING =
+            "android.telecom.IN_CALL_SERVICE_RINGING";
+
+    /**
+     * A boolean meta-data value indicating whether an {@link InCallService} wants to be informed of
+     * calls which have the {@link Call.Details#PROPERTY_IS_EXTERNAL_CALL} property.  An external
+     * call is one which a {@link ConnectionService} knows about, but is not connected to directly.
+     * Dialer implementations (see {@link #getDefaultDialerPackage()}) which would like to be
+     * informed of external calls should set this meta-data to {@code true} in the manifest
+     * registration of their {@link InCallService}.  By default, the {@link InCallService} will NOT
+     * be informed of external calls.
+     */
+    public static final String METADATA_INCLUDE_EXTERNAL_CALLS =
+            "android.telecom.INCLUDE_EXTERNAL_CALLS";
 
     /**
      * The dual tone multi-frequency signaling character sent to indicate the dialing system should
@@ -300,25 +450,73 @@ public class TelecomManager {
             "android.telecom.intent.extra.TTY_PREFERRED";
 
     /**
+     * Broadcast intent action for letting custom component know to show the missed call
+     * notification. If no custom component exists then this is sent to the default dialer which
+     * should post a missed-call notification.
+     */
+    public static final String ACTION_SHOW_MISSED_CALLS_NOTIFICATION =
+            "android.telecom.action.SHOW_MISSED_CALLS_NOTIFICATION";
+
+    /**
+     * The number of calls associated with the notification. If the number is zero then the missed
+     * call notification should be dismissed.
+     */
+    public static final String EXTRA_NOTIFICATION_COUNT =
+            "android.telecom.extra.NOTIFICATION_COUNT";
+
+    /**
+     * The number associated with the missed calls. This number is only relevant
+     * when EXTRA_NOTIFICATION_COUNT is 1.
+     */
+    public static final String EXTRA_NOTIFICATION_PHONE_NUMBER =
+            "android.telecom.extra.NOTIFICATION_PHONE_NUMBER";
+
+    /**
+     * The intent to clear missed calls.
+     * @hide
+     */
+    @SystemApi
+    public static final String EXTRA_CLEAR_MISSED_CALLS_INTENT =
+            "android.telecom.extra.CLEAR_MISSED_CALLS_INTENT";
+
+    /**
+     * The intent to call back a missed call.
+     * @hide
+     */
+    @SystemApi
+    public static final String EXTRA_CALL_BACK_INTENT =
+            "android.telecom.extra.CALL_BACK_INTENT";
+
+    /**
      * The following 4 constants define how properties such as phone numbers and names are
      * displayed to the user.
      */
 
-    /** Property is displayed normally. */
+    /**
+     * Indicates that the address or number of a call is allowed to be displayed for caller ID.
+    */
     public static final int PRESENTATION_ALLOWED = 1;
 
-    /** Property was blocked. */
+    /**
+     * Indicates that the address or number of a call is blocked by the other party.
+     */
     public static final int PRESENTATION_RESTRICTED = 2;
 
-    /** Presentation was not specified or is unknown. */
+    /**
+     * Indicates that the address or number of a call is not specified or known by the carrier.
+     */
     public static final int PRESENTATION_UNKNOWN = 3;
 
-    /** Property should be displayed as a pay phone. */
+    /**
+     * Indicates that the address or number of a call belongs to a pay phone.
+     */
     public static final int PRESENTATION_PAYPHONE = 4;
 
     private static final String TAG = "TelecomManager";
 
     private final Context mContext;
+
+    private final ITelecomService mTelecomServiceOverride;
 
     /**
      * @hide
@@ -331,31 +529,50 @@ public class TelecomManager {
      * @hide
      */
     public TelecomManager(Context context) {
+        this(context, null);
+    }
+
+    /**
+     * @hide
+     */
+    public TelecomManager(Context context, ITelecomService telecomServiceImpl) {
         Context appContext = context.getApplicationContext();
         if (appContext != null) {
             mContext = appContext;
         } else {
             mContext = context;
         }
+        mTelecomServiceOverride = telecomServiceImpl;
+        android.telecom.Log.initMd5Sum();
     }
 
     /**
-     * Return the {@link PhoneAccount} which is the user-chosen default for making outgoing phone
-     * calls with a specified URI scheme.
+     * Return the {@link PhoneAccount} which will be used to place outgoing calls to addresses with
+     * the specified {@code uriScheme}. This {@link PhoneAccount} will always be a member of the
+     * list which is returned from invoking {@link #getCallCapablePhoneAccounts()}. The specific
+     * account returned depends on the following priorities:
+     * <ul>
+     * <li> If the user-selected default {@link PhoneAccount} supports the specified scheme, it will
+     * be returned.
+     * </li>
+     * <li> If there exists only one {@link PhoneAccount} that supports the specified scheme, it
+     * will be returned.
+     * </li>
+     * </ul>
      * <p>
-     * Apps must be prepared for this method to return {@code null}, indicating that there currently
-     * exists no user-chosen default {@code PhoneAccount}.
-     * <p>
+     * If no {@link PhoneAccount} fits the criteria above, this method will return {@code null}.
+     *
+     * Requires permission: {@link android.Manifest.permission#READ_PHONE_STATE}
+     *
      * @param uriScheme The URI scheme.
-     * @return The {@link PhoneAccountHandle} corresponding to the user-chosen default for outgoing
-     * phone calls for a specified URI scheme.
-     * @hide
+     * @return The {@link PhoneAccountHandle} corresponding to the account to be used.
      */
-    @SystemApi
+    @RequiresPermission(android.Manifest.permission.READ_PHONE_STATE)
     public PhoneAccountHandle getDefaultOutgoingPhoneAccount(String uriScheme) {
         try {
             if (isServiceConnected()) {
-                return getTelecomService().getDefaultOutgoingPhoneAccount(uriScheme);
+                return getTelecomService().getDefaultOutgoingPhoneAccount(uriScheme,
+                        mContext.getOpPackageName());
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Error calling ITelecomService#getDefaultOutgoingPhoneAccount", e);
@@ -367,7 +584,7 @@ public class TelecomManager {
      * Return the {@link PhoneAccount} which is the user-chosen default for making outgoing phone
      * calls. This {@code PhoneAccount} will always be a member of the list which is returned from
      * calling {@link #getCallCapablePhoneAccounts()}
-     *
+     * <p>
      * Apps must be prepared for this method to return {@code null}, indicating that there currently
      * exists no user-chosen default {@code PhoneAccount}.
      *
@@ -386,7 +603,7 @@ public class TelecomManager {
     }
 
     /**
-     * Sets the default account for making outgoing phone calls.
+     * Sets the user-chosen default for making outgoing phone calls.
      * @hide
      */
     public void setUserSelectedOutgoingPhoneAccount(PhoneAccountHandle accountHandle) {
@@ -403,8 +620,8 @@ public class TelecomManager {
      * Returns the current SIM call manager. Apps must be prepared for this method to return
      * {@code null}, indicating that there currently exists no user-chosen default
      * {@code PhoneAccount}.
+     *
      * @return The phone account handle of the current sim call manager.
-     * @hide
      */
     public PhoneAccountHandle getSimCallManager() {
         try {
@@ -418,34 +635,23 @@ public class TelecomManager {
     }
 
     /**
-     * Sets the SIM call manager to the specified phone account.
-     * @param accountHandle The phone account handle of the account to set as the sim call manager.
+     * Returns the current SIM call manager for the specified user. Apps must be prepared for this
+     * method to return {@code null}, indicating that there currently exists no user-chosen default
+     * {@code PhoneAccount}.
+     *
+     * @return The phone account handle of the current sim call manager.
+     *
      * @hide
      */
-    public void setSimCallManager(PhoneAccountHandle accountHandle) {
+    public PhoneAccountHandle getSimCallManager(int userId) {
         try {
             if (isServiceConnected()) {
-                getTelecomService().setSimCallManager(accountHandle);
+                return getTelecomService().getSimCallManagerForUser(userId);
             }
         } catch (RemoteException e) {
-            Log.e(TAG, "Error calling ITelecomService#setSimCallManager");
+            Log.e(TAG, "Error calling ITelecomService#getSimCallManagerForUser");
         }
-    }
-
-    /**
-     * Returns the list of registered SIM call managers.
-     * @return List of registered SIM call managers.
-     * @hide
-     */
-    public List<PhoneAccountHandle> getSimCallManagers() {
-        try {
-            if (isServiceConnected()) {
-                return getTelecomService().getSimCallManagers();
-            }
-        } catch (RemoteException e) {
-            Log.e(TAG, "Error calling ITelecomService#getSimCallManagers");
-        }
-        return new ArrayList<>();
+        return null;
     }
 
     /**
@@ -459,16 +665,6 @@ public class TelecomManager {
     @SystemApi
     public PhoneAccountHandle getConnectionManager() {
         return getSimCallManager();
-    }
-
-    /**
-     * Returns the list of registered SIM call managers.
-     * @return List of registered SIM call managers.
-     * @hide
-     */
-    @SystemApi
-    public List<PhoneAccountHandle> getRegisteredConnectionManagers() {
-        return getSimCallManagers();
     }
 
     /**
@@ -488,7 +684,8 @@ public class TelecomManager {
     public List<PhoneAccountHandle> getPhoneAccountsSupportingScheme(String uriScheme) {
         try {
             if (isServiceConnected()) {
-                return getTelecomService().getPhoneAccountsSupportingScheme(uriScheme);
+                return getTelecomService().getPhoneAccountsSupportingScheme(uriScheme,
+                        mContext.getOpPackageName());
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Error calling ITelecomService#getPhoneAccountsSupportingScheme", e);
@@ -498,36 +695,38 @@ public class TelecomManager {
 
 
     /**
-     * Return a list of {@link PhoneAccountHandle}s which can be used to make and receive phone
-     * calls.
+     * Returns a list of {@link PhoneAccountHandle}s which can be used to make and receive phone
+     * calls. The returned list includes only those accounts which have been explicitly enabled
+     * by the user.
+     *
+     * Requires permission: {@link android.Manifest.permission#READ_PHONE_STATE}
      *
      * @see #EXTRA_PHONE_ACCOUNT_HANDLE
      * @return A list of {@code PhoneAccountHandle} objects.
-     *
-     * @hide
      */
+    @RequiresPermission(android.Manifest.permission.READ_PHONE_STATE)
     public List<PhoneAccountHandle> getCallCapablePhoneAccounts() {
-        try {
-            if (isServiceConnected()) {
-                return getTelecomService().getCallCapablePhoneAccounts();
-            }
-        } catch (RemoteException e) {
-            Log.e(TAG, "Error calling ITelecomService#getCallCapablePhoneAccounts", e);
-        }
-        return new ArrayList<>();
+        return getCallCapablePhoneAccounts(false);
     }
 
     /**
-     * Determine whether the device has more than one account registered that can make and receive
-     * phone calls.
+     * Returns a list of {@link PhoneAccountHandle}s including those which have not been enabled
+     * by the user.
      *
-     * @return {@code true} if the device has more than one account registered and {@code false}
-     * otherwise.
+     * @return A list of {@code PhoneAccountHandle} objects.
      * @hide
      */
-    @SystemApi
-    public boolean hasMultipleCallCapableAccounts() {
-        return getCallCapablePhoneAccounts().size() > 1;
+    public List<PhoneAccountHandle> getCallCapablePhoneAccounts(boolean includeDisabledAccounts) {
+        try {
+            if (isServiceConnected()) {
+                return getTelecomService().getCallCapablePhoneAccounts(
+                        includeDisabledAccounts, mContext.getOpPackageName());
+            }
+        } catch (RemoteException e) {
+            Log.e(TAG, "Error calling ITelecomService#getCallCapablePhoneAccounts(" +
+                    includeDisabledAccounts + ")", e);
+        }
+        return new ArrayList<>();
     }
 
     /**
@@ -554,9 +753,7 @@ public class TelecomManager {
      *
      * @param account The {@link PhoneAccountHandle}.
      * @return The {@link PhoneAccount} object.
-     * @hide
      */
-    @SystemApi
     public PhoneAccount getPhoneAccount(PhoneAccountHandle account) {
         try {
             if (isServiceConnected()) {
@@ -623,9 +820,9 @@ public class TelecomManager {
     }
 
     /**
-     * Register a {@link PhoneAccount} for use by the system. When registering
-     * {@link PhoneAccount}s, existing registrations will be overwritten if the
-     * {@link PhoneAccountHandle} matches that of a {@link PhoneAccount} which is already
+     * Register a {@link PhoneAccount} for use by the system that will be stored in Device Encrypted
+     * storage. When registering {@link PhoneAccount}s, existing registrations will be overwritten
+     * if the {@link PhoneAccountHandle} matches that of a {@link PhoneAccount} which is already
      * registered. Once registered, the {@link PhoneAccount} is listed to the user as an option
      * when placing calls. The user may still need to enable the {@link PhoneAccount} within
      * the phone app settings before the account is usable.
@@ -635,10 +832,7 @@ public class TelecomManager {
      * {@link PhoneAccountHandle#getComponentName()} does not match the package name of the app.
      *
      * @param account The complete {@link PhoneAccount}.
-     *
-     * @hide
      */
-    @SystemApi
     public void registerPhoneAccount(PhoneAccount account) {
         try {
             if (isServiceConnected()) {
@@ -653,9 +847,7 @@ public class TelecomManager {
      * Remove a {@link PhoneAccount} registration from the system.
      *
      * @param accountHandle A {@link PhoneAccountHandle} for the {@link PhoneAccount} to unregister.
-     * @hide
      */
-    @SystemApi
     public void unregisterPhoneAccount(PhoneAccountHandle accountHandle) {
         try {
             if (isServiceConnected()) {
@@ -668,6 +860,15 @@ public class TelecomManager {
 
     /**
      * Remove all Accounts that belong to the calling package from the system.
+     * @hide
+     */
+    @SystemApi
+    public void clearPhoneAccounts() {
+        clearAccounts();
+    }
+    /**
+     * Remove all Accounts that belong to the calling package from the system.
+     * @deprecated Use {@link #clearPhoneAccounts()} instead.
      * @hide
      */
     @SystemApi
@@ -695,7 +896,10 @@ public class TelecomManager {
         }
     }
 
+
     /**
+     * @deprecated - Use {@link TelecomManager#getDefaultDialerPackage} to directly access
+     *         the default dialer's package name instead.
      * @hide
      */
     @SystemApi
@@ -711,19 +915,79 @@ public class TelecomManager {
     }
 
     /**
-     * Return whether a given phone number is the configured voicemail number for a
-     * particular phone account.
+     * Used to determine the currently selected default dialer package.
      *
-     * @param accountHandle The handle for the account to check the voicemail number against
-     * @param number The number to look up.
+     * @return package name for the default dialer package or null if no package has been
+     *         selected as the default dialer.
+     */
+    public String getDefaultDialerPackage() {
+        try {
+            if (isServiceConnected()) {
+                return getTelecomService().getDefaultDialerPackage();
+            }
+        } catch (RemoteException e) {
+            Log.e(TAG, "RemoteException attempting to get the default dialer package name.", e);
+        }
+        return null;
+    }
+
+    /**
+     * Used to set the default dialer package.
+     *
+     * @param packageName to set the default dialer to..
+     *
+     * @result {@code true} if the default dialer was successfully changed, {@code false} if
+     *         the specified package does not correspond to an installed dialer, or is already
+     *         the default dialer.
+     *
+     * Requires permission: {@link android.Manifest.permission#MODIFY_PHONE_STATE}
+     * Requires permission: {@link android.Manifest.permission#WRITE_SECURE_SETTINGS}
      *
      * @hide
      */
-    @SystemApi
+    public boolean setDefaultDialer(String packageName) {
+        try {
+            if (isServiceConnected()) {
+                return getTelecomService().setDefaultDialer(packageName);
+            }
+        } catch (RemoteException e) {
+            Log.e(TAG, "RemoteException attempting to set the default dialer.", e);
+        }
+        return false;
+    }
+
+    /**
+     * Used to determine the dialer package that is preloaded on the system partition.
+     *
+     * @return package name for the system dialer package or null if no system dialer is preloaded.
+     * @hide
+     */
+    public String getSystemDialerPackage() {
+        try {
+            if (isServiceConnected()) {
+                return getTelecomService().getSystemDialerPackage();
+            }
+        } catch (RemoteException e) {
+            Log.e(TAG, "RemoteException attempting to get the system dialer package name.", e);
+        }
+        return null;
+    }
+
+    /**
+     * Return whether a given phone number is the configured voicemail number for a
+     * particular phone account.
+     *
+     * Requires permission: {@link android.Manifest.permission#READ_PHONE_STATE}
+     *
+     * @param accountHandle The handle for the account to check the voicemail number against
+     * @param number The number to look up.
+     */
+    @RequiresPermission(android.Manifest.permission.READ_PHONE_STATE)
     public boolean isVoiceMailNumber(PhoneAccountHandle accountHandle, String number) {
         try {
             if (isServiceConnected()) {
-                return getTelecomService().isVoiceMailNumber(accountHandle, number);
+                return getTelecomService().isVoiceMailNumber(accountHandle, number,
+                        mContext.getOpPackageName());
             }
         } catch (RemoteException e) {
             Log.e(TAG, "RemoteException calling ITelecomService#isVoiceMailNumber.", e);
@@ -732,38 +996,41 @@ public class TelecomManager {
     }
 
     /**
-     * Return whether a given phone account has a voicemail number configured.
+     * Return the voicemail number for a given phone account.
      *
-     * @param accountHandle The handle for the account to check for a voicemail number.
-     * @return {@code true} If the given phone account has a voicemail number.
+     * Requires permission: {@link android.Manifest.permission#READ_PHONE_STATE}
      *
-     * @hide
+     * @param accountHandle The handle for the phone account.
+     * @return The voicemail number for the phone account, and {@code null} if one has not been
+     *         configured.
      */
-    @SystemApi
-    public boolean hasVoiceMailNumber(PhoneAccountHandle accountHandle) {
+    @RequiresPermission(android.Manifest.permission.READ_PHONE_STATE)
+    public String getVoiceMailNumber(PhoneAccountHandle accountHandle) {
         try {
             if (isServiceConnected()) {
-                return getTelecomService().hasVoiceMailNumber(accountHandle);
+                return getTelecomService().getVoiceMailNumber(accountHandle,
+                        mContext.getOpPackageName());
             }
         } catch (RemoteException e) {
             Log.e(TAG, "RemoteException calling ITelecomService#hasVoiceMailNumber.", e);
         }
-        return false;
+        return null;
     }
 
     /**
      * Return the line 1 phone number for given phone account.
      *
+     * Requires permission: {@link android.Manifest.permission#READ_PHONE_STATE}
+     *
      * @param accountHandle The handle for the account retrieve a number for.
      * @return A string representation of the line 1 phone number.
-     *
-     * @hide
      */
-    @SystemApi
+    @RequiresPermission(android.Manifest.permission.READ_PHONE_STATE)
     public String getLine1Number(PhoneAccountHandle accountHandle) {
         try {
             if (isServiceConnected()) {
-                return getTelecomService().getLine1Number(accountHandle);
+                return getTelecomService().getLine1Number(accountHandle,
+                        mContext.getOpPackageName());
             }
         } catch (RemoteException e) {
             Log.e(TAG, "RemoteException calling ITelecomService#getLine1Number.", e);
@@ -778,10 +1045,11 @@ public class TelecomManager {
      * Requires permission: {@link android.Manifest.permission#READ_PHONE_STATE}
      * </p>
      */
+    @RequiresPermission(android.Manifest.permission.READ_PHONE_STATE)
     public boolean isInCall() {
         try {
             if (isServiceConnected()) {
-                return getTelecomService().isInCall();
+                return getTelecomService().isInCall(mContext.getOpPackageName());
             }
         } catch (RemoteException e) {
             Log.e(TAG, "RemoteException calling isInCall().", e);
@@ -823,7 +1091,7 @@ public class TelecomManager {
     public boolean isRinging() {
         try {
             if (isServiceConnected()) {
-                return getTelecomService().isRinging();
+                return getTelecomService().isRinging(mContext.getOpPackageName());
             }
         } catch (RemoteException e) {
             Log.e(TAG, "RemoteException attempting to get ringing state of phone app.", e);
@@ -853,7 +1121,9 @@ public class TelecomManager {
      * If there is a ringing incoming call, this method accepts the call on behalf of the user.
      * TODO: L-release - need to convert all invocation of ITelecmmService#answerRingingCall to use
      * this method (clockwork & gearhead).
-     *
+     * If the incoming call is a video call, the call will be answered with the same video state as
+     * the incoming call requests.  This means, for example, that an incoming call requesting
+     * {@link VideoProfile#STATE_BIDIRECTIONAL} will be answered, accepting that state.
      * @hide
      */
     @SystemApi
@@ -868,15 +1138,33 @@ public class TelecomManager {
     }
 
     /**
-     * Silences the ringer if a ringing call exists.
+     * If there is a ringing incoming call, this method accepts the call on behalf of the user,
+     * with the specified video state.
      *
+     * @param videoState The desired video state to answer the call with.
      * @hide
      */
     @SystemApi
+    public void acceptRingingCall(int videoState) {
+        try {
+            if (isServiceConnected()) {
+                getTelecomService().acceptRingingCallWithVideoState(videoState);
+            }
+        } catch (RemoteException e) {
+            Log.e(TAG, "Error calling ITelecomService#acceptRingingCallWithVideoState", e);
+        }
+    }
+
+    /**
+     * Silences the ringer if a ringing call exists.
+     *
+     * Requires permission: {@link android.Manifest.permission#MODIFY_PHONE_STATE}
+     */
+    @RequiresPermission(android.Manifest.permission.MODIFY_PHONE_STATE)
     public void silenceRinger() {
         try {
             if (isServiceConnected()) {
-                getTelecomService().silenceRinger();
+                getTelecomService().silenceRinger(mContext.getOpPackageName());
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Error calling ITelecomService#silenceRinger", e);
@@ -892,7 +1180,7 @@ public class TelecomManager {
     public boolean isTtySupported() {
         try {
             if (isServiceConnected()) {
-                return getTelecomService().isTtySupported();
+                return getTelecomService().isTtySupported(mContext.getOpPackageName());
             }
         } catch (RemoteException e) {
             Log.e(TAG, "RemoteException attempting to get TTY supported state.", e);
@@ -913,7 +1201,7 @@ public class TelecomManager {
     public int getCurrentTtyMode() {
         try {
             if (isServiceConnected()) {
-                return getTelecomService().getCurrentTtyMode();
+                return getTelecomService().getCurrentTtyMode(mContext.getOpPackageName());
             }
         } catch (RemoteException e) {
             Log.e(TAG, "RemoteException attempting to get the current TTY mode.", e);
@@ -924,18 +1212,21 @@ public class TelecomManager {
     /**
      * Registers a new incoming call. A {@link ConnectionService} should invoke this method when it
      * has an incoming call. The specified {@link PhoneAccountHandle} must have been registered
-     * with {@link #registerPhoneAccount}. Once invoked, this method will cause the system to bind
-     * to the {@link ConnectionService} associated with the {@link PhoneAccountHandle} and request
-     * additional information about the call (See
-     * {@link ConnectionService#onCreateIncomingConnection}) before starting the incoming call UI.
-     *
+     * with {@link #registerPhoneAccount} and the user must have enabled the corresponding
+     * {@link PhoneAccount}. This can be checked using {@link #getPhoneAccount}. Once invoked, this
+     * method will cause the system to bind to the {@link ConnectionService} associated with the
+     * {@link PhoneAccountHandle} and request additional information about the call
+     * (See {@link ConnectionService#onCreateIncomingConnection}) before starting the incoming
+     * call UI.
+     * <p>
+     * A {@link SecurityException} will be thrown if either the {@link PhoneAccountHandle} does not
+     * correspond to a registered {@link PhoneAccount} or the associated {@link PhoneAccount} is not
+     * currently enabled by the user.
      * @param phoneAccount A {@link PhoneAccountHandle} registered with
      *            {@link #registerPhoneAccount}.
      * @param extras A bundle that will be passed through to
      *            {@link ConnectionService#onCreateIncomingConnection}.
-     * @hide
      */
-    @SystemApi
     public void addNewIncomingCall(PhoneAccountHandle phoneAccount, Bundle extras) {
         try {
             if (isServiceConnected()) {
@@ -979,14 +1270,17 @@ public class TelecomManager {
      * Requires that the method-caller be set as the system dialer app.
      * </p>
      *
+     * Requires permission: {@link android.Manifest.permission#MODIFY_PHONE_STATE}
+     *
      * @param dialString The digits to dial.
      * @return True if the digits were processed as an MMI code, false otherwise.
      */
+    @RequiresPermission(android.Manifest.permission.MODIFY_PHONE_STATE)
     public boolean handleMmi(String dialString) {
         ITelecomService service = getTelecomService();
         if (service != null) {
             try {
-                return service.handlePinMmi(dialString);
+                return service.handlePinMmi(dialString, mContext.getOpPackageName());
             } catch (RemoteException e) {
                 Log.e(TAG, "Error calling ITelecomService#handlePinMmi", e);
             }
@@ -1002,17 +1296,19 @@ public class TelecomManager {
      * Requires that the method-caller be set as the system dialer app.
      * </p>
      *
+     * Requires permission: {@link android.Manifest.permission#MODIFY_PHONE_STATE}
+     *
      * @param accountHandle The handle for the account the MMI code should apply to.
      * @param dialString The digits to dial.
      * @return True if the digits were processed as an MMI code, false otherwise.
-     * @hide
      */
-    @SystemApi
-    public boolean handleMmi(PhoneAccountHandle accountHandle, String dialString) {
+    @RequiresPermission(android.Manifest.permission.MODIFY_PHONE_STATE)
+    public boolean handleMmi(String dialString, PhoneAccountHandle accountHandle) {
         ITelecomService service = getTelecomService();
         if (service != null) {
             try {
-                return service.handlePinMmiForPhoneAccount(accountHandle, dialString);
+                return service.handlePinMmiForPhoneAccount(accountHandle, dialString,
+                        mContext.getOpPackageName());
             } catch (RemoteException e) {
                 Log.e(TAG, "Error calling ITelecomService#handlePinMmi", e);
             }
@@ -1021,18 +1317,19 @@ public class TelecomManager {
     }
 
     /**
+     * Requires permission: {@link android.Manifest.permission#MODIFY_PHONE_STATE}
+     *
      * @param accountHandle The handle for the account to derive an adn query URI for or
      * {@code null} to return a URI which will use the default account.
      * @return The URI (with the content:// scheme) specific to the specified {@link PhoneAccount}
      * for the the content retrieve.
-     * @hide
      */
-    @SystemApi
+    @RequiresPermission(android.Manifest.permission.MODIFY_PHONE_STATE)
     public Uri getAdnUriForPhoneAccount(PhoneAccountHandle accountHandle) {
         ITelecomService service = getTelecomService();
         if (service != null && accountHandle != null) {
             try {
-                return service.getAdnUriForPhoneAccount(accountHandle);
+                return service.getAdnUriForPhoneAccount(accountHandle, mContext.getOpPackageName());
             } catch (RemoteException e) {
                 Log.e(TAG, "Error calling ITelecomService#getAdnUriForPhoneAccount", e);
             }
@@ -1045,12 +1342,15 @@ public class TelecomManager {
      * <p>
      * Requires that the method-caller be set as the system dialer app.
      * </p>
+     *
+     * Requires permission: {@link android.Manifest.permission#MODIFY_PHONE_STATE}
      */
+    @RequiresPermission(android.Manifest.permission.MODIFY_PHONE_STATE)
     public void cancelMissedCallsNotification() {
         ITelecomService service = getTelecomService();
         if (service != null) {
             try {
-                service.cancelMissedCallsNotification();
+                service.cancelMissedCallsNotification(mContext.getOpPackageName());
             } catch (RemoteException e) {
                 Log.e(TAG, "Error calling ITelecomService#cancelMissedCallsNotification", e);
             }
@@ -1067,18 +1367,128 @@ public class TelecomManager {
      *
      * @param showDialpad Brings up the in-call dialpad as part of showing the in-call screen.
      */
+    @RequiresPermission(android.Manifest.permission.READ_PHONE_STATE)
     public void showInCallScreen(boolean showDialpad) {
         ITelecomService service = getTelecomService();
         if (service != null) {
             try {
-                service.showInCallScreen(showDialpad);
+                service.showInCallScreen(showDialpad, mContext.getOpPackageName());
             } catch (RemoteException e) {
                 Log.e(TAG, "Error calling ITelecomService#showCallScreen", e);
             }
         }
     }
 
+    /**
+     * Places a new outgoing call to the provided address using the system telecom service with
+     * the specified extras.
+     *
+     * This method is equivalent to placing an outgoing call using {@link Intent#ACTION_CALL},
+     * except that the outgoing call will always be sent via the system telecom service. If
+     * method-caller is either the user selected default dialer app or preloaded system dialer
+     * app, then emergency calls will also be allowed.
+     *
+     * Requires permission: {@link android.Manifest.permission#CALL_PHONE}
+     *
+     * Usage example:
+     * <pre>
+     * Uri uri = Uri.fromParts("tel", "12345", null);
+     * Bundle extras = new Bundle();
+     * extras.putBoolean(TelecomManager.EXTRA_START_CALL_WITH_SPEAKERPHONE, true);
+     * telecomManager.placeCall(uri, extras);
+     * </pre>
+     *
+     * The following keys are supported in the supplied extras.
+     * <ul>
+     *   <li>{@link #EXTRA_OUTGOING_CALL_EXTRAS}</li>
+     *   <li>{@link #EXTRA_PHONE_ACCOUNT_HANDLE}</li>
+     *   <li>{@link #EXTRA_START_CALL_WITH_SPEAKERPHONE}</li>
+     *   <li>{@link #EXTRA_START_CALL_WITH_VIDEO_STATE}</li>
+     * </ul>
+     *
+     * @param address The address to make the call to.
+     * @param extras Bundle of extras to use with the call.
+     */
+    @RequiresPermission(android.Manifest.permission.CALL_PHONE)
+    public void placeCall(Uri address, Bundle extras) {
+        ITelecomService service = getTelecomService();
+        if (service != null) {
+            if (address == null) {
+                Log.w(TAG, "Cannot place call to empty address.");
+            }
+            try {
+                service.placeCall(address, extras == null ? new Bundle() : extras,
+                        mContext.getOpPackageName());
+            } catch (RemoteException e) {
+                Log.e(TAG, "Error calling ITelecomService#placeCall", e);
+            }
+        }
+    }
+
+    /**
+     * Enables and disables specified phone account.
+     *
+     * @param handle Handle to the phone account.
+     * @param isEnabled Enable state of the phone account.
+     * @hide
+     */
+    @SystemApi
+    public void enablePhoneAccount(PhoneAccountHandle handle, boolean isEnabled) {
+        ITelecomService service = getTelecomService();
+        if (service != null) {
+            try {
+                service.enablePhoneAccount(handle, isEnabled);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Error enablePhoneAbbount", e);
+            }
+        }
+    }
+
+    /**
+     * Dumps telecom analytics for uploading.
+     *
+     * @return
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(Manifest.permission.DUMP)
+    public TelecomAnalytics dumpAnalytics() {
+        ITelecomService service = getTelecomService();
+        TelecomAnalytics result = null;
+        if (service != null) {
+            try {
+                result = service.dumpCallAnalytics();
+            } catch (RemoteException e) {
+                Log.e(TAG, "Error dumping call analytics", e);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Creates the {@link Intent} which can be used with {@link Context#startActivity(Intent)} to
+     * launch the activity to manage blocked numbers.
+     * <p> The activity will display the UI to manage blocked numbers only if
+     * {@link android.provider.BlockedNumberContract#canCurrentUserBlockNumbers(Context)} returns
+     * {@code true} for the current user.
+     */
+    public Intent createManageBlockedNumbersIntent() {
+        ITelecomService service = getTelecomService();
+        Intent result = null;
+        if (service != null) {
+            try {
+                result = service.createManageBlockedNumbersIntent();
+            } catch (RemoteException e) {
+                Log.e(TAG, "Error calling ITelecomService#createManageBlockedNumbersIntent", e);
+            }
+        }
+        return result;
+    }
+
     private ITelecomService getTelecomService() {
+        if (mTelecomServiceOverride != null) {
+            return mTelecomServiceOverride;
+        }
         return ITelecomService.Stub.asInterface(ServiceManager.getService(Context.TELECOM_SERVICE));
     }
 

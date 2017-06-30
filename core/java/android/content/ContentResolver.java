@@ -17,6 +17,12 @@
 package android.content;
 
 import android.accounts.Account;
+import android.annotation.IntDef;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.annotation.RequiresPermission;
+import android.annotation.TestApi;
+import android.annotation.UserIdInt;
 import android.app.ActivityManagerNative;
 import android.app.ActivityThread;
 import android.app.AppGlobals;
@@ -28,6 +34,7 @@ import android.database.CrossProcessCursorWrapper;
 import android.database.Cursor;
 import android.database.IContentObserver;
 import android.graphics.Point;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.CancellationSignal;
@@ -44,6 +51,10 @@ import android.text.TextUtils;
 import android.util.EventLog;
 import android.util.Log;
 
+import com.android.internal.util.ArrayUtils;
+import com.android.internal.util.MimeIconUtils;
+import com.android.internal.util.Preconditions;
+
 import dalvik.system.CloseGuard;
 
 import java.io.File;
@@ -52,9 +63,12 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * This class provides applications access to the content model.
@@ -78,6 +92,13 @@ public abstract class ContentResolver {
      * at the front of the sync request queue and without any delay
      */
     public static final String SYNC_EXTRAS_EXPEDITED = "expedited";
+
+    /**
+     * If this extra is set to true, the sync request will be scheduled
+     * only when the device is plugged in. This is equivalent to calling
+     * setRequiresCharging(true) on {@link SyncRequest}.
+     */
+    public static final String SYNC_EXTRAS_REQUIRE_CHARGING = "require_charging";
 
     /**
      * @deprecated instead use
@@ -273,6 +294,31 @@ public abstract class ContentResolver {
     /** @hide */
     public static final int SYNC_OBSERVER_TYPE_ALL = 0x7fffffff;
 
+    /** @hide */
+    @IntDef(flag = true,
+            value = {
+                NOTIFY_SYNC_TO_NETWORK,
+                NOTIFY_SKIP_NOTIFY_FOR_DESCENDANTS
+            })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface NotifyFlags {}
+
+    /**
+     * Flag for {@link #notifyChange(Uri, ContentObserver, int)}: attempt to sync the change
+     * to the network.
+     */
+    public static final int NOTIFY_SYNC_TO_NETWORK = 1<<0;
+
+    /**
+     * Flag for {@link #notifyChange(Uri, ContentObserver, int)}: if set, this notification
+     * will be skipped if it is being delivered to the root URI of a ContentObserver that is
+     * using "notify for descendants."  The purpose of this is to allow the provide to send
+     * a general notification of "something under X" changed that observers of that specific
+     * URI can receive, while also sending a specific URI under X.  It would use this flag
+     * when sending the former, so that observers of "X and descendants" only see the latter.
+     */
+    public static final int NOTIFY_SKIP_NOTIFY_FOR_DESCENDANTS = 1<<1;
+
     // Always log queries which take 500ms+; shorter queries are
     // sampled accordingly.
     private static final boolean ENABLE_CONTENT_SAMPLE = false;
@@ -319,7 +365,9 @@ public abstract class ContentResolver {
      * using the content:// scheme.
      * @return A MIME type for the content, or null if the URL is invalid or the type is unknown
      */
-    public final String getType(Uri url) {
+    public final @Nullable String getType(@NonNull Uri url) {
+        Preconditions.checkNotNull(url, "url");
+
         // XXX would like to have an acquireExistingUnstableProvider for this.
         IContentProvider provider = acquireExistingProvider(url);
         if (provider != null) {
@@ -370,7 +418,10 @@ public abstract class ContentResolver {
      * data streams that match the given mimeTypeFilter.  If there are none,
      * null is returned.
      */
-    public String[] getStreamTypes(Uri url, String mimeTypeFilter) {
+    public @Nullable String[] getStreamTypes(@NonNull Uri url, @NonNull String mimeTypeFilter) {
+        Preconditions.checkNotNull(url, "url");
+        Preconditions.checkNotNull(mimeTypeFilter, "mimeTypeFilter");
+
         IContentProvider provider = acquireProvider(url);
         if (provider == null) {
             return null;
@@ -417,8 +468,9 @@ public abstract class ContentResolver {
      * @return A Cursor object, which is positioned before the first entry, or null
      * @see Cursor
      */
-    public final Cursor query(Uri uri, String[] projection,
-            String selection, String[] selectionArgs, String sortOrder) {
+    public final @Nullable Cursor query(@RequiresPermission.Read @NonNull Uri uri,
+            @Nullable String[] projection, @Nullable String selection,
+            @Nullable String[] selectionArgs, @Nullable String sortOrder) {
         return query(uri, projection, selection, selectionArgs, sortOrder, null);
     }
 
@@ -456,9 +508,11 @@ public abstract class ContentResolver {
      * @return A Cursor object, which is positioned before the first entry, or null
      * @see Cursor
      */
-    public final Cursor query(final Uri uri, String[] projection,
-            String selection, String[] selectionArgs, String sortOrder,
-            CancellationSignal cancellationSignal) {
+    public final @Nullable Cursor query(final @RequiresPermission.Read @NonNull Uri uri,
+            @Nullable String[] projection, @Nullable String selection,
+            @Nullable String[] selectionArgs, @Nullable String sortOrder,
+            @Nullable CancellationSignal cancellationSignal) {
+        Preconditions.checkNotNull(uri, "uri");
         IContentProvider unstableProvider = acquireUnstableProvider(uri);
         if (unstableProvider == null) {
             return null;
@@ -499,8 +553,9 @@ public abstract class ContentResolver {
             maybeLogQueryToEventLog(durationMillis, uri, projection, selection, sortOrder);
 
             // Wrap the cursor object into CursorWrapperInner object.
-            CursorWrapperInner wrapper = new CursorWrapperInner(qCursor,
-                    stableProvider != null ? stableProvider : acquireProvider(uri));
+            final IContentProvider provider = (stableProvider != null) ? stableProvider
+                    : acquireProvider(uri);
+            final CursorWrapperInner wrapper = new CursorWrapperInner(qCursor, provider);
             stableProvider = null;
             qCursor = null;
             return wrapper;
@@ -554,7 +609,8 @@ public abstract class ContentResolver {
      *
      * @see #uncanonicalize
      */
-    public final Uri canonicalize(Uri url) {
+    public final @Nullable Uri canonicalize(@NonNull Uri url) {
+        Preconditions.checkNotNull(url, "url");
         IContentProvider provider = acquireProvider(url);
         if (provider == null) {
             return null;
@@ -589,7 +645,8 @@ public abstract class ContentResolver {
      *
      * @see #canonicalize
      */
-    public final Uri uncanonicalize(Uri url) {
+    public final @Nullable Uri uncanonicalize(@NonNull Uri url) {
+        Preconditions.checkNotNull(url, "url");
         IContentProvider provider = acquireProvider(url);
         if (provider == null) {
             return null;
@@ -625,8 +682,9 @@ public abstract class ContentResolver {
      * @throws FileNotFoundException if the provided URI could not be opened.
      * @see #openAssetFileDescriptor(Uri, String)
      */
-    public final InputStream openInputStream(Uri uri)
+    public final @Nullable InputStream openInputStream(@NonNull Uri uri)
             throws FileNotFoundException {
+        Preconditions.checkNotNull(uri, "uri");
         String scheme = uri.getScheme();
         if (SCHEME_ANDROID_RESOURCE.equals(scheme)) {
             // Note: left here to avoid breaking compatibility.  May be removed
@@ -657,7 +715,7 @@ public abstract class ContentResolver {
      * openOutputStream(uri, "w")}.
      * @throws FileNotFoundException if the provided URI could not be opened.
      */
-    public final OutputStream openOutputStream(Uri uri)
+    public final @Nullable OutputStream openOutputStream(@NonNull Uri uri)
             throws FileNotFoundException {
         return openOutputStream(uri, "w");
     }
@@ -681,7 +739,7 @@ public abstract class ContentResolver {
      * @throws FileNotFoundException if the provided URI could not be opened.
      * @see #openAssetFileDescriptor(Uri, String)
      */
-    public final OutputStream openOutputStream(Uri uri, String mode)
+    public final @Nullable OutputStream openOutputStream(@NonNull Uri uri, @NonNull String mode)
             throws FileNotFoundException {
         AssetFileDescriptor fd = openAssetFileDescriptor(uri, mode, null);
         try {
@@ -728,8 +786,8 @@ public abstract class ContentResolver {
      * file exists under the URI or the mode is invalid.
      * @see #openAssetFileDescriptor(Uri, String)
      */
-    public final ParcelFileDescriptor openFileDescriptor(Uri uri, String mode)
-            throws FileNotFoundException {
+    public final @Nullable ParcelFileDescriptor openFileDescriptor(@NonNull Uri uri,
+            @NonNull String mode) throws FileNotFoundException {
         return openFileDescriptor(uri, mode, null);
     }
 
@@ -773,8 +831,9 @@ public abstract class ContentResolver {
      * file exists under the URI or the mode is invalid.
      * @see #openAssetFileDescriptor(Uri, String)
      */
-    public final ParcelFileDescriptor openFileDescriptor(Uri uri,
-            String mode, CancellationSignal cancellationSignal) throws FileNotFoundException {
+    public final @Nullable ParcelFileDescriptor openFileDescriptor(@NonNull Uri uri,
+            @NonNull String mode, @Nullable CancellationSignal cancellationSignal)
+                    throws FileNotFoundException {
         AssetFileDescriptor afd = openAssetFileDescriptor(uri, mode, cancellationSignal);
         if (afd == null) {
             return null;
@@ -843,8 +902,8 @@ public abstract class ContentResolver {
      * @throws FileNotFoundException Throws FileNotFoundException of no
      * file exists under the URI or the mode is invalid.
      */
-    public final AssetFileDescriptor openAssetFileDescriptor(Uri uri, String mode)
-            throws FileNotFoundException {
+    public final @Nullable AssetFileDescriptor openAssetFileDescriptor(@NonNull Uri uri,
+            @NonNull String mode) throws FileNotFoundException {
         return openAssetFileDescriptor(uri, mode, null);
     }
 
@@ -899,8 +958,12 @@ public abstract class ContentResolver {
      * @throws FileNotFoundException Throws FileNotFoundException of no
      * file exists under the URI or the mode is invalid.
      */
-    public final AssetFileDescriptor openAssetFileDescriptor(Uri uri,
-            String mode, CancellationSignal cancellationSignal) throws FileNotFoundException {
+    public final @Nullable AssetFileDescriptor openAssetFileDescriptor(@NonNull Uri uri,
+            @NonNull String mode, @Nullable CancellationSignal cancellationSignal)
+                    throws FileNotFoundException {
+        Preconditions.checkNotNull(uri, "uri");
+        Preconditions.checkNotNull(mode, "mode");
+
         String scheme = uri.getScheme();
         if (SCHEME_ANDROID_RESOURCE.equals(scheme)) {
             if (!"r".equals(mode)) {
@@ -963,6 +1026,7 @@ public abstract class ContentResolver {
                         stableProvider = acquireProvider(uri);
                     }
                     releaseUnstableProvider(unstableProvider);
+                    unstableProvider = null;
                     ParcelFileDescriptor pfd = new ParcelFileDescriptorInner(
                             fd.getParcelFileDescriptor(), stableProvider);
 
@@ -1022,8 +1086,8 @@ public abstract class ContentResolver {
      * @throws FileNotFoundException Throws FileNotFoundException of no
      * data of the desired type exists under the URI.
      */
-    public final AssetFileDescriptor openTypedAssetFileDescriptor(
-            Uri uri, String mimeType, Bundle opts) throws FileNotFoundException {
+    public final @Nullable AssetFileDescriptor openTypedAssetFileDescriptor(@NonNull Uri uri,
+            @NonNull String mimeType, @Nullable Bundle opts) throws FileNotFoundException {
         return openTypedAssetFileDescriptor(uri, mimeType, opts, null);
     }
 
@@ -1058,9 +1122,12 @@ public abstract class ContentResolver {
      * @throws FileNotFoundException Throws FileNotFoundException of no
      * data of the desired type exists under the URI.
      */
-    public final AssetFileDescriptor openTypedAssetFileDescriptor(Uri uri,
-            String mimeType, Bundle opts, CancellationSignal cancellationSignal)
-            throws FileNotFoundException {
+    public final @Nullable AssetFileDescriptor openTypedAssetFileDescriptor(@NonNull Uri uri,
+            @NonNull String mimeType, @Nullable Bundle opts,
+            @Nullable CancellationSignal cancellationSignal) throws FileNotFoundException {
+        Preconditions.checkNotNull(uri, "uri");
+        Preconditions.checkNotNull(mimeType, "mimeType");
+
         IContentProvider unstableProvider = acquireUnstableProvider(uri);
         if (unstableProvider == null) {
             throw new FileNotFoundException("No content provider: " + uri);
@@ -1104,6 +1171,7 @@ public abstract class ContentResolver {
                 stableProvider = acquireProvider(uri);
             }
             releaseUnstableProvider(unstableProvider);
+            unstableProvider = null;
             ParcelFileDescriptor pfd = new ParcelFileDescriptorInner(
                     fd.getParcelFileDescriptor(), stableProvider);
 
@@ -1196,8 +1264,9 @@ public abstract class ContentResolver {
      *               the field. Passing an empty ContentValues will create an empty row.
      * @return the URL of the newly created row.
      */
-    public final Uri insert(Uri url, ContentValues values)
-    {
+    public final @Nullable Uri insert(@RequiresPermission.Write @NonNull Uri url,
+                @Nullable ContentValues values) {
+        Preconditions.checkNotNull(url, "url");
         IContentProvider provider = acquireProvider(url);
         if (provider == null) {
             throw new IllegalArgumentException("Unknown URL " + url);
@@ -1233,9 +1302,11 @@ public abstract class ContentResolver {
      * @throws RemoteException thrown if a RemoteException is encountered while attempting
      *   to communicate with a remote provider.
      */
-    public ContentProviderResult[] applyBatch(String authority,
-            ArrayList<ContentProviderOperation> operations)
-            throws RemoteException, OperationApplicationException {
+    public @NonNull ContentProviderResult[] applyBatch(@NonNull String authority,
+            @NonNull ArrayList<ContentProviderOperation> operations)
+                    throws RemoteException, OperationApplicationException {
+        Preconditions.checkNotNull(authority, "authority");
+        Preconditions.checkNotNull(operations, "operations");
         ContentProviderClient provider = acquireContentProviderClient(authority);
         if (provider == null) {
             throw new IllegalArgumentException("Unknown authority " + authority);
@@ -1257,8 +1328,10 @@ public abstract class ContentResolver {
      *               the field. Passing null will create an empty row.
      * @return the number of newly created rows.
      */
-    public final int bulkInsert(Uri url, ContentValues[] values)
-    {
+    public final int bulkInsert(@RequiresPermission.Write @NonNull Uri url,
+                @NonNull ContentValues[] values) {
+        Preconditions.checkNotNull(url, "url");
+        Preconditions.checkNotNull(values, "values");
         IContentProvider provider = acquireProvider(url);
         if (provider == null) {
             throw new IllegalArgumentException("Unknown URL " + url);
@@ -1288,8 +1361,9 @@ public abstract class ContentResolver {
                     (excluding the WHERE itself).
      * @return The number of rows deleted.
      */
-    public final int delete(Uri url, String where, String[] selectionArgs)
-    {
+    public final int delete(@RequiresPermission.Write @NonNull Uri url, @Nullable String where,
+            @Nullable String[] selectionArgs) {
+        Preconditions.checkNotNull(url, "url");
         IContentProvider provider = acquireProvider(url);
         if (provider == null) {
             throw new IllegalArgumentException("Unknown URL " + url);
@@ -1322,8 +1396,10 @@ public abstract class ContentResolver {
      * @return the number of rows updated.
      * @throws NullPointerException if uri or values are null
      */
-    public final int update(Uri uri, ContentValues values, String where,
-            String[] selectionArgs) {
+    public final int update(@RequiresPermission.Write @NonNull Uri uri,
+            @Nullable ContentValues values, @Nullable String where,
+            @Nullable String[] selectionArgs) {
+        Preconditions.checkNotNull(uri, "uri");
         IContentProvider provider = acquireProvider(uri);
         if (provider == null) {
             throw new IllegalArgumentException("Unknown URI " + uri);
@@ -1357,19 +1433,18 @@ public abstract class ContentResolver {
      * @throws NullPointerException if uri or method is null
      * @throws IllegalArgumentException if uri is not known
      */
-    public final Bundle call(Uri uri, String method, String arg, Bundle extras) {
-        if (uri == null) {
-            throw new NullPointerException("uri == null");
-        }
-        if (method == null) {
-            throw new NullPointerException("method == null");
-        }
+    public final @Nullable Bundle call(@NonNull Uri uri, @NonNull String method,
+            @Nullable String arg, @Nullable Bundle extras) {
+        Preconditions.checkNotNull(uri, "uri");
+        Preconditions.checkNotNull(method, "method");
         IContentProvider provider = acquireProvider(uri);
         if (provider == null) {
             throw new IllegalArgumentException("Unknown URI " + uri);
         }
         try {
-            return provider.call(mPackageName, method, arg, extras);
+            final Bundle res = provider.call(mPackageName, method, arg, extras);
+            Bundle.setDefusable(res, true);
+            return res;
         } catch (RemoteException e) {
             // Arbitrary and not worth documenting, as Activity
             // Manager will kill this process shortly anyway.
@@ -1465,12 +1540,12 @@ public abstract class ContentResolver {
      * @return a {@link ContentProviderClient} that is associated with the {@link ContentProvider}
      * that services the content at uri or null if there isn't one.
      */
-    public final ContentProviderClient acquireContentProviderClient(Uri uri) {
+    public final @Nullable ContentProviderClient acquireContentProviderClient(@NonNull Uri uri) {
+        Preconditions.checkNotNull(uri, "uri");
         IContentProvider provider = acquireProvider(uri);
         if (provider != null) {
             return new ContentProviderClient(this, provider, true);
         }
-
         return null;
     }
 
@@ -1485,7 +1560,9 @@ public abstract class ContentResolver {
      * @return a {@link ContentProviderClient} that is associated with the {@link ContentProvider}
      * with the authority of name or null if there isn't one.
      */
-    public final ContentProviderClient acquireContentProviderClient(String name) {
+    public final @Nullable ContentProviderClient acquireContentProviderClient(
+            @NonNull String name) {
+        Preconditions.checkNotNull(name, "name");
         IContentProvider provider = acquireProvider(name);
         if (provider != null) {
             return new ContentProviderClient(this, provider, true);
@@ -1510,7 +1587,9 @@ public abstract class ContentResolver {
      * can acquire a new one if you would like to try to restart the provider
      * and perform new operations on it.
      */
-    public final ContentProviderClient acquireUnstableContentProviderClient(Uri uri) {
+    public final @Nullable ContentProviderClient acquireUnstableContentProviderClient(
+            @NonNull Uri uri) {
+        Preconditions.checkNotNull(uri, "uri");
         IContentProvider provider = acquireUnstableProvider(uri);
         if (provider != null) {
             return new ContentProviderClient(this, provider, false);
@@ -1535,7 +1614,9 @@ public abstract class ContentResolver {
      * can acquire a new one if you would like to try to restart the provider
      * and perform new operations on it.
      */
-    public final ContentProviderClient acquireUnstableContentProviderClient(String name) {
+    public final @Nullable ContentProviderClient acquireUnstableContentProviderClient(
+            @NonNull String name) {
+        Preconditions.checkNotNull(name, "name");
         IContentProvider provider = acquireUnstableProvider(name);
         if (provider != null) {
             return new ContentProviderClient(this, provider, false);
@@ -1550,23 +1631,27 @@ public abstract class ContentResolver {
      *
      * @param uri The URI to watch for changes. This can be a specific row URI, or a base URI
      * for a whole class of content.
-     * @param notifyForDescendents If <code>true</code> changes to URIs beginning with <code>uri</code>
-     * will also cause notifications to be sent. If <code>false</code> only changes to the exact URI
-     * specified by <em>uri</em> will cause notifications to be sent. If <code>true</code>, any URI values
-     * at or below the specified URI will also trigger a match.
+     * @param notifyForDescendants When false, the observer will be notified whenever a
+     * change occurs to the exact URI specified by <code>uri</code> or to one of the
+     * URI's ancestors in the path hierarchy.  When true, the observer will also be notified
+     * whenever a change occurs to the URI's descendants in the path hierarchy.
      * @param observer The object that receives callbacks when changes occur.
      * @see #unregisterContentObserver
      */
-    public final void registerContentObserver(Uri uri, boolean notifyForDescendents,
-            ContentObserver observer)
-    {
-        registerContentObserver(uri, notifyForDescendents, observer, UserHandle.myUserId());
+    public final void registerContentObserver(@NonNull Uri uri, boolean notifyForDescendants,
+            @NonNull ContentObserver observer) {
+        Preconditions.checkNotNull(uri, "uri");
+        Preconditions.checkNotNull(observer, "observer");
+        registerContentObserver(
+                ContentProvider.getUriWithoutUserId(uri),
+                notifyForDescendants,
+                observer,
+                ContentProvider.getUserIdFromUri(uri, UserHandle.myUserId()));
     }
 
     /** @hide - designated user version */
     public final void registerContentObserver(Uri uri, boolean notifyForDescendents,
-            ContentObserver observer, int userHandle)
-    {
+            ContentObserver observer, @UserIdInt int userHandle) {
         try {
             getContentService().registerContentObserver(uri, notifyForDescendents,
                     observer.getContentObserver(), userHandle);
@@ -1580,7 +1665,8 @@ public abstract class ContentResolver {
      * @param observer The previously registered observer that is no longer needed.
      * @see #registerContentObserver
      */
-    public final void unregisterContentObserver(ContentObserver observer) {
+    public final void unregisterContentObserver(@NonNull ContentObserver observer) {
+        Preconditions.checkNotNull(observer, "observer");
         try {
             IContentObserver contentObserver = observer.releaseContentObserver();
             if (contentObserver != null) {
@@ -1603,7 +1689,7 @@ public abstract class ContentResolver {
      * has requested to receive self-change notifications by implementing
      * {@link ContentObserver#deliverSelfNotifications()} to return true.
      */
-    public void notifyChange(Uri uri, ContentObserver observer) {
+    public void notifyChange(@NonNull Uri uri, @Nullable ContentObserver observer) {
         notifyChange(uri, observer, true /* sync to network */);
     }
 
@@ -1620,11 +1706,43 @@ public abstract class ContentResolver {
      * The observer that originated the change will only receive the notification if it
      * has requested to receive self-change notifications by implementing
      * {@link ContentObserver#deliverSelfNotifications()} to return true.
-     * @param syncToNetwork If true, attempt to sync the change to the network.
+     * @param syncToNetwork If true, same as {@link #NOTIFY_SYNC_TO_NETWORK}.
      * @see #requestSync(android.accounts.Account, String, android.os.Bundle)
      */
-    public void notifyChange(Uri uri, ContentObserver observer, boolean syncToNetwork) {
-        notifyChange(uri, observer, syncToNetwork, UserHandle.myUserId());
+    public void notifyChange(@NonNull Uri uri, @Nullable ContentObserver observer,
+            boolean syncToNetwork) {
+        Preconditions.checkNotNull(uri, "uri");
+        notifyChange(
+                ContentProvider.getUriWithoutUserId(uri),
+                observer,
+                syncToNetwork,
+                ContentProvider.getUserIdFromUri(uri, UserHandle.myUserId()));
+    }
+
+    /**
+     * Notify registered observers that a row was updated.
+     * To register, call {@link #registerContentObserver(android.net.Uri, boolean, android.database.ContentObserver) registerContentObserver()}.
+     * By default, CursorAdapter objects will get this notification.
+     * If syncToNetwork is true, this will attempt to schedule a local sync using the sync
+     * adapter that's registered for the authority of the provided uri. No account will be
+     * passed to the sync adapter, so all matching accounts will be synchronized.
+     *
+     * @param uri The uri of the content that was changed.
+     * @param observer The observer that originated the change, may be <code>null</null>.
+     * The observer that originated the change will only receive the notification if it
+     * has requested to receive self-change notifications by implementing
+     * {@link ContentObserver#deliverSelfNotifications()} to return true.
+     * @param flags Additional flags: {@link #NOTIFY_SYNC_TO_NETWORK}.
+     * @see #requestSync(android.accounts.Account, String, android.os.Bundle)
+     */
+    public void notifyChange(@NonNull Uri uri, @Nullable ContentObserver observer,
+            @NotifyFlags int flags) {
+        Preconditions.checkNotNull(uri, "uri");
+        notifyChange(
+                ContentProvider.getUriWithoutUserId(uri),
+                observer,
+                flags,
+                ContentProvider.getUserIdFromUri(uri, UserHandle.myUserId()));
     }
 
     /**
@@ -1632,12 +1750,29 @@ public abstract class ContentResolver {
      *
      * @hide
      */
-    public void notifyChange(Uri uri, ContentObserver observer, boolean syncToNetwork,
-            int userHandle) {
+    public void notifyChange(@NonNull Uri uri, ContentObserver observer, boolean syncToNetwork,
+            @UserIdInt int userHandle) {
         try {
             getContentService().notifyChange(
                     uri, observer == null ? null : observer.getContentObserver(),
-                    observer != null && observer.deliverSelfNotifications(), syncToNetwork,
+                    observer != null && observer.deliverSelfNotifications(),
+                    syncToNetwork ? NOTIFY_SYNC_TO_NETWORK : 0,
+                    userHandle);
+        } catch (RemoteException e) {
+        }
+    }
+
+    /**
+     * Notify registered observers within the designated user(s) that a row was updated.
+     *
+     * @hide
+     */
+    public void notifyChange(@NonNull Uri uri, ContentObserver observer, @NotifyFlags int flags,
+            @UserIdInt int userHandle) {
+        try {
+            getContentService().notifyChange(
+                    uri, observer == null ? null : observer.getContentObserver(),
+                    observer != null && observer.deliverSelfNotifications(), flags,
                     userHandle);
         } catch (RemoteException e) {
         }
@@ -1653,7 +1788,9 @@ public abstract class ContentResolver {
      *
      * @see #getPersistedUriPermissions()
      */
-    public void takePersistableUriPermission(Uri uri, @Intent.AccessUriMode int modeFlags) {
+    public void takePersistableUriPermission(@NonNull Uri uri,
+            @Intent.AccessUriMode int modeFlags) {
+        Preconditions.checkNotNull(uri, "uri");
         try {
             ActivityManagerNative.getDefault().takePersistableUriPermission(
                     ContentProvider.getUriWithoutUserId(uri), modeFlags, resolveUserId(uri));
@@ -1669,7 +1806,9 @@ public abstract class ContentResolver {
      *
      * @see #getPersistedUriPermissions()
      */
-    public void releasePersistableUriPermission(Uri uri, @Intent.AccessUriMode int modeFlags) {
+    public void releasePersistableUriPermission(@NonNull Uri uri,
+            @Intent.AccessUriMode int modeFlags) {
+        Preconditions.checkNotNull(uri, "uri");
         try {
             ActivityManagerNative.getDefault().releasePersistableUriPermission(
                     ContentProvider.getUriWithoutUserId(uri), modeFlags, resolveUserId(uri));
@@ -1682,11 +1821,12 @@ public abstract class ContentResolver {
      * calling app. That is, the returned permissions have been granted
      * <em>to</em> the calling app. Only persistable grants taken with
      * {@link #takePersistableUriPermission(Uri, int)} are returned.
+     * <p>Note: Some of the returned URIs may not be usable until after the user is unlocked.
      *
      * @see #takePersistableUriPermission(Uri, int)
      * @see #releasePersistableUriPermission(Uri, int)
      */
-    public List<UriPermission> getPersistedUriPermissions() {
+    public @NonNull List<UriPermission> getPersistedUriPermissions() {
         try {
             return ActivityManagerNative.getDefault()
                     .getPersistedUriPermissions(mPackageName, true).getList();
@@ -1700,8 +1840,9 @@ public abstract class ContentResolver {
      * calling app. That is, the returned permissions have been granted
      * <em>from</em> the calling app. Only grants taken with
      * {@link #takePersistableUriPermission(Uri, int)} are returned.
+     * <p>Note: Some of the returned URIs may not be usable until after the user is unlocked.
      */
-    public List<UriPermission> getOutgoingPersistedUriPermissions() {
+    public @NonNull List<UriPermission> getOutgoingPersistedUriPermissions() {
         try {
             return ActivityManagerNative.getDefault()
                     .getPersistedUriPermissions(mPackageName, false).getList();
@@ -1736,6 +1877,7 @@ public abstract class ContentResolver {
         if (extras != null) {
             String accountName = extras.getString(SYNC_EXTRAS_ACCOUNT);
             if (!TextUtils.isEmpty(accountName)) {
+                // TODO: No references to Google in AOSP
                 account = new Account(accountName, "com.google");
             }
             extras.remove(SYNC_EXTRAS_ACCOUNT);
@@ -1770,7 +1912,7 @@ public abstract class ContentResolver {
      * @see #requestSync(Account, String, Bundle)
      * @hide
      */
-    public static void requestSyncAsUser(Account account, String authority, int userId,
+    public static void requestSyncAsUser(Account account, String authority, @UserIdInt int userId,
             Bundle extras) {
         if (extras == null) {
             throw new IllegalArgumentException("Must specify extras.");
@@ -1867,7 +2009,7 @@ public abstract class ContentResolver {
      * @see #cancelSync(Account, String)
      * @hide
      */
-    public static void cancelSyncAsUser(Account account, String authority, int userId) {
+    public static void cancelSyncAsUser(Account account, String authority, @UserIdInt int userId) {
         try {
             getContentService().cancelSyncAsUser(account, authority, null, userId);
         } catch (RemoteException e) {
@@ -1890,12 +2032,26 @@ public abstract class ContentResolver {
      * @see #getSyncAdapterTypes()
      * @hide
      */
-    public static SyncAdapterType[] getSyncAdapterTypesAsUser(int userId) {
+    public static SyncAdapterType[] getSyncAdapterTypesAsUser(@UserIdInt int userId) {
         try {
             return getContentService().getSyncAdapterTypesAsUser(userId);
         } catch (RemoteException e) {
             throw new RuntimeException("the ContentService should always be reachable", e);
         }
+    }
+
+    /**
+     * @hide
+     * Returns the package names of syncadapters that match a given user and authority.
+     */
+    @TestApi
+    public static String[] getSyncAdapterPackagesForAuthorityAsUser(String authority,
+            @UserIdInt int userId) {
+        try {
+            return getContentService().getSyncAdapterPackagesForAuthorityAsUser(authority, userId);
+        } catch (RemoteException e) {
+        }
+        return ArrayUtils.emptyArray(String.class);
     }
 
     /**
@@ -1920,7 +2076,7 @@ public abstract class ContentResolver {
      * @hide
      */
     public static boolean getSyncAutomaticallyAsUser(Account account, String authority,
-            int userId) {
+            @UserIdInt int userId) {
         try {
             return getContentService().getSyncAutomaticallyAsUser(account, authority, userId);
         } catch (RemoteException e) {
@@ -1946,7 +2102,7 @@ public abstract class ContentResolver {
      * @hide
      */
     public static void setSyncAutomaticallyAsUser(Account account, String authority, boolean sync,
-            int userId) {
+            @UserIdInt int userId) {
         try {
             getContentService().setSyncAutomaticallyAsUser(account, authority, sync, userId);
         } catch (RemoteException e) {
@@ -1982,7 +2138,8 @@ public abstract class ContentResolver {
      * @param account the account to specify in the sync
      * @param authority the provider to specify in the sync request
      * @param extras extra parameters to go along with the sync request
-     * @param pollFrequency how frequently the sync should be performed, in seconds.
+     * @param pollFrequency how frequently the sync should be performed, in seconds. A minimum value
+     *                      of 1 hour is enforced.
      * @throws IllegalArgumentException if an illegal extra was set or if any of the parameters
      * are null.
      */
@@ -2105,7 +2262,8 @@ public abstract class ContentResolver {
      * @see #getIsSyncable(Account, String)
      * @hide
      */
-    public static int getIsSyncableAsUser(Account account, String authority, int userId) {
+    public static int getIsSyncableAsUser(Account account, String authority,
+            @UserIdInt int userId) {
         try {
             return getContentService().getIsSyncableAsUser(account, authority, userId);
         } catch (RemoteException e) {
@@ -2148,7 +2306,7 @@ public abstract class ContentResolver {
      * @see #getMasterSyncAutomatically()
      * @hide
      */
-    public static boolean getMasterSyncAutomaticallyAsUser(int userId) {
+    public static boolean getMasterSyncAutomaticallyAsUser(@UserIdInt int userId) {
         try {
             return getContentService().getMasterSyncAutomaticallyAsUser(userId);
         } catch (RemoteException e) {
@@ -2172,7 +2330,7 @@ public abstract class ContentResolver {
      * @see #setMasterSyncAutomatically(boolean)
      * @hide
      */
-    public static void setMasterSyncAutomaticallyAsUser(boolean sync, int userId) {
+    public static void setMasterSyncAutomaticallyAsUser(boolean sync, @UserIdInt int userId) {
         try {
             getContentService().setMasterSyncAutomaticallyAsUser(sync, userId);
         } catch (RemoteException e) {
@@ -2252,7 +2410,7 @@ public abstract class ContentResolver {
      * @see #getCurrentSyncs()
      * @hide
      */
-    public static List<SyncInfo> getCurrentSyncsAsUser(int userId) {
+    public static List<SyncInfo> getCurrentSyncsAsUser(@UserIdInt int userId) {
         try {
             return getContentService().getCurrentSyncsAsUser(userId);
         } catch (RemoteException e) {
@@ -2280,7 +2438,7 @@ public abstract class ContentResolver {
      * @hide
      */
     public static SyncStatusInfo getSyncStatusAsUser(Account account, String authority,
-            int userId) {
+            @UserIdInt int userId) {
         try {
             return getContentService().getSyncStatusAsUser(account, authority, null, userId);
         } catch (RemoteException e) {
@@ -2304,7 +2462,8 @@ public abstract class ContentResolver {
      * @see #requestSync(Account, String, Bundle)
      * @hide
      */
-    public static boolean isSyncPendingAsUser(Account account, String authority, int userId) {
+    public static boolean isSyncPendingAsUser(Account account, String authority,
+            @UserIdInt int userId) {
         try {
             return getContentService().isSyncPendingAsUser(account, authority, null, userId);
         } catch (RemoteException e) {
@@ -2356,6 +2515,28 @@ public abstract class ContentResolver {
         } catch (RemoteException e) {
             // exception ignored; if this is thrown then it means the runtime is in the midst of
             // being restarted
+        }
+    }
+
+    /** {@hide} */
+    public void putCache(Uri key, Bundle value) {
+        try {
+            getContentService().putCache(mContext.getPackageName(), key, value,
+                    mContext.getUserId());
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /** {@hide} */
+    public Bundle getCache(Uri key) {
+        try {
+            final Bundle bundle = getContentService().getCache(mContext.getPackageName(), key,
+                    mContext.getUserId());
+            if (bundle != null) bundle.setClassLoader(mContext.getClassLoader());
+            return bundle;
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -2436,41 +2617,31 @@ public abstract class ContentResolver {
 
     private final class CursorWrapperInner extends CrossProcessCursorWrapper {
         private final IContentProvider mContentProvider;
-        public static final String TAG="CursorWrapperInner";
+        private final AtomicBoolean mProviderReleased = new AtomicBoolean();
 
         private final CloseGuard mCloseGuard = CloseGuard.get();
-        private boolean mProviderReleased;
 
-        CursorWrapperInner(Cursor cursor, IContentProvider icp) {
+        CursorWrapperInner(Cursor cursor, IContentProvider contentProvider) {
             super(cursor);
-            mContentProvider = icp;
+            mContentProvider = contentProvider;
             mCloseGuard.open("close");
         }
 
         @Override
         public void close() {
+            mCloseGuard.close();
             super.close();
-            ContentResolver.this.releaseProvider(mContentProvider);
-            mProviderReleased = true;
 
-            if (mCloseGuard != null) {
-                mCloseGuard.close();
+            if (mProviderReleased.compareAndSet(false, true)) {
+                ContentResolver.this.releaseProvider(mContentProvider);
             }
         }
 
         @Override
         protected void finalize() throws Throwable {
             try {
-                if (mCloseGuard != null) {
-                    mCloseGuard.warnIfOpen();
-                }
-
-                if (!mProviderReleased && mContentProvider != null) {
-                    // Even though we are using CloseGuard, log this anyway so that
-                    // application developers always see the message in the log.
-                    Log.w(TAG, "Cursor finalized without prior close()");
-                    ContentResolver.this.releaseProvider(mContentProvider);
-                }
+                mCloseGuard.warnIfOpen();
+                close();
             } finally {
                 super.finalize();
             }
@@ -2479,7 +2650,7 @@ public abstract class ContentResolver {
 
     private final class ParcelFileDescriptorInner extends ParcelFileDescriptor {
         private final IContentProvider mContentProvider;
-        private boolean mProviderReleased;
+        private final AtomicBoolean mProviderReleased = new AtomicBoolean();
 
         ParcelFileDescriptorInner(ParcelFileDescriptor pfd, IContentProvider icp) {
             super(pfd);
@@ -2488,9 +2659,8 @@ public abstract class ContentResolver {
 
         @Override
         public void releaseResources() {
-            if (!mProviderReleased) {
+            if (mProviderReleased.compareAndSet(false, true)) {
                 ContentResolver.this.releaseProvider(mContentProvider);
-                mProviderReleased = true;
             }
         }
     }
@@ -2517,11 +2687,18 @@ public abstract class ContentResolver {
 
     private static IContentService sContentService;
     private final Context mContext;
+
     final String mPackageName;
+
     private static final String TAG = "ContentResolver";
 
     /** @hide */
     public int resolveUserId(Uri uri) {
         return ContentProvider.getUserIdFromUri(uri, mContext.getUserId());
+    }
+
+    /** @hide */
+    public Drawable getTypeDrawable(String mimeType) {
+        return MimeIconUtils.loadMimeIcon(mContext, mimeType);
     }
 }

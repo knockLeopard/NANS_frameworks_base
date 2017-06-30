@@ -21,13 +21,16 @@
 
 #include <utils/LruCache.h>
 #include <utils/Mutex.h>
-#include <utils/Vector.h>
 
 #include "Debug.h"
-#include "Texture.h"
+
+#include <vector>
+#include <unordered_map>
 
 namespace android {
 namespace uirenderer {
+
+class Texture;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Defines
@@ -51,46 +54,57 @@ class AssetAtlas;
  * Any texture added to the cache causing the cache to grow beyond the maximum
  * allowed size will also cause the oldest texture to be kicked out.
  */
-class TextureCache: public OnEntryRemoved<uint32_t, Texture*> {
+class TextureCache : public OnEntryRemoved<uint32_t, Texture*> {
 public:
     TextureCache();
-    TextureCache(uint32_t maxByteSize);
     ~TextureCache();
 
     /**
      * Used as a callback when an entry is removed from the cache.
      * Do not invoke directly.
      */
-    void operator()(uint32_t&, Texture*& texture);
+    void operator()(uint32_t&, Texture*& texture) override;
 
     /**
      * Resets all Textures to not be marked as in use
      */
-    void resetMarkInUse();
+    void resetMarkInUse(void* ownerToken);
 
     /**
      * Attempts to precache the SkBitmap. Returns true if a Texture was successfully
      * acquired for the bitmap, false otherwise. If a Texture was acquired it is
      * marked as in use.
      */
-    bool prefetchAndMarkInUse(const SkBitmap* bitmap);
+    bool prefetchAndMarkInUse(void* ownerToken, const SkBitmap* bitmap);
 
     /**
-     * Returns the texture associated with the specified bitmap. If the texture
-     * cannot be found in the cache, a new texture is generated.
+     * Attempts to precache the SkBitmap. Returns true if a Texture was successfully
+     * acquired for the bitmap, false otherwise. Does not mark the Texture
+     * as in use and won't update currently in-use Textures.
      */
-    Texture* get(const SkBitmap* bitmap);
-    /**
-     * Returns the texture associated with the specified bitmap. The generated
-     * texture is not kept in the cache. The caller must destroy the texture.
-     */
-    Texture* getTransient(const SkBitmap* bitmap);
+    bool prefetch(const SkBitmap* bitmap);
 
     /**
-     * Removes the texture associated with the specified bitmap. This is meant
+     * Returns the texture associated with the specified bitmap from either within the cache, or
+     * the AssetAtlas. If the texture cannot be found in the cache, a new texture is generated.
+     */
+    Texture* get(const SkBitmap* bitmap) {
+        return get(bitmap, AtlasUsageType::Use);
+    }
+
+    /**
+     * Returns the texture associated with the specified bitmap. If the texture cannot be found in
+     * the cache, a new texture is generated, even if it resides in the AssetAtlas.
+     */
+    Texture* getAndBypassAtlas(const SkBitmap* bitmap) {
+        return get(bitmap, AtlasUsageType::Bypass);
+    }
+
+    /**
+     * Removes the texture associated with the specified pixelRef. This is meant
      * to be called from threads that are not the EGL context thread.
      */
-    void releaseTexture(const SkBitmap* bitmap);
+    ANDROID_API void releaseTexture(uint32_t pixelRefStableID);
     /**
      * Process deferred removals.
      */
@@ -101,10 +115,6 @@ public:
      */
     void clear();
 
-    /**
-     * Sets the maximum size of the cache in bytes.
-     */
-    void setMaxSize(uint32_t maxSize);
     /**
      * Returns the maximum size of the cache in bytes.
      */
@@ -119,45 +129,31 @@ public:
      * is defined by the flush rate.
      */
     void flush();
-    /**
-     * Indicates the percentage of the cache to retain when a
-     * memory trim is requested (see Caches::flush).
-     */
-    void setFlushRate(float flushRate);
 
     void setAssetAtlas(AssetAtlas* assetAtlas);
 
 private:
+    enum class AtlasUsageType {
+        Use,
+        Bypass,
+    };
 
     bool canMakeTextureFromBitmap(const SkBitmap* bitmap);
 
-    Texture* getCachedTexture(const SkBitmap* bitmap);
-
-    /**
-     * Generates the texture from a bitmap into the specified texture structure.
-     *
-     * @param regenerate If true, the bitmap data is reuploaded into the texture, but
-     *        no new texture is generated.
-     */
-    void generateTexture(const SkBitmap* bitmap, Texture* texture, bool regenerate = false);
-
-    void uploadLoFiTexture(bool resize, const SkBitmap* bitmap, uint32_t width, uint32_t height);
-    void uploadToTexture(bool resize, GLenum format, GLsizei stride, GLsizei bpp,
-            GLsizei width, GLsizei height, GLenum type, const GLvoid * data);
-
-    void init();
+    Texture* get(const SkBitmap* bitmap, AtlasUsageType atlasUsageType);
+    Texture* getCachedTexture(const SkBitmap* bitmap, AtlasUsageType atlasUsageType);
 
     LruCache<uint32_t, Texture*> mCache;
 
     uint32_t mSize;
-    uint32_t mMaxSize;
+    const uint32_t mMaxSize;
     GLint mMaxTextureSize;
 
-    float mFlushRate;
+    const float mFlushRate;
 
     bool mDebugEnabled;
 
-    Vector<uint32_t> mGarbage;
+    std::vector<uint32_t> mGarbage;
     mutable Mutex mLock;
 
     AssetAtlas* mAssetAtlas;

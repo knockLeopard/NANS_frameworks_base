@@ -19,10 +19,9 @@ package android.media;
 import android.util.Log;
 
 import android.media.MediaCodecInfo;
-import android.media.MediaCodecInfo.CodecCapabilities;
-
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Map;
 
 /**
  * Allows you to enumerate available codecs, each specified as a {@link MediaCodecInfo} object,
@@ -63,9 +62,19 @@ final public class MediaCodecList {
         return sRegularCodecInfos[index];
     }
 
+    /* package private */ static final Map<String, Object> getGlobalSettings() {
+        synchronized (sInitLock) {
+            if (sGlobalSettings == null) {
+                sGlobalSettings = native_getGlobalSettings();
+            }
+        }
+        return sGlobalSettings;
+    }
+
     private static Object sInitLock = new Object();
     private static MediaCodecInfo[] sAllCodecInfos;
     private static MediaCodecInfo[] sRegularCodecInfos;
+    private static Map<String, Object> sGlobalSettings;
 
     private static final void initCodecList() {
         synchronized (sInitLock) {
@@ -113,6 +122,8 @@ final public class MediaCodecList {
 
     /* package private */ static native final MediaCodecInfo.CodecCapabilities
         getCodecCapabilities(int index, String type);
+
+    /* package private */ static native final Map<String, Object> native_getGlobalSettings();
 
     /* package private */ static native final int findCodecByName(String codec);
 
@@ -183,6 +194,16 @@ final public class MediaCodecList {
      * Find a decoder supporting a given {@link MediaFormat} in the list
      * of media-codecs.
      *
+     * <p class=note>
+     * <strong>Note:</strong> On {@link android.os.Build.VERSION_CODES#LOLLIPOP},
+     * {@code format} must not contain a {@linkplain MediaFormat#KEY_FRAME_RATE
+     * frame rate}. Use
+     * <code class=prettyprint>format.setString(MediaFormat.KEY_FRAME_RATE, null)</code>
+     * to clear any existing frame rate setting in the format.
+     *
+     * @see MediaCodecList.CodecCapabilities.isFormatSupported for format keys
+     * considered per android versions when evaluating suitable codecs.
+     *
      * @param format A decoder media format with optional feature directives.
      * @throws IllegalArgumentException if format is not a valid media format.
      * @throws NullPointerException if format is null.
@@ -196,6 +217,16 @@ final public class MediaCodecList {
     /**
      * Find an encoder supporting a given {@link MediaFormat} in the list
      * of media-codecs.
+     *
+     * <p class=note>
+     * <strong>Note:</strong> On {@link android.os.Build.VERSION_CODES#LOLLIPOP},
+     * {@code format} must not contain a {@linkplain MediaFormat#KEY_FRAME_RATE
+     * frame rate}. Use
+     * <code class=prettyprint>format.setString(MediaFormat.KEY_FRAME_RATE, null)</code>
+     * to clear any existing frame rate setting in the format.
+     *
+     * @see MediaCodecList.CodecCapabilities.isFormatSupported for format keys
+     * considered per android versions when evaluating suitable codecs.
      *
      * @param format An encoder media format with optional feature directives.
      * @throws IllegalArgumentException if format is not a valid media format.

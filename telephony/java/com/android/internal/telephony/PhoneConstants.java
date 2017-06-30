@@ -35,17 +35,17 @@ public class PhoneConstants {
         IDLE, RINGING, OFFHOOK;
     };
 
-   /**
-     * The state of a data connection.
-     * <ul>
-     * <li>CONNECTED = IP traffic should be available</li>
-     * <li>CONNECTING = Currently setting up data connection</li>
-     * <li>DISCONNECTED = IP not available</li>
-     * <li>SUSPENDED = connection is created but IP traffic is
-     *                 temperately not available. i.e. voice call is in place
-     *                 in 2G network</li>
-     * </ul>
-     */
+    /**
+      * The state of a data connection.
+      * <ul>
+      * <li>CONNECTED = IP traffic should be available</li>
+      * <li>CONNECTING = Currently setting up data connection</li>
+      * <li>DISCONNECTED = IP not available</li>
+      * <li>SUSPENDED = connection is created but IP traffic is
+      *                 temperately not available. i.e. voice call is in place
+      *                 in 2G network</li>
+      * </ul>
+      */
     public enum DataState {
         CONNECTED, CONNECTING, DISCONNECTED, SUSPENDED;
     };
@@ -59,6 +59,9 @@ public class PhoneConstants {
     public static final int PHONE_TYPE_SIP = RILConstants.SIP_PHONE;
     public static final int PHONE_TYPE_THIRD_PARTY = RILConstants.THIRD_PARTY_PHONE;
     public static final int PHONE_TYPE_IMS = RILConstants.IMS_PHONE;
+    // Currently this is used only to differentiate CDMA and CDMALTE Phone in GsmCdma* files. For
+    // anything outside of that, a cdma + lte phone is still CDMA_PHONE
+    public static final int PHONE_TYPE_CDMA_LTE = RILConstants.CDMA_LTE_PHONE;
 
     // Modes for LTE_ON_CDMA
     public static final int LTE_ON_CDMA_UNKNOWN = RILConstants.LTE_ON_CDMA_UNKNOWN;
@@ -86,6 +89,7 @@ public class PhoneConstants {
     public static final String NETWORK_UNAVAILABLE_KEY = "networkUnvailable";
     public static final String DATA_NETWORK_ROAMING_KEY = "networkRoaming";
     public static final String PHONE_IN_ECM_STATE = "phoneinECMState";
+    public static final String PHONE_IN_EMERGENCY_CALL = "phoneInEmergencyCall";
 
     public static final String REASON_LINK_PROPERTIES_CHANGED = "linkPropertiesChanged";
 
@@ -133,8 +137,21 @@ public class PhoneConstants {
     public static final String APN_TYPE_CBS = "cbs";
     /** APN type for IA Initial Attach APN */
     public static final String APN_TYPE_IA = "ia";
-    /** APN type for IA Emergency PDN */
+    /** APN type for Emergency PDN. This is not an IA apn, but is used
+     * for access to carrier services in an emergency call situation. */
     public static final String APN_TYPE_EMERGENCY = "emergency";
+    /** Array of all APN types */
+    public static final String[] APN_TYPES = {APN_TYPE_DEFAULT,
+            APN_TYPE_MMS,
+            APN_TYPE_SUPL,
+            APN_TYPE_DUN,
+            APN_TYPE_HIPRI,
+            APN_TYPE_FOTA,
+            APN_TYPE_IMS,
+            APN_TYPE_CBS,
+            APN_TYPE_IA,
+            APN_TYPE_EMERGENCY
+    };
 
     public static final int RIL_CARD_MAX_APPS    = 8;
 
@@ -149,6 +166,10 @@ public class PhoneConstants {
     public static final String PHONE_KEY = "phone";
 
     public static final String SLOT_KEY  = "slot";
+
+    /** Fired when a subscriptions phone state changes. */
+    public static final String ACTION_SUBSCRIPTION_PHONE_STATE_CHANGED =
+        "android.intent.action.SUBSCRIPTION_PHONE_STATE";
 
     // FIXME: This is used to pass a subId via intents, we need to look at its usage, which is
     // FIXME: extensive, and see if this should be an array of all active subId's or ...?
@@ -186,4 +207,27 @@ public class PhoneConstants {
 
     //FIXME maybe this shouldn't be here - sprout only
     public static final int CAPABILITY_3G   = 1;
+
+    /**
+     * Values for the adb property "persist.radio.videocall.audio.output"
+     */
+    public static final int AUDIO_OUTPUT_ENABLE_SPEAKER = 0;
+    public static final int AUDIO_OUTPUT_DISABLE_SPEAKER = 1;
+    public static final int AUDIO_OUTPUT_DEFAULT = AUDIO_OUTPUT_ENABLE_SPEAKER;
+
+    // authContext (parameter P2) when doing SIM challenge,
+    // per 3GPP TS 31.102 (Section 7.1.2)
+    public static final int AUTH_CONTEXT_EAP_SIM = 128;
+    public static final int AUTH_CONTEXT_EAP_AKA = 129;
+    public static final int AUTH_CONTEXT_UNDEFINED = -1;
+
+    /**
+     * Value for the global property CELL_ON
+     *  0: Cell radio is off
+     *  1: Cell radio is on
+     *  2: Cell radio is off because airplane mode is enabled
+     */
+    public static final int CELL_OFF_FLAG = 0;
+    public static final int CELL_ON_FLAG = 1;
+    public static final int CELL_OFF_DUE_TO_AIRPLANE_MODE_FLAG = 2;
 }

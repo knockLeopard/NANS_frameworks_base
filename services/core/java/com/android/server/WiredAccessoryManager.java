@@ -16,10 +16,7 @@
 
 package com.android.server;
 
-import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -219,8 +216,9 @@ final class WiredAccessoryManager implements WiredAccessoryCallbacks {
 
         mWakeLock.acquire();
 
+        Log.i(TAG, "MSG_NEW_DEVICE_STATE");
         Message msg = mHandler.obtainMessage(MSG_NEW_DEVICE_STATE, headsetState,
-                mHeadsetState, newName);
+                mHeadsetState, "");
         mHandler.sendMessage(msg);
 
         mHeadsetState = headsetState;
@@ -286,14 +284,16 @@ final class WiredAccessoryManager implements WiredAccessoryCallbacks {
                 return;
             }
 
-            if (LOG)
-                Slog.v(TAG, "device "+headsetName+((state == 1) ? " connected" : " disconnected"));
+            if (LOG) {
+                Slog.v(TAG, "headsetName: " + headsetName +
+                        (state == 1 ? " connected" : " disconnected"));
+            }
 
             if (outDevice != 0) {
-              mAudioManager.setWiredDeviceConnectionState(outDevice, state, headsetName);
+              mAudioManager.setWiredDeviceConnectionState(outDevice, state, "", headsetName);
             }
             if (inDevice != 0) {
-              mAudioManager.setWiredDeviceConnectionState(inDevice, state, headsetName);
+              mAudioManager.setWiredDeviceConnectionState(inDevice, state, "", headsetName);
             }
         }
     }
@@ -330,7 +330,7 @@ final class WiredAccessoryManager implements WiredAccessoryCallbacks {
                         FileReader file = new FileReader(uei.getSwitchStatePath());
                         int len = file.read(buffer, 0, 1024);
                         file.close();
-                        curState = Integer.valueOf((new String(buffer, 0, len)).trim());
+                        curState = Integer.parseInt((new String(buffer, 0, len)).trim());
 
                         if (curState > 0) {
                             updateStateLocked(uei.getDevPath(), uei.getDevName(), curState);

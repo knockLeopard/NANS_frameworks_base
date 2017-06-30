@@ -17,6 +17,7 @@
 package android.telecom;
 
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.IBinder.DeathRecipient;
 import android.os.RemoteException;
 
@@ -47,6 +48,12 @@ final class ConnectionServiceAdapter implements DeathRecipient {
     }
 
     void addAdapter(IConnectionServiceAdapter adapter) {
+        for (IConnectionServiceAdapter it : mAdapters) {
+            if (it.asBinder() == adapter.asBinder()) {
+                Log.w(this, "Ignoring duplicate adapter addition.");
+                return;
+            }
+        }
         if (mAdapters.add(adapter)) {
             try {
                 adapter.asBinder().linkToDeath(this, 0);
@@ -57,8 +64,13 @@ final class ConnectionServiceAdapter implements DeathRecipient {
     }
 
     void removeAdapter(IConnectionServiceAdapter adapter) {
-        if (adapter != null && mAdapters.remove(adapter)) {
-            adapter.asBinder().unlinkToDeath(this, 0);
+        if (adapter != null) {
+            for (IConnectionServiceAdapter it : mAdapters) {
+                if (it.asBinder() == adapter.asBinder() && mAdapters.remove(it)) {
+                    adapter.asBinder().unlinkToDeath(this, 0);
+                    break;
+                }
+            }
         }
     }
 
@@ -131,6 +143,21 @@ final class ConnectionServiceAdapter implements DeathRecipient {
     }
 
     /**
+     * Sets a call's state to pulling (e.g. a call with {@link Connection#PROPERTY_IS_EXTERNAL_CALL}
+     * is being pulled to the local device.
+     *
+     * @param callId The unique ID of the call whose state is changing to dialing.
+     */
+    void setPulling(String callId) {
+        for (IConnectionServiceAdapter adapter : mAdapters) {
+            try {
+                adapter.setPulling(callId);
+            } catch (RemoteException e) {
+            }
+        }
+    }
+
+    /**
      * Sets a call's state to disconnected.
      *
      * @param callId The unique ID of the call whose state is changing to disconnected.
@@ -184,6 +211,15 @@ final class ConnectionServiceAdapter implements DeathRecipient {
         }
     }
 
+    void setConnectionProperties(String callId, int properties) {
+        for (IConnectionServiceAdapter adapter : mAdapters) {
+            try {
+                adapter.setConnectionProperties(callId, properties);
+            } catch (RemoteException ignored) {
+            }
+        }
+    }
+
     /**
      * Indicates whether or not the specified call is currently conferenced into the specified
      * conference call.
@@ -197,6 +233,21 @@ final class ConnectionServiceAdapter implements DeathRecipient {
             try {
                 Log.d(this, "sending connection %s with conference %s", callId, conferenceCallId);
                 adapter.setIsConferenced(callId, conferenceCallId);
+            } catch (RemoteException ignored) {
+            }
+        }
+    }
+
+    /**
+     * Indicates that the merge request on this call has failed.
+     *
+     * @param callId The unique ID of the call being conferenced.
+     */
+    void onConferenceMergeFailed(String callId) {
+        for (IConnectionServiceAdapter adapter : mAdapters) {
+            try {
+                Log.d(this, "merge failed for call %s", callId);
+                adapter.setConferenceMergeFailed(callId);
             } catch (RemoteException ignored) {
             }
         }
@@ -326,10 +377,10 @@ final class ConnectionServiceAdapter implements DeathRecipient {
     /**
      * Sets the video state associated with a call.
      *
-     * Valid values: {@link VideoProfile.VideoState#AUDIO_ONLY},
-     * {@link VideoProfile.VideoState#BIDIRECTIONAL},
-     * {@link VideoProfile.VideoState#TX_ENABLED},
-     * {@link VideoProfile.VideoState#RX_ENABLED}.
+     * Valid values: {@link VideoProfile#STATE_BIDIRECTIONAL},
+     * {@link VideoProfile#STATE_AUDIO_ONLY},
+     * {@link VideoProfile#STATE_TX_ENABLED},
+     * {@link VideoProfile#STATE_RX_ENABLED}.
      *
      * @param callId The unique ID of the call to set the video state for.
      * @param videoState The video state.
@@ -365,6 +416,111 @@ final class ConnectionServiceAdapter implements DeathRecipient {
         for (IConnectionServiceAdapter adapter : mAdapters) {
             try {
                 adapter.addExistingConnection(callId, connection);
+            } catch (RemoteException ignored) {
+            }
+        }
+    }
+
+    /**
+     * Adds some extras associated with a {@code Connection}.
+     *
+     * @param callId The unique ID of the call.
+     * @param extras The extras to add.
+     */
+    void putExtras(String callId, Bundle extras) {
+        Log.v(this, "putExtras: %s", callId);
+        for (IConnectionServiceAdapter adapter : mAdapters) {
+            try {
+                adapter.putExtras(callId, extras);
+            } catch (RemoteException ignored) {
+            }
+        }
+    }
+
+    /**
+     * Adds an extra associated with a {@code Connection}.
+     *
+     * @param callId The unique ID of the call.
+     * @param key The extra key.
+     * @param value The extra value.
+     */
+    void putExtra(String callId, String key, boolean value) {
+        Log.v(this, "putExtra: %s %s=%b", callId, key, value);
+        for (IConnectionServiceAdapter adapter : mAdapters) {
+            try {
+                Bundle bundle = new Bundle();
+                bundle.putBoolean(key, value);
+                adapter.putExtras(callId, bundle);
+            } catch (RemoteException ignored) {
+            }
+        }
+    }
+
+    /**
+     * Adds an extra associated with a {@code Connection}.
+     *
+     * @param callId The unique ID of the call.
+     * @param key The extra key.
+     * @param value The extra value.
+     */
+    void putExtra(String callId, String key, int value) {
+        Log.v(this, "putExtra: %s %s=%d", callId, key, value);
+        for (IConnectionServiceAdapter adapter : mAdapters) {
+            try {
+                Bundle bundle = new Bundle();
+                bundle.putInt(key, value);
+                adapter.putExtras(callId, bundle);
+            } catch (RemoteException ignored) {
+            }
+        }
+    }
+
+    /**
+     * Adds an extra associated with a {@code Connection}.
+     *
+     * @param callId The unique ID of the call.
+     * @param key The extra key.
+     * @param value The extra value.
+     */
+    void putExtra(String callId, String key, String value) {
+        Log.v(this, "putExtra: %s %s=%s", callId, key, value);
+        for (IConnectionServiceAdapter adapter : mAdapters) {
+            try {
+                Bundle bundle = new Bundle();
+                bundle.putString(key, value);
+                adapter.putExtras(callId, bundle);
+            } catch (RemoteException ignored) {
+            }
+        }
+    }
+
+    /**
+     * Removes extras associated with a {@code Connection}.
+     *  @param callId The unique ID of the call.
+     * @param keys The extra keys to remove.
+     */
+    void removeExtras(String callId, List<String> keys) {
+        Log.v(this, "removeExtras: %s %s", callId, keys);
+        for (IConnectionServiceAdapter adapter : mAdapters) {
+            try {
+                adapter.removeExtras(callId, keys);
+            } catch (RemoteException ignored) {
+            }
+        }
+    }
+
+    /**
+     * Informs Telecom of a connection level event.
+     *
+     * @param callId The unique ID of the call.
+     * @param event The event.
+     * @param extras Extras associated with the event.
+     */
+    void onConnectionEvent(String callId, String event, Bundle extras) {
+        Log.v(this, "onConnectionEvent: %s", event);
+        for (IConnectionServiceAdapter adapter : mAdapters) {
+            try {
+                adapter.onConnectionEvent(callId, event, extras);
             } catch (RemoteException ignored) {
             }
         }

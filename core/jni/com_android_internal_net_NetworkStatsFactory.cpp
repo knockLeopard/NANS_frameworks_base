@@ -17,10 +17,11 @@
 #define LOG_TAG "NetworkStats"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <android_runtime/AndroidRuntime.h>
+#include <core_jni_helpers.h>
 #include <jni.h>
 
 #include <ScopedUtfChars.h>
@@ -42,6 +43,7 @@ static struct {
     jfieldID uid;
     jfieldID set;
     jfieldID tag;
+    jfieldID roaming;
     jfieldID rxBytes;
     jfieldID rxPackets;
     jfieldID txBytes;
@@ -187,7 +189,7 @@ static int readNetworkStatsDetail(JNIEnv* env, jclass clazz, jobject stats,
         if (endPos - pos == 3) {
             rawTag = 0;
         } else {
-            if (sscanf(pos, "%llx", &rawTag) != 1) {
+            if (sscanf(pos, "%" PRIx64, &rawTag) != 1) {
                 ALOGE("bad tag: %s", pos);
                 fclose(fp);
                 return -1;
@@ -204,7 +206,7 @@ static int readNetworkStatsDetail(JNIEnv* env, jclass clazz, jobject stats,
         while (*pos == ' ') pos++;
 
         // Parse remaining fields.
-        if (sscanf(pos, "%u %u %llu %llu %llu %llu",
+        if (sscanf(pos, "%u %u %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64,
                 &s.uid, &s.set, &s.rxBytes, &s.rxPackets,
                 &s.txBytes, &s.txPackets) == 6) {
             if (limitUid != -1 && limitUid != s.uid) {
@@ -237,6 +239,9 @@ static int readNetworkStatsDetail(JNIEnv* env, jclass clazz, jobject stats,
     ScopedIntArrayRW tag(env, get_int_array(env, stats,
             gNetworkStatsClassInfo.tag, size, grow));
     if (tag.get() == NULL) return -1;
+    ScopedIntArrayRW roaming(env, get_int_array(env, stats,
+            gNetworkStatsClassInfo.roaming, size, grow));
+    if (roaming.get() == NULL) return -1;
     ScopedLongArrayRW rxBytes(env, get_long_array(env, stats,
             gNetworkStatsClassInfo.rxBytes, size, grow));
     if (rxBytes.get() == NULL) return -1;
@@ -260,6 +265,7 @@ static int readNetworkStatsDetail(JNIEnv* env, jclass clazz, jobject stats,
         uid[i] = lines[i].uid;
         set[i] = lines[i].set;
         tag[i] = lines[i].tag;
+        // Roaming is populated in Java-land by inspecting the iface properties.
         rxBytes[i] = lines[i].rxBytes;
         rxPackets[i] = lines[i].rxPackets;
         txBytes[i] = lines[i].txBytes;
@@ -273,6 +279,7 @@ static int readNetworkStatsDetail(JNIEnv* env, jclass clazz, jobject stats,
         env->SetObjectField(stats, gNetworkStatsClassInfo.uid, uid.getJavaArray());
         env->SetObjectField(stats, gNetworkStatsClassInfo.set, set.getJavaArray());
         env->SetObjectField(stats, gNetworkStatsClassInfo.tag, tag.getJavaArray());
+        env->SetObjectField(stats, gNetworkStatsClassInfo.roaming, roaming.getJavaArray());
         env->SetObjectField(stats, gNetworkStatsClassInfo.rxBytes, rxBytes.getJavaArray());
         env->SetObjectField(stats, gNetworkStatsClassInfo.rxPackets, rxPackets.getJavaArray());
         env->SetObjectField(stats, gNetworkStatsClassInfo.txBytes, txBytes.getJavaArray());
@@ -283,41 +290,33 @@ static int readNetworkStatsDetail(JNIEnv* env, jclass clazz, jobject stats,
     return 0;
 }
 
-static jclass findClass(JNIEnv* env, const char* name) {
-    ScopedLocalRef<jclass> localClass(env, env->FindClass(name));
-    jclass result = reinterpret_cast<jclass>(env->NewGlobalRef(localClass.get()));
-    if (result == NULL) {
-        ALOGE("failed to find class '%s'", name);
-        abort();
-    }
-    return result;
-}
-
-static JNINativeMethod gMethods[] = {
+static const JNINativeMethod gMethods[] = {
         { "nativeReadNetworkStatsDetail",
                 "(Landroid/net/NetworkStats;Ljava/lang/String;I[Ljava/lang/String;I)I",
                 (void*) readNetworkStatsDetail }
 };
 
 int register_com_android_internal_net_NetworkStatsFactory(JNIEnv* env) {
-    int err = AndroidRuntime::registerNativeMethods(env,
+    int err = RegisterMethodsOrDie(env,
             "com/android/internal/net/NetworkStatsFactory", gMethods,
             NELEM(gMethods));
 
-    gStringClass = findClass(env, "java/lang/String");
+    gStringClass = FindClassOrDie(env, "java/lang/String");
+    gStringClass = MakeGlobalRefOrDie(env, gStringClass);
 
-    jclass clazz = env->FindClass("android/net/NetworkStats");
-    gNetworkStatsClassInfo.size = env->GetFieldID(clazz, "size", "I");
-    gNetworkStatsClassInfo.capacity = env->GetFieldID(clazz, "capacity", "I");
-    gNetworkStatsClassInfo.iface = env->GetFieldID(clazz, "iface", "[Ljava/lang/String;");
-    gNetworkStatsClassInfo.uid = env->GetFieldID(clazz, "uid", "[I");
-    gNetworkStatsClassInfo.set = env->GetFieldID(clazz, "set", "[I");
-    gNetworkStatsClassInfo.tag = env->GetFieldID(clazz, "tag", "[I");
-    gNetworkStatsClassInfo.rxBytes = env->GetFieldID(clazz, "rxBytes", "[J");
-    gNetworkStatsClassInfo.rxPackets = env->GetFieldID(clazz, "rxPackets", "[J");
-    gNetworkStatsClassInfo.txBytes = env->GetFieldID(clazz, "txBytes", "[J");
-    gNetworkStatsClassInfo.txPackets = env->GetFieldID(clazz, "txPackets", "[J");
-    gNetworkStatsClassInfo.operations = env->GetFieldID(clazz, "operations", "[J");
+    jclass clazz = FindClassOrDie(env, "android/net/NetworkStats");
+    gNetworkStatsClassInfo.size = GetFieldIDOrDie(env, clazz, "size", "I");
+    gNetworkStatsClassInfo.capacity = GetFieldIDOrDie(env, clazz, "capacity", "I");
+    gNetworkStatsClassInfo.iface = GetFieldIDOrDie(env, clazz, "iface", "[Ljava/lang/String;");
+    gNetworkStatsClassInfo.uid = GetFieldIDOrDie(env, clazz, "uid", "[I");
+    gNetworkStatsClassInfo.set = GetFieldIDOrDie(env, clazz, "set", "[I");
+    gNetworkStatsClassInfo.tag = GetFieldIDOrDie(env, clazz, "tag", "[I");
+    gNetworkStatsClassInfo.roaming = GetFieldIDOrDie(env, clazz, "roaming", "[I");
+    gNetworkStatsClassInfo.rxBytes = GetFieldIDOrDie(env, clazz, "rxBytes", "[J");
+    gNetworkStatsClassInfo.rxPackets = GetFieldIDOrDie(env, clazz, "rxPackets", "[J");
+    gNetworkStatsClassInfo.txBytes = GetFieldIDOrDie(env, clazz, "txBytes", "[J");
+    gNetworkStatsClassInfo.txPackets = GetFieldIDOrDie(env, clazz, "txPackets", "[J");
+    gNetworkStatsClassInfo.operations = GetFieldIDOrDie(env, clazz, "operations", "[J");
 
     return err;
 }

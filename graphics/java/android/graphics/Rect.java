@@ -16,6 +16,7 @@
 
 package android.graphics;
 
+import android.annotation.CheckResult;
 import android.os.Parcel;
 import android.os.Parcelable;
 
@@ -29,6 +30,11 @@ import java.util.regex.Pattern;
  * These fields can be accessed directly. Use width() and height() to retrieve
  * the rectangle's width and height. Note: most methods do not check to see that
  * the coordinates are sorted correctly (i.e. left <= right and top <= bottom).
+ * <p>
+ * Note that the right and bottom coordinates are exclusive. This means a Rect
+ * being drawn untransformed onto a {@link android.graphics.Canvas} will draw
+ * into the column and row described by its left and top coordinates, but not
+ * those of its bottom and right.
  */
 public final class Rect implements Parcelable {
     public int left;
@@ -321,6 +327,34 @@ public final class Rect implements Parcelable {
     }
 
     /**
+     * Insets the rectangle on all sides specified by the dimensions of the {@code insets}
+     * rectangle.
+     * @hide
+     * @param insets The rectangle specifying the insets on all side.
+     */
+    public void inset(Rect insets) {
+        left += insets.left;
+        top += insets.top;
+        right -= insets.right;
+        bottom -= insets.bottom;
+    }
+
+    /**
+     * Insets the rectangle on all sides specified by the insets.
+     * @hide
+     * @param left The amount to add from the rectangle's left
+     * @param top The amount to add from the rectangle's top
+     * @param right The amount to subtract from the rectangle's right
+     * @param bottom The amount to subtract from the rectangle's bottom
+     */
+    public void inset(int left, int top, int right, int bottom) {
+        this.left += left;
+        this.top += top;
+        this.right -= right;
+        this.bottom -= bottom;
+    }
+
+    /**
      * Returns true if (x,y) is inside the rectangle. The left and top are
      * considered to be inside, while the right and bottom are not. This means
      * that for a x,y to be contained: left <= x < right and top <= y < bottom.
@@ -389,6 +423,7 @@ public final class Rect implements Parcelable {
      *              (and this rectangle is then set to that intersection) else
      *              return false and do not change this rectangle.
      */
+    @CheckResult
     public boolean intersect(int left, int top, int right, int bottom) {
         if (this.left < right && left < this.right && this.top < bottom && top < this.bottom) {
             if (this.left < left) this.left = left;
@@ -411,6 +446,7 @@ public final class Rect implements Parcelable {
      *              (and this rectangle is then set to that intersection) else
      *              return false and do not change this rectangle.
      */
+    @CheckResult
     public boolean intersect(Rect r) {
         return intersect(r.left, r.top, r.right, r.bottom);
     }
@@ -427,6 +463,7 @@ public final class Rect implements Parcelable {
      *              this rectangle to that intersection. If they do not, return
      *              false and do not change this rectangle.
      */
+    @CheckResult
     public boolean setIntersect(Rect a, Rect b) {
         if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) {
             left = Math.max(a.left, b.left);
@@ -610,16 +647,4 @@ public final class Rect implements Parcelable {
         }
     }
 
-    /**
-     * Scales up the rect by the given scale, rounding values toward the inside.
-     * @hide
-     */
-    public void scaleRoundIn(float scale) {
-        if (scale != 1.0f) {
-            left = (int) Math.ceil(left * scale);
-            top = (int) Math.ceil(top * scale);
-            right = (int) Math.floor(right * scale);
-            bottom = (int) Math.floor(bottom * scale);
-        }
-    }
 }

@@ -17,7 +17,7 @@
 package com.android.internal.telecom;
 
 import android.os.Bundle;
-import android.telecom.AudioState;
+import android.telecom.CallAudioState;
 import android.telecom.ConnectionRequest;
 import android.telecom.PhoneAccountHandle;
 
@@ -50,13 +50,17 @@ oneway interface IConnectionService {
 
     void reject(String callId);
 
+    void rejectWithMessage(String callId, String message);
+
     void disconnect(String callId);
+
+    void silence(String callId);
 
     void hold(String callId);
 
     void unhold(String callId);
 
-    void onAudioStateChanged(String activeCallId, in AudioState audioState);
+    void onCallAudioStateChanged(String activeCallId, in CallAudioState callAudioState);
 
     void playDtmfTone(String callId, char digit);
 
@@ -71,4 +75,10 @@ oneway interface IConnectionService {
     void swapConference(String conferenceCallId);
 
     void onPostDialContinue(String callId, boolean proceed);
+
+    void pullExternalCall(String callId);
+
+    void sendCallEvent(String callId, String event, in Bundle extras);
+
+    void onExtrasChanged(String callId, in Bundle extras);
 }

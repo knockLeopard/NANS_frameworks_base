@@ -20,7 +20,7 @@
 
 #include "jni.h"
 #include "JNIHelp.h"
-#include "android_runtime/AndroidRuntime.h"
+#include "core_jni_helpers.h"
 
 #include <usbhost/usbhost.h>
 
@@ -246,7 +246,7 @@ android_hardware_UsbDeviceConnection_get_serial(JNIEnv *env, jobject thiz)
     return result;
 }
 
-static JNINativeMethod method_table[] = {
+static const JNINativeMethod method_table[] = {
     {"native_open",             "(Ljava/lang/String;Ljava/io/FileDescriptor;)Z",
                                         (void *)android_hardware_UsbDeviceConnection_open},
     {"native_close",            "()V",  (void *)android_hardware_UsbDeviceConnection_close},
@@ -268,17 +268,9 @@ static JNINativeMethod method_table[] = {
 
 int register_android_hardware_UsbDeviceConnection(JNIEnv *env)
 {
-    jclass clazz = env->FindClass("android/hardware/usb/UsbDeviceConnection");
-    if (clazz == NULL) {
-        ALOGE("Can't find android/hardware/usb/UsbDeviceConnection");
-        return -1;
-    }
-    field_context = env->GetFieldID(clazz, "mNativeContext", "J");
-    if (field_context == NULL) {
-        ALOGE("Can't find UsbDeviceConnection.mNativeContext");
-        return -1;
-    }
+    jclass clazz = FindClassOrDie(env, "android/hardware/usb/UsbDeviceConnection");
+    field_context = GetFieldIDOrDie(env, clazz, "mNativeContext", "J");
 
-    return AndroidRuntime::registerNativeMethods(env, "android/hardware/usb/UsbDeviceConnection",
+    return RegisterMethodsOrDie(env, "android/hardware/usb/UsbDeviceConnection",
             method_table, NELEM(method_table));
 }

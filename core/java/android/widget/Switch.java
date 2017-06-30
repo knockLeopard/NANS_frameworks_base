@@ -17,6 +17,10 @@
 package android.widget;
 
 import android.animation.ObjectAnimator;
+import android.annotation.DrawableRes;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.annotation.StyleRes;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
@@ -24,6 +28,7 @@ import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Insets;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.Region.Op;
@@ -41,6 +46,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.SoundEffectConstants;
 import android.view.VelocityTracker;
+import android.view.ViewStructure;
 import android.view.ViewConfiguration;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -57,7 +63,10 @@ import com.android.internal.R;
  * {@link #setTextAppearance(android.content.Context, int) textAppearance} and the related
  * setTypeface() methods control the typeface and style of label text, whereas the
  * {@link #setSwitchTextAppearance(android.content.Context, int) switchTextAppearance} and
- * the related seSwitchTypeface() methods control that of the thumb.
+ * the related setSwitchTypeface() methods control that of the thumb.
+ *
+ * <p>{@link android.support.v7.widget.SwitchCompat} is a version of
+ * the Switch widget which runs on devices back to API 7.</p>
  *
  * <p>See the <a href="{@docRoot}guide/topics/ui/controls/togglebutton.html">Toggle Buttons</a>
  * guide.</p>
@@ -84,7 +93,17 @@ public class Switch extends CompoundButton {
     private static final int MONOSPACE = 3;
 
     private Drawable mThumbDrawable;
+    private ColorStateList mThumbTintList = null;
+    private PorterDuff.Mode mThumbTintMode = null;
+    private boolean mHasThumbTint = false;
+    private boolean mHasThumbTintMode = false;
+
     private Drawable mTrackDrawable;
+    private ColorStateList mTrackTintList = null;
+    private PorterDuff.Mode mTrackTintMode = null;
+    private boolean mHasTrackTint = false;
+    private boolean mHasTrackTintMode = false;
+
     private int mThumbTextPadding;
     private int mSwitchMinWidth;
     private int mSwitchPadding;
@@ -227,6 +246,38 @@ public class Switch extends CompoundButton {
                 com.android.internal.R.styleable.Switch_switchPadding, 0);
         mSplitTrack = a.getBoolean(com.android.internal.R.styleable.Switch_splitTrack, false);
 
+        ColorStateList thumbTintList = a.getColorStateList(
+                com.android.internal.R.styleable.Switch_thumbTint);
+        if (thumbTintList != null) {
+            mThumbTintList = thumbTintList;
+            mHasThumbTint = true;
+        }
+        PorterDuff.Mode thumbTintMode = Drawable.parseTintMode(
+                a.getInt(com.android.internal.R.styleable.Switch_thumbTintMode, -1), null);
+        if (mThumbTintMode != thumbTintMode) {
+            mThumbTintMode = thumbTintMode;
+            mHasThumbTintMode = true;
+        }
+        if (mHasThumbTint || mHasThumbTintMode) {
+            applyThumbTint();
+        }
+
+        ColorStateList trackTintList = a.getColorStateList(
+                com.android.internal.R.styleable.Switch_trackTint);
+        if (trackTintList != null) {
+            mTrackTintList = trackTintList;
+            mHasTrackTint = true;
+        }
+        PorterDuff.Mode trackTintMode = Drawable.parseTintMode(
+                a.getInt(com.android.internal.R.styleable.Switch_trackTintMode, -1), null);
+        if (mTrackTintMode != trackTintMode) {
+            mTrackTintMode = trackTintMode;
+            mHasTrackTintMode = true;
+        }
+        if (mHasTrackTint || mHasTrackTintMode) {
+            applyTrackTint();
+        }
+
         final int appearance = a.getResourceId(
                 com.android.internal.R.styleable.Switch_switchTextAppearance, 0);
         if (appearance != 0) {
@@ -249,7 +300,7 @@ public class Switch extends CompoundButton {
      *
      * @attr ref android.R.styleable#Switch_switchTextAppearance
      */
-    public void setSwitchTextAppearance(Context context, int resid) {
+    public void setSwitchTextAppearance(Context context, @StyleRes int resid) {
         TypedArray appearance =
                 context.obtainStyledAttributes(resid,
                         com.android.internal.R.styleable.TextAppearance);
@@ -457,7 +508,7 @@ public class Switch extends CompoundButton {
      *
      * @attr ref android.R.styleable#Switch_track
      */
-    public void setTrackResource(int resId) {
+    public void setTrackResource(@DrawableRes int resId) {
         setTrackDrawable(getContext().getDrawable(resId));
     }
 
@@ -470,6 +521,86 @@ public class Switch extends CompoundButton {
      */
     public Drawable getTrackDrawable() {
         return mTrackDrawable;
+    }
+
+    /**
+     * Applies a tint to the track drawable. Does not modify the current
+     * tint mode, which is {@link PorterDuff.Mode#SRC_IN} by default.
+     * <p>
+     * Subsequent calls to {@link #setTrackDrawable(Drawable)} will
+     * automatically mutate the drawable and apply the specified tint and tint
+     * mode using {@link Drawable#setTintList(ColorStateList)}.
+     *
+     * @param tint the tint to apply, may be {@code null} to clear tint
+     *
+     * @attr ref android.R.styleable#Switch_trackTint
+     * @see #getTrackTintList()
+     * @see Drawable#setTintList(ColorStateList)
+     */
+    public void setTrackTintList(@Nullable ColorStateList tint) {
+        mTrackTintList = tint;
+        mHasTrackTint = true;
+
+        applyTrackTint();
+    }
+
+    /**
+     * @return the tint applied to the track drawable
+     * @attr ref android.R.styleable#Switch_trackTint
+     * @see #setTrackTintList(ColorStateList)
+     */
+    @Nullable
+    public ColorStateList getTrackTintList() {
+        return mTrackTintList;
+    }
+
+    /**
+     * Specifies the blending mode used to apply the tint specified by
+     * {@link #setTrackTintList(ColorStateList)}} to the track drawable.
+     * The default mode is {@link PorterDuff.Mode#SRC_IN}.
+     *
+     * @param tintMode the blending mode used to apply the tint, may be
+     *                 {@code null} to clear tint
+     * @attr ref android.R.styleable#Switch_trackTintMode
+     * @see #getTrackTintMode()
+     * @see Drawable#setTintMode(PorterDuff.Mode)
+     */
+    public void setTrackTintMode(@Nullable PorterDuff.Mode tintMode) {
+        mTrackTintMode = tintMode;
+        mHasTrackTintMode = true;
+
+        applyTrackTint();
+    }
+
+    /**
+     * @return the blending mode used to apply the tint to the track
+     *         drawable
+     * @attr ref android.R.styleable#Switch_trackTintMode
+     * @see #setTrackTintMode(PorterDuff.Mode)
+     */
+    @Nullable
+    public PorterDuff.Mode getTrackTintMode() {
+        return mTrackTintMode;
+    }
+
+    private void applyTrackTint() {
+        if (mTrackDrawable != null && (mHasTrackTint || mHasTrackTintMode)) {
+            mTrackDrawable = mTrackDrawable.mutate();
+
+            if (mHasTrackTint) {
+                mTrackDrawable.setTintList(mTrackTintList);
+            }
+
+            if (mHasTrackTintMode) {
+                mTrackDrawable.setTintMode(mTrackTintMode);
+            }
+
+            // The drawable (or one of its children) may not have been
+            // stateful before applying the tint, so let's try again.
+            if (mTrackDrawable.isStateful()) {
+                mTrackDrawable.setState(getDrawableState());
+            }
+        }
     }
 
     /**
@@ -499,7 +630,7 @@ public class Switch extends CompoundButton {
      *
      * @attr ref android.R.styleable#Switch_thumb
      */
-    public void setThumbResource(int resId) {
+    public void setThumbResource(@DrawableRes int resId) {
         setThumbDrawable(getContext().getDrawable(resId));
     }
 
@@ -513,6 +644,86 @@ public class Switch extends CompoundButton {
      */
     public Drawable getThumbDrawable() {
         return mThumbDrawable;
+    }
+
+    /**
+     * Applies a tint to the thumb drawable. Does not modify the current
+     * tint mode, which is {@link PorterDuff.Mode#SRC_IN} by default.
+     * <p>
+     * Subsequent calls to {@link #setThumbDrawable(Drawable)} will
+     * automatically mutate the drawable and apply the specified tint and tint
+     * mode using {@link Drawable#setTintList(ColorStateList)}.
+     *
+     * @param tint the tint to apply, may be {@code null} to clear tint
+     *
+     * @attr ref android.R.styleable#Switch_thumbTint
+     * @see #getThumbTintList()
+     * @see Drawable#setTintList(ColorStateList)
+     */
+    public void setThumbTintList(@Nullable ColorStateList tint) {
+        mThumbTintList = tint;
+        mHasThumbTint = true;
+
+        applyThumbTint();
+    }
+
+    /**
+     * @return the tint applied to the thumb drawable
+     * @attr ref android.R.styleable#Switch_thumbTint
+     * @see #setThumbTintList(ColorStateList)
+     */
+    @Nullable
+    public ColorStateList getThumbTintList() {
+        return mThumbTintList;
+    }
+
+    /**
+     * Specifies the blending mode used to apply the tint specified by
+     * {@link #setThumbTintList(ColorStateList)}} to the thumb drawable.
+     * The default mode is {@link PorterDuff.Mode#SRC_IN}.
+     *
+     * @param tintMode the blending mode used to apply the tint, may be
+     *                 {@code null} to clear tint
+     * @attr ref android.R.styleable#Switch_thumbTintMode
+     * @see #getThumbTintMode()
+     * @see Drawable#setTintMode(PorterDuff.Mode)
+     */
+    public void setThumbTintMode(@Nullable PorterDuff.Mode tintMode) {
+        mThumbTintMode = tintMode;
+        mHasThumbTintMode = true;
+
+        applyThumbTint();
+    }
+
+    /**
+     * @return the blending mode used to apply the tint to the thumb
+     *         drawable
+     * @attr ref android.R.styleable#Switch_thumbTintMode
+     * @see #setThumbTintMode(PorterDuff.Mode)
+     */
+    @Nullable
+    public PorterDuff.Mode getThumbTintMode() {
+        return mThumbTintMode;
+    }
+
+    private void applyThumbTint() {
+        if (mThumbDrawable != null && (mHasThumbTint || mHasThumbTintMode)) {
+            mThumbDrawable = mThumbDrawable.mutate();
+
+            if (mHasThumbTint) {
+                mThumbDrawable.setTintList(mThumbTintList);
+            }
+
+            if (mHasThumbTintMode) {
+                mThumbDrawable.setTintMode(mThumbTintMode);
+            }
+
+            // The drawable (or one of its children) may not have been
+            // stateful before applying the tint, so let's try again.
+            if (mThumbDrawable.isStateful()) {
+                mThumbDrawable.setState(getDrawableState());
+            }
+        }
     }
 
     /**
@@ -665,9 +876,10 @@ public class Switch extends CompoundButton {
         }
     }
 
+    /** @hide */
     @Override
-    public void onPopulateAccessibilityEvent(AccessibilityEvent event) {
-        super.onPopulateAccessibilityEvent(event);
+    public void onPopulateAccessibilityEventInternal(AccessibilityEvent event) {
+        super.onPopulateAccessibilityEventInternal(event);
 
         final CharSequence text = isChecked() ? mTextOn : mTextOff;
         if (text != null) {
@@ -818,9 +1030,9 @@ public class Switch extends CompoundButton {
 
         if (newState != oldState) {
             playSoundEffect(SoundEffectConstants.CLICK);
-            setChecked(newState);
         }
-
+        // Always call setChecked so that the thumb is moved back to the correct edge
+        setChecked(newState);
         cancelSuperTouch(ev);
     }
 
@@ -1131,17 +1343,22 @@ public class Switch extends CompoundButton {
     protected void drawableStateChanged() {
         super.drawableStateChanged();
 
-        final int[] myDrawableState = getDrawableState();
+        final int[] state = getDrawableState();
+        boolean changed = false;
 
-        if (mThumbDrawable != null) {
-            mThumbDrawable.setState(myDrawableState);
+        final Drawable thumbDrawable = mThumbDrawable;
+        if (thumbDrawable != null && thumbDrawable.isStateful()) {
+            changed |= thumbDrawable.setState(state);
         }
 
-        if (mTrackDrawable != null) {
-            mTrackDrawable.setState(myDrawableState);
+        final Drawable trackDrawable = mTrackDrawable;
+        if (trackDrawable != null && trackDrawable.isStateful()) {
+            changed |= trackDrawable.setState(state);
         }
 
-        invalidate();
+        if (changed) {
+            invalidate();
+        }
     }
 
     @Override
@@ -1158,7 +1375,7 @@ public class Switch extends CompoundButton {
     }
 
     @Override
-    protected boolean verifyDrawable(Drawable who) {
+    protected boolean verifyDrawable(@NonNull Drawable who) {
         return super.verifyDrawable(who) || who == mThumbDrawable || who == mTrackDrawable;
     }
 
@@ -1174,22 +1391,40 @@ public class Switch extends CompoundButton {
             mTrackDrawable.jumpToCurrentState();
         }
 
-        if (mPositionAnimator != null && mPositionAnimator.isRunning()) {
+        if (mPositionAnimator != null && mPositionAnimator.isStarted()) {
             mPositionAnimator.end();
             mPositionAnimator = null;
         }
     }
 
     @Override
-    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
-        super.onInitializeAccessibilityEvent(event);
-        event.setClassName(Switch.class.getName());
+    public CharSequence getAccessibilityClassName() {
+        return Switch.class.getName();
     }
 
     @Override
-    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
-        super.onInitializeAccessibilityNodeInfo(info);
-        info.setClassName(Switch.class.getName());
+    public void onProvideStructure(ViewStructure structure) {
+        super.onProvideStructure(structure);
+        CharSequence switchText = isChecked() ? mTextOn : mTextOff;
+        if (!TextUtils.isEmpty(switchText)) {
+            CharSequence oldText = structure.getText();
+            if (TextUtils.isEmpty(oldText)) {
+                structure.setText(switchText);
+            } else {
+                StringBuilder newText = new StringBuilder();
+                newText.append(oldText).append(' ').append(switchText);
+                structure.setText(newText);
+            }
+            // The style of the label text is provided via the base TextView class. This is more
+            // relevant than the style of the (optional) on/off text on the switch button itself,
+            // so ignore the size/color/style stored this.mTextPaint.
+        }
+    }
+
+    /** @hide */
+    @Override
+    public void onInitializeAccessibilityNodeInfoInternal(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfoInternal(info);
         CharSequence switchText = isChecked() ? mTextOn : mTextOff;
         if (!TextUtils.isEmpty(switchText)) {
             CharSequence oldText = info.getText();

@@ -35,7 +35,7 @@ static jint QTagUid_tagSocketFd(JNIEnv* env, jclass,
                                 jint tagNum, jint uid) {
   int userFd = jniGetFDFromFileDescriptor(env, fileDescriptor);
 
-  if (env->ExceptionOccurred() != NULL) {
+  if (env->ExceptionCheck()) {
     ALOGE("Can't get FileDescriptor num");
     return (jint)-1;
   }
@@ -51,7 +51,7 @@ static jint QTagUid_untagSocketFd(JNIEnv* env, jclass,
                                   jobject fileDescriptor) {
   int userFd = jniGetFDFromFileDescriptor(env, fileDescriptor);
 
-  if (env->ExceptionOccurred() != NULL) {
+  if (env->ExceptionCheck()) {
     ALOGE("Can't get FileDescriptor num");
     return (jint)-1;
   }
@@ -83,7 +83,7 @@ static jint QTagUid_deleteTagData(JNIEnv* env, jclass,
   return (jint)res;
 }
 
-static JNINativeMethod gQTagUidMethods[] = {
+static const JNINativeMethod gQTagUidMethods[] = {
   { "native_tagSocketFd", "(Ljava/io/FileDescriptor;II)I", (void*)QTagUid_tagSocketFd},
   { "native_untagSocketFd", "(Ljava/io/FileDescriptor;)I", (void*)QTagUid_untagSocketFd},
   { "native_setCounterSet", "(II)I", (void*)QTagUid_setCounterSet},

@@ -17,11 +17,17 @@
 package android.graphics;
 
 import com.android.ide.common.rendering.api.LayoutLog;
+import com.android.ide.common.rendering.api.RenderResources;
+import com.android.ide.common.rendering.api.ResourceValue;
 import com.android.layoutlib.bridge.Bridge;
+import com.android.layoutlib.bridge.android.BridgeContext;
 import com.android.layoutlib.bridge.impl.DelegateManager;
+import com.android.layoutlib.bridge.impl.RenderAction;
 import com.android.resources.Density;
+import com.android.resources.ResourceType;
 import com.android.tools.layoutlib.annotations.LayoutlibDelegate;
 
+import android.annotation.Nullable;
 import android.graphics.Bitmap.Config;
 import android.os.Parcel;
 
@@ -37,6 +43,7 @@ import java.util.EnumSet;
 import java.util.Set;
 
 import javax.imageio.ImageIO;
+import libcore.util.NativeAllocationRegistry_Delegate;
 
 /**
  * Delegate implementing the native methods of android.graphics.Bitmap
@@ -60,13 +67,14 @@ public final class Bitmap_Delegate {
 
     // ---- delegate manager ----
     private static final DelegateManager<Bitmap_Delegate> sManager =
-            new DelegateManager<Bitmap_Delegate>(Bitmap_Delegate.class);
+            new DelegateManager<>(Bitmap_Delegate.class);
+    private static long sFinalizer = -1;
 
     // ---- delegate helper data ----
 
     // ---- delegate data ----
     private final Config mConfig;
-    private BufferedImage mImage;
+    private final BufferedImage mImage;
     private boolean mHasAlpha = true;
     private boolean mHasMipMap = false;      // TODO: check the default.
     private boolean mIsPremultiplied = true;
@@ -76,17 +84,16 @@ public final class Bitmap_Delegate {
     // ---- Public Helper methods ----
 
     /**
-     * Returns the native delegate associated to a given {@link Bitmap_Delegate} object.
-     */
-    public static Bitmap_Delegate getDelegate(Bitmap bitmap) {
-        return sManager.getDelegate(bitmap.mNativeBitmap);
-    }
-
-    /**
      * Returns the native delegate associated to a given an int referencing a {@link Bitmap} object.
      */
     public static Bitmap_Delegate getDelegate(long native_bitmap) {
         return sManager.getDelegate(native_bitmap);
+    }
+
+    @Nullable
+    public static Bitmap_Delegate getDelegate(@Nullable Bitmap bitmap) {
+        // refSkPixelRef is a hack to get the native pointer: see #nativeRefPixelRef()
+        return bitmap == null ? null : getDelegate(bitmap.refSkPixelRef());
     }
 
     /**
@@ -114,10 +121,25 @@ public final class Bitmap_Delegate {
      * @see Bitmap#isMutable()
      * @see Bitmap#getDensity()
      */
-    public static Bitmap createBitmap(File input, Set<BitmapCreateFlags> createFlags,
+    private static Bitmap createBitmap(File input, Set<BitmapCreateFlags> createFlags,
             Density density) throws IOException {
         // create a delegate with the content of the file.
-        Bitmap_Delegate delegate = new Bitmap_Delegate(ImageIO.read(input), Config.ARGB_8888);
+        BufferedImage image = ImageIO.read(input);
+        if (image == null && input.exists()) {
+            // There was a problem decoding the image, or the decoder isn't registered. Webp maybe.
+            // Replace with a broken image icon.
+            BridgeContext currentContext = RenderAction.getCurrentContext();
+            if (currentContext != null) {
+                RenderResources resources = currentContext.getRenderResources();
+                ResourceValue broken = resources.getFrameworkResource(ResourceType.DRAWABLE,
+                        "ic_menu_report_image");
+                File brokenFile = new File(broken.getValue());
+                if (brokenFile.exists()) {
+                    image = ImageIO.read(brokenFile);
+                }
+            }
+        }
+        Bitmap_Delegate delegate = new Bitmap_Delegate(image, Config.ARGB_8888);
 
         return createBitmap(delegate, createFlags, density.getDpiValue());
     }
@@ -187,31 +209,7 @@ public final class Bitmap_Delegate {
         return createBitmap(delegate, createFlags, density.getDpiValue());
     }
 
-    /**
-     * Returns the {@link BufferedImage} used by the delegate of the given {@link Bitmap}.
-     */
-    public static BufferedImage getImage(Bitmap bitmap) {
-        // get the delegate from the native int.
-        Bitmap_Delegate delegate = sManager.getDelegate(bitmap.mNativeBitmap);
-        if (delegate == null) {
-            return null;
-        }
-
-        return delegate.mImage;
-    }
-
-    public static int getBufferedImageType(int nativeBitmapConfig) {
-        switch (Config.nativeToConfig(nativeBitmapConfig)) {
-            case ALPHA_8:
-                return BufferedImage.TYPE_INT_ARGB;
-            case RGB_565:
-                return BufferedImage.TYPE_INT_ARGB;
-            case ARGB_4444:
-                return BufferedImage.TYPE_INT_ARGB;
-            case ARGB_8888:
-                return BufferedImage.TYPE_INT_ARGB;
-        }
-
+    private static int getBufferedImageType() {
         return BufferedImage.TYPE_INT_ARGB;
     }
 
@@ -238,10 +236,6 @@ public final class Bitmap_Delegate {
         return mHasAlpha && mConfig != Config.RGB_565;
     }
 
-    public boolean hasMipMap() {
-        // TODO: check if more checks are required as in hasAlpha.
-        return mHasMipMap;
-    }
     /**
      * Update the generationId.
      *
@@ -256,7 +250,7 @@ public final class Bitmap_Delegate {
     @LayoutlibDelegate
     /*package*/ static Bitmap nativeCreate(int[] colors, int offset, int stride, int width,
             int height, int nativeConfig, boolean isMutable) {
-        int imageType = getBufferedImageType(nativeConfig);
+        int imageType = getBufferedImageType();
 
         // create the image
         BufferedImage image = new BufferedImage(width, height, imageType);
@@ -284,7 +278,7 @@ public final class Bitmap_Delegate {
         int width = srcImage.getWidth();
         int height = srcImage.getHeight();
 
-        int imageType = getBufferedImageType(nativeConfig);
+        int imageType = getBufferedImageType();
 
         // create the image
         BufferedImage image = new BufferedImage(width, height, imageType);
@@ -302,13 +296,32 @@ public final class Bitmap_Delegate {
     }
 
     @LayoutlibDelegate
-    /*package*/ static void nativeDestructor(long nativeBitmap) {
-        sManager.removeJavaReferenceFor(nativeBitmap);
+    /*package*/ static Bitmap nativeCopyAshmem(long nativeSrcBitmap) {
+        // Unused method; no implementation provided.
+        assert false;
+        return null;
+    }
+
+    @LayoutlibDelegate
+    /*package*/ static Bitmap nativeCopyAshmemConfig(long nativeSrcBitmap, int nativeConfig) {
+        // Unused method; no implementation provided.
+        assert false;
+        return null;
+    }
+
+    @LayoutlibDelegate
+    /*package*/ static long nativeGetNativeFinalizer() {
+        synchronized (Bitmap_Delegate.class) {
+            if (sFinalizer == -1) {
+                sFinalizer = NativeAllocationRegistry_Delegate.createFinalizer(sManager::removeJavaReferenceFor);
+            }
+            return sFinalizer;
+        }
     }
 
     @LayoutlibDelegate
     /*package*/ static boolean nativeRecycle(long nativeBitmap) {
-        sManager.removeJavaReferenceFor(nativeBitmap);
+        // In our case reycle() is a no-op. We will let the finalizer to dispose the bitmap.
         return true;
     }
 
@@ -373,22 +386,16 @@ public final class Bitmap_Delegate {
     /*package*/ static boolean nativeHasAlpha(long nativeBitmap) {
         // get the delegate from the native int.
         Bitmap_Delegate delegate = sManager.getDelegate(nativeBitmap);
-        if (delegate == null) {
-            return true;
-        }
+        return delegate == null || delegate.mHasAlpha;
 
-        return delegate.mHasAlpha;
     }
 
     @LayoutlibDelegate
     /*package*/ static boolean nativeHasMipMap(long nativeBitmap) {
         // get the delegate from the native int.
         Bitmap_Delegate delegate = sManager.getDelegate(nativeBitmap);
-        if (delegate == null) {
-            return true;
-        }
+        return delegate == null || delegate.mHasMipMap;
 
-        return delegate.mHasMipMap;
     }
 
     @LayoutlibDelegate
@@ -509,11 +516,6 @@ public final class Bitmap_Delegate {
     }
 
     @LayoutlibDelegate
-    /*package*/ static void nativePrepareToDraw(long nativeBitmap) {
-        // nothing to be done here.
-    }
-
-    @LayoutlibDelegate
     /*package*/ static boolean nativeIsPremultiplied(long nativeBitmap) {
         // get the delegate from the native int.
         Bitmap_Delegate delegate = sManager.getDelegate(nativeBitmap);
@@ -597,6 +599,14 @@ public final class Bitmap_Delegate {
         }
 
         return Arrays.equals(argb1, argb2);
+    }
+
+    // Only used by AssetAtlasService, which we don't care about.
+    @LayoutlibDelegate
+    /*package*/ static long nativeRefPixelRef(long nativeBitmap) {
+        // Hack: This is called by Bitmap.refSkPixelRef() and LayoutLib uses that method to get
+        // the native pointer from a Bitmap. So, we return nativeBitmap here.
+        return nativeBitmap;
     }
 
     // ---- Private delegate/helper methods ----

@@ -81,6 +81,17 @@ class IntervalStats {
         return event;
     }
 
+    private boolean isStatefulEvent(int eventType) {
+        switch (eventType) {
+            case UsageEvents.Event.MOVE_TO_FOREGROUND:
+            case UsageEvents.Event.MOVE_TO_BACKGROUND:
+            case UsageEvents.Event.END_OF_DAY:
+            case UsageEvents.Event.CONTINUE_PREVIOUS_DAY:
+                return true;
+        }
+        return false;
+    }
+
     void update(String packageName, long timeStamp, int eventType) {
         UsageStats usageStats = getOrCreateUsageStats(packageName);
 
@@ -93,8 +104,14 @@ class IntervalStats {
                 usageStats.mTotalTimeInForeground += timeStamp - usageStats.mLastTimeUsed;
             }
         }
-        usageStats.mLastEvent = eventType;
-        usageStats.mLastTimeUsed = timeStamp;
+
+        if (isStatefulEvent(eventType)) {
+            usageStats.mLastEvent = eventType;
+        }
+
+        if (eventType != UsageEvents.Event.SYSTEM_INTERACTION) {
+            usageStats.mLastTimeUsed = timeStamp;
+        }
         usageStats.mEndTimeStamp = timeStamp;
 
         if (eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {

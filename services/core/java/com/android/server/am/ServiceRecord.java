@@ -16,7 +16,7 @@
 
 package com.android.server.am;
 
-import com.android.internal.app.ProcessStats;
+import com.android.internal.app.procstats.ServiceState;
 import com.android.internal.os.BatteryStatsImpl;
 import com.android.server.LocalServices;
 import com.android.server.notification.NotificationManagerInternal;
@@ -47,10 +47,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import static com.android.server.am.ActivityManagerDebugConfig.TAG_AM;
+import static com.android.server.am.ActivityManagerDebugConfig.TAG_WITH_CLASS_NAME;
+
 /**
  * A running application service.
  */
 final class ServiceRecord extends Binder {
+    private static final String TAG = TAG_WITH_CLASS_NAME ? "ServiceRecord" : TAG_AM;
+
     // Maximum number of delivery attempts before giving up.
     static final int MAX_DELIVERY_COUNT = 3;
 
@@ -83,8 +88,9 @@ final class ServiceRecord extends Binder {
 
     ProcessRecord app;      // where this service is running or null.
     ProcessRecord isolatedProc; // keep track of isolated process, if requested
-    ProcessStats.ServiceState tracker; // tracking service execution, may be null
-    ProcessStats.ServiceState restartTracker; // tracking service restart
+    ServiceState tracker; // tracking service execution, may be null
+    ServiceState restartTracker; // tracking service restart
+    boolean whitelistManager; // any bindings to this service have BIND_ALLOW_WHITELIST_MANAGEMENT?
     boolean delayed;        // are we waiting to start this service in the background?
     boolean isForeground;   // is service currently in foreground mode?
     int foregroundId;       // Notification ID of last foreground req.
@@ -220,6 +226,9 @@ final class ServiceRecord extends Binder {
         if (isolatedProc != null) {
             pw.print(prefix); pw.print("isolatedProc="); pw.println(isolatedProc);
         }
+        if (whitelistManager) {
+            pw.print(prefix); pw.print("whitelistManager="); pw.println(whitelistManager);
+        }
         if (delayed) {
             pw.print(prefix); pw.print("delayed="); pw.println(delayed);
         }
@@ -321,7 +330,7 @@ final class ServiceRecord extends Binder {
         createdFromFg = callerIsFg;
     }
 
-    public ProcessStats.ServiceState getTracker() {
+    public ServiceState getTracker() {
         if (tracker != null) {
             return tracker;
         }
@@ -386,6 +395,19 @@ final class ServiceRecord extends Binder {
         return false;
     }
 
+    public void updateWhitelistManager() {
+        whitelistManager = false;
+        for (int conni=connections.size()-1; conni>=0; conni--) {
+            ArrayList<ConnectionRecord> cr = connections.valueAt(conni);
+            for (int i=0; i<cr.size(); i++) {
+                if ((cr.get(i).flags&Context.BIND_ALLOW_WHITELIST_MANAGEMENT) != 0) {
+                    whitelistManager = true;
+                    return;
+                }
+            }
+        }
+    }
+
     public void resetRestartCounter() {
         restartCount = 0;
         restartDelay = 0;
@@ -425,7 +447,7 @@ final class ServiceRecord extends Binder {
             // avoid deadlocks.
             final String localPackageName = packageName;
             final int localForegroundId = foregroundId;
-            final Notification localForegroundNoti = foregroundNoti;
+            final Notification _foregroundNoti = foregroundNoti;
             ams.mHandler.post(new Runnable() {
                 public void run() {
                     NotificationManagerInternal nm = LocalServices.getService(
@@ -433,16 +455,19 @@ final class ServiceRecord extends Binder {
                     if (nm == null) {
                         return;
                     }
+                    Notification localForegroundNoti = _foregroundNoti;
                     try {
-                        if (localForegroundNoti.icon == 0) {
-                            // It is not correct for the caller to supply a notification
+                        if (localForegroundNoti.getSmallIcon() == null) {
+                            // It is not correct for the caller to not supply a notification
                             // icon, but this used to be able to slip through, so for
-                            // those dirty apps give it the app's icon.
-                            localForegroundNoti.icon = appInfo.icon;
+                            // those dirty apps we will create a notification clearly
+                            // blaming the app.
+                            Slog.v(TAG, "Attempted to start a foreground service ("
+                                    + name
+                                    + ") with a broken notification (no icon: "
+                                    + localForegroundNoti
+                                    + ")");
 
-                            // Do not allow apps to present a sneaky invisible content view either.
-                            localForegroundNoti.contentView = null;
-                            localForegroundNoti.bigContentView = null;
                             CharSequence appName = appInfo.loadLabel(
                                     ams.mContext.getPackageManager());
                             if (appName == null) {
@@ -450,49 +475,65 @@ final class ServiceRecord extends Binder {
                             }
                             Context ctx = null;
                             try {
-                                ctx = ams.mContext.createPackageContext(
-                                        appInfo.packageName, 0);
+                                ctx = ams.mContext.createPackageContextAsUser(
+                                        appInfo.packageName, 0, new UserHandle(userId));
+
+                                Notification.Builder notiBuilder = new Notification.Builder(ctx);
+
+                                // it's ugly, but it clearly identifies the app
+                                notiBuilder.setSmallIcon(appInfo.icon);
+
+                                // mark as foreground
+                                notiBuilder.setFlag(Notification.FLAG_FOREGROUND_SERVICE, true);
+
+                                // we are doing the app a kindness here
+                                notiBuilder.setPriority(Notification.PRIORITY_MIN);
+
                                 Intent runningIntent = new Intent(
                                         Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
                                 runningIntent.setData(Uri.fromParts("package",
                                         appInfo.packageName, null));
                                 PendingIntent pi = PendingIntent.getActivity(ams.mContext, 0,
                                         runningIntent, PendingIntent.FLAG_UPDATE_CURRENT);
-                                localForegroundNoti.color = ams.mContext.getResources().getColor(
+                                notiBuilder.setColor(ams.mContext.getColor(
                                         com.android.internal
-                                                .R.color.system_notification_accent_color);
-                                localForegroundNoti.setLatestEventInfo(ctx,
+                                                .R.color.system_notification_accent_color));
+                                notiBuilder.setContentTitle(
                                         ams.mContext.getString(
                                                 com.android.internal.R.string
                                                         .app_running_notification_title,
-                                                appName),
+                                                appName));
+                                notiBuilder.setContentText(
                                         ams.mContext.getString(
                                                 com.android.internal.R.string
                                                         .app_running_notification_text,
-                                                appName),
-                                        pi);
+                                                appName));
+                                notiBuilder.setContentIntent(pi);
+
+                                localForegroundNoti = notiBuilder.build();
                             } catch (PackageManager.NameNotFoundException e) {
-                                localForegroundNoti.icon = 0;
                             }
                         }
-                        if (localForegroundNoti.icon == 0) {
+                        if (localForegroundNoti.getSmallIcon() == null) {
                             // Notifications whose icon is 0 are defined to not show
                             // a notification, silently ignoring it.  We don't want to
                             // just ignore it, we want to prevent the service from
                             // being foreground.
-                            throw new RuntimeException("icon must be non-zero");
+                            throw new RuntimeException("invalid service notification: "
+                                    + foregroundNoti);
                         }
                         int[] outId = new int[1];
                         nm.enqueueNotification(localPackageName, localPackageName,
                                 appUid, appPid, null, localForegroundId, localForegroundNoti,
                                 outId, userId);
+
+                        foregroundNoti = localForegroundNoti; // save it for amending next time
                     } catch (RuntimeException e) {
-                        Slog.w(ActivityManagerService.TAG,
-                                "Error showing notification for service", e);
+                        Slog.w(TAG, "Error showing notification for service", e);
                         // If it gave us a garbage notification, it doesn't
                         // get to be foreground.
                         ams.setServiceForeground(name, ServiceRecord.this,
-                                0, null, true);
+                                0, null, 0);
                         ams.crashApplication(appUid, appPid, localPackageName,
                                 "Bad notification for startForeground: " + e);
                     }
@@ -502,28 +543,25 @@ final class ServiceRecord extends Binder {
     }
     
     public void cancelNotification() {
-        if (foregroundId != 0) {
-            // Do asynchronous communication with notification manager to
-            // avoid deadlocks.
-            final String localPackageName = packageName;
-            final int localForegroundId = foregroundId;
-            ams.mHandler.post(new Runnable() {
-                public void run() {
-                    INotificationManager inm = NotificationManager.getService();
-                    if (inm == null) {
-                        return;
-                    }
-                    try {
-                        inm.cancelNotificationWithTag(localPackageName, null,
-                                localForegroundId, userId);
-                    } catch (RuntimeException e) {
-                        Slog.w(ActivityManagerService.TAG,
-                                "Error canceling notification for service", e);
-                    } catch (RemoteException e) {
-                    }
+        // Do asynchronous communication with notification manager to
+        // avoid deadlocks.
+        final String localPackageName = packageName;
+        final int localForegroundId = foregroundId;
+        ams.mHandler.post(new Runnable() {
+            public void run() {
+                INotificationManager inm = NotificationManager.getService();
+                if (inm == null) {
+                    return;
                 }
-            });
-        }
+                try {
+                    inm.cancelNotificationWithTag(localPackageName, null,
+                            localForegroundId, userId);
+                } catch (RuntimeException e) {
+                    Slog.w(TAG, "Error canceling notification for service", e);
+                } catch (RemoteException e) {
+                }
+            }
+        });
     }
 
     public void stripForegroundServiceFlagFromNotification() {

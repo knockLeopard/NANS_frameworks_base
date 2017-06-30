@@ -14,22 +14,20 @@
  * limitations under the License.
  */
 
-#ifndef NinePatchPeeker_h
-#define NinePatchPeeker_h
+#ifndef _ANDROID_GRAPHICS_NINE_PATCH_PEEKER_H_
+#define _ANDROID_GRAPHICS_NINE_PATCH_PEEKER_H_
 
-#include "SkImageDecoder.h"
+#include "SkPngChunkReader.h"
 #include <androidfw/ResourceTypes.h>
+
+class SkImageDecoder;
 
 using namespace android;
 
-class NinePatchPeeker : public SkImageDecoder::Peeker {
-private:
-    // the host lives longer than we do, so a raw ptr is safe
-    SkImageDecoder* mHost;
+class NinePatchPeeker : public SkPngChunkReader {
 public:
-    NinePatchPeeker(SkImageDecoder* host)
-            : mHost(host)
-            , mPatch(NULL)
+    NinePatchPeeker()
+            : mPatch(NULL)
             , mPatchSize(0)
             , mHasInsets(false)
             , mOutlineRadius(0)
@@ -42,7 +40,7 @@ public:
         free(mPatch);
     }
 
-    virtual bool peek(const char tag[], const void* data, size_t length);
+    bool readChunk(const char tag[], const void* data, size_t length) override;
 
     Res_png_9patch* mPatch;
     size_t mPatchSize;
@@ -53,4 +51,4 @@ public:
     uint8_t mOutlineAlpha;
 };
 
-#endif // NinePatchPeeker_h
+#endif  // _ANDROID_GRAPHICS_NINE_PATCH_PEEKER_H_

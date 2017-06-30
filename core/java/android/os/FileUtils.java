@@ -16,11 +16,20 @@
 
 package android.os;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.provider.DocumentsContract.Document;
 import android.system.ErrnoException;
 import android.system.Os;
+import android.system.StructStat;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.Slog;
+import android.webkit.MimeTypeMap;
+
+import com.android.internal.annotations.VisibleForTesting;
+
+import libcore.util.EmptyArray;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -30,10 +39,13 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.zip.CRC32;
 import java.util.zip.CheckedInputStream;
@@ -60,8 +72,15 @@ public class FileUtils {
     public static final int S_IWOTH = 00002;
     public static final int S_IXOTH = 00001;
 
-    /** Regular expression for safe filenames: no spaces or metacharacters */
-    private static final Pattern SAFE_FILENAME_PATTERN = Pattern.compile("[\\w%+,./=_-]+");
+    /** Regular expression for safe filenames: no spaces or metacharacters.
+      *
+      * Use a preload holder so that FileUtils can be compile-time initialized.
+      */
+    private static class NoImagePreloadHolder {
+        public static final Pattern SAFE_FILENAME_PATTERN = Pattern.compile("[\\w%+,./=_-]+");
+    }
+
+    private static final File[] EMPTY = new File[0];
 
     /**
      * Set owner and mode of of given {@link File}.
@@ -131,6 +150,16 @@ public class FileUtils {
         return 0;
     }
 
+    public static void copyPermissions(File from, File to) throws IOException {
+        try {
+            final StructStat stat = Os.stat(from.getAbsolutePath());
+            Os.chmod(to.getAbsolutePath(), stat.st_mode);
+            Os.chown(to.getAbsolutePath(), stat.st_uid, stat.st_gid);
+        } catch (ErrnoException e) {
+            throw e.rethrowAsIOException();
+        }
+    }
+
     /**
      * Return owning UID of given path, otherwise -1.
      */
@@ -157,50 +186,57 @@ public class FileUtils {
         return false;
     }
 
+    @Deprecated
+    public static boolean copyFile(File srcFile, File destFile) {
+        try {
+            copyFileOrThrow(srcFile, destFile);
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     // copy a file from srcFile to destFile, return true if succeed, return
     // false if fail
-    public static boolean copyFile(File srcFile, File destFile) {
-        boolean result = false;
-        try {
-            InputStream in = new FileInputStream(srcFile);
-            try {
-                result = copyToFile(in, destFile);
-            } finally  {
-                in.close();
-            }
-        } catch (IOException e) {
-            result = false;
+    public static void copyFileOrThrow(File srcFile, File destFile) throws IOException {
+        try (InputStream in = new FileInputStream(srcFile)) {
+            copyToFileOrThrow(in, destFile);
         }
-        return result;
+    }
+
+    @Deprecated
+    public static boolean copyToFile(InputStream inputStream, File destFile) {
+        try {
+            copyToFileOrThrow(inputStream, destFile);
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /**
      * Copy data from a source stream to destFile.
      * Return true if succeed, return false if failed.
      */
-    public static boolean copyToFile(InputStream inputStream, File destFile) {
+    public static void copyToFileOrThrow(InputStream inputStream, File destFile)
+            throws IOException {
+        if (destFile.exists()) {
+            destFile.delete();
+        }
+        FileOutputStream out = new FileOutputStream(destFile);
         try {
-            if (destFile.exists()) {
-                destFile.delete();
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) >= 0) {
+                out.write(buffer, 0, bytesRead);
             }
-            FileOutputStream out = new FileOutputStream(destFile);
+        } finally {
+            out.flush();
             try {
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(buffer)) >= 0) {
-                    out.write(buffer, 0, bytesRead);
-                }
-            } finally {
-                out.flush();
-                try {
-                    out.getFD().sync();
-                } catch (IOException e) {
-                }
-                out.close();
+                out.getFD().sync();
+            } catch (IOException e) {
             }
-            return true;
-        } catch (IOException e) {
-            return false;
+            out.close();
         }
     }
 
@@ -212,7 +248,7 @@ public class FileUtils {
         // Note, we check whether it matches what's known to be safe,
         // rather than what's known to be unsafe.  Non-ASCII, control
         // characters, etc. are all unsafe by default.
-        return SAFE_FILENAME_PATTERN.matcher(file.getPath()).matches();
+        return NoImagePreloadHolder.SAFE_FILENAME_PATTERN.matcher(file.getPath()).matches();
     }
 
     /**
@@ -276,7 +312,11 @@ public class FileUtils {
         }
     }
 
-   /**
+    public static void stringToFile(File file, String string) throws IOException {
+        stringToFile(file.getAbsolutePath(), string);
+    }
+
+    /**
      * Writes string to file. Basically same as "echo -n $string > $filename"
      *
      * @param filename
@@ -369,8 +409,25 @@ public class FileUtils {
      * {@link File#getCanonicalFile()} to avoid symlink or path traversal
      * attacks.
      */
+    public static boolean contains(File[] dirs, File file) {
+        for (File dir : dirs) {
+            if (contains(dir, file)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Test if a file lives under the given directory, either as a direct child
+     * or a distant grandchild.
+     * <p>
+     * Both files <em>must</em> have been resolved using
+     * {@link File#getCanonicalFile()} to avoid symlink or path traversal
+     * attacks.
+     */
     public static boolean contains(File dir, File file) {
-        if (file == null) return false;
+        if (dir == null || file == null) return false;
 
         String dirPath = dir.getAbsolutePath();
         String filePath = file.getAbsolutePath();
@@ -383,6 +440,14 @@ public class FileUtils {
             dirPath += "/";
         }
         return filePath.startsWith(dirPath);
+    }
+
+    public static boolean deleteContentsAndDir(File dir) {
+        if (deleteContents(dir)) {
+            return dir.delete();
+        } else {
+            return false;
+        }
     }
 
     public static boolean deleteContents(File dir) {
@@ -436,6 +501,7 @@ public class FileUtils {
                 res.append('_');
             }
         }
+        trimFilename(res, 255);
         return res.toString();
     }
 
@@ -484,7 +550,29 @@ public class FileUtils {
                 res.append('_');
             }
         }
+        // Even though vfat allows 255 UCS-2 chars, we might eventually write to
+        // ext4 through a FUSE layer, so use that limit.
+        trimFilename(res, 255);
         return res.toString();
+    }
+
+    @VisibleForTesting
+    public static String trimFilename(String str, int maxBytes) {
+        final StringBuilder res = new StringBuilder(str);
+        trimFilename(res, maxBytes);
+        return res.toString();
+    }
+
+    private static void trimFilename(StringBuilder res, int maxBytes) {
+        byte[] raw = res.toString().getBytes(StandardCharsets.UTF_8);
+        if (raw.length > maxBytes) {
+            maxBytes -= 3;
+            while (raw.length > maxBytes) {
+                res.deleteCharAt(res.length() / 2);
+                raw = res.toString().getBytes(StandardCharsets.UTF_8);
+            }
+            res.insert(res.length() / 2, "...");
+        }
     }
 
     public static String rewriteAfterRename(File beforeDir, File afterDir, String path) {
@@ -508,12 +596,160 @@ public class FileUtils {
      * {@code /after/foo/bar.txt}.
      */
     public static File rewriteAfterRename(File beforeDir, File afterDir, File file) {
-        if (file == null) return null;
+        if (file == null || beforeDir == null || afterDir == null) return null;
         if (contains(beforeDir, file)) {
             final String splice = file.getAbsolutePath().substring(
                     beforeDir.getAbsolutePath().length());
             return new File(afterDir, splice);
         }
         return null;
+    }
+
+    private static File buildUniqueFileWithExtension(File parent, String name, String ext)
+            throws FileNotFoundException {
+        File file = buildFile(parent, name, ext);
+
+        // If conflicting file, try adding counter suffix
+        int n = 0;
+        while (file.exists()) {
+            if (n++ >= 32) {
+                throw new FileNotFoundException("Failed to create unique file");
+            }
+            file = buildFile(parent, name + " (" + n + ")", ext);
+        }
+
+        return file;
+    }
+
+    /**
+     * Generates a unique file name under the given parent directory. If the display name doesn't
+     * have an extension that matches the requested MIME type, the default extension for that MIME
+     * type is appended. If a file already exists, the name is appended with a numerical value to
+     * make it unique.
+     *
+     * For example, the display name 'example' with 'text/plain' MIME might produce
+     * 'example.txt' or 'example (1).txt', etc.
+     *
+     * @throws FileNotFoundException
+     */
+    public static File buildUniqueFile(File parent, String mimeType, String displayName)
+            throws FileNotFoundException {
+        final String[] parts = splitFileName(mimeType, displayName);
+        return buildUniqueFileWithExtension(parent, parts[0], parts[1]);
+    }
+
+    /**
+     * Generates a unique file name under the given parent directory, keeping
+     * any extension intact.
+     */
+    public static File buildUniqueFile(File parent, String displayName)
+            throws FileNotFoundException {
+        final String name;
+        final String ext;
+
+        // Extract requested extension from display name
+        final int lastDot = displayName.lastIndexOf('.');
+        if (lastDot >= 0) {
+            name = displayName.substring(0, lastDot);
+            ext = displayName.substring(lastDot + 1);
+        } else {
+            name = displayName;
+            ext = null;
+        }
+
+        return buildUniqueFileWithExtension(parent, name, ext);
+    }
+
+    /**
+     * Splits file name into base name and extension.
+     * If the display name doesn't have an extension that matches the requested MIME type, the
+     * extension is regarded as a part of filename and default extension for that MIME type is
+     * appended.
+     */
+    public static String[] splitFileName(String mimeType, String displayName) {
+        String name;
+        String ext;
+
+        if (Document.MIME_TYPE_DIR.equals(mimeType)) {
+            name = displayName;
+            ext = null;
+        } else {
+            String mimeTypeFromExt;
+
+            // Extract requested extension from display name
+            final int lastDot = displayName.lastIndexOf('.');
+            if (lastDot >= 0) {
+                name = displayName.substring(0, lastDot);
+                ext = displayName.substring(lastDot + 1);
+                mimeTypeFromExt = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
+                        ext.toLowerCase());
+            } else {
+                name = displayName;
+                ext = null;
+                mimeTypeFromExt = null;
+            }
+
+            if (mimeTypeFromExt == null) {
+                mimeTypeFromExt = "application/octet-stream";
+            }
+
+            final String extFromMimeType = MimeTypeMap.getSingleton().getExtensionFromMimeType(
+                    mimeType);
+            if (Objects.equals(mimeType, mimeTypeFromExt) || Objects.equals(ext, extFromMimeType)) {
+                // Extension maps back to requested MIME type; allow it
+            } else {
+                // No match; insist that create file matches requested MIME
+                name = displayName;
+                ext = extFromMimeType;
+            }
+        }
+
+        if (ext == null) {
+            ext = "";
+        }
+
+        return new String[] { name, ext };
+    }
+
+    private static File buildFile(File parent, String name, String ext) {
+        if (TextUtils.isEmpty(ext)) {
+            return new File(parent, name);
+        } else {
+            return new File(parent, name + "." + ext);
+        }
+    }
+
+    public static @NonNull String[] listOrEmpty(@Nullable File dir) {
+        if (dir == null) return EmptyArray.STRING;
+        final String[] res = dir.list();
+        if (res != null) {
+            return res;
+        } else {
+            return EmptyArray.STRING;
+        }
+    }
+
+    public static @NonNull File[] listFilesOrEmpty(@Nullable File dir) {
+        if (dir == null) return EMPTY;
+        final File[] res = dir.listFiles();
+        if (res != null) {
+            return res;
+        } else {
+            return EMPTY;
+        }
+    }
+
+    public static @NonNull File[] listFilesOrEmpty(@Nullable File dir, FilenameFilter filter) {
+        if (dir == null) return EMPTY;
+        final File[] res = dir.listFiles(filter);
+        if (res != null) {
+            return res;
+        } else {
+            return EMPTY;
+        }
+    }
+
+    public static @Nullable File newFileOrNull(@Nullable String path) {
+        return (path != null) ? new File(path) : null;
     }
 }

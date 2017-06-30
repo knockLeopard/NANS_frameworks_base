@@ -33,15 +33,19 @@ import android.os.ParcelFileDescriptor;
  * {@hide}
  */
 interface IUiAutomationConnection {
-    void connect(IAccessibilityServiceClient client);
+    void connect(IAccessibilityServiceClient client, int flags);
     void disconnect();
     boolean injectInputEvent(in InputEvent event, boolean sync);
     boolean setRotation(int rotation);
     Bitmap takeScreenshot(int width, int height);
-    void shutdown();
     boolean clearWindowContentFrameStats(int windowId);
     WindowContentFrameStats getWindowContentFrameStats(int windowId);
     void clearWindowAnimationFrameStats();
     WindowAnimationFrameStats getWindowAnimationFrameStats();
     void executeShellCommand(String command, in ParcelFileDescriptor fd);
+    void grantRuntimePermission(String packageName, String permission, int userId);
+    void revokeRuntimePermission(String packageName, String permission, int userId);
+
+    // Called from the system process.
+    oneway void shutdown();
 }

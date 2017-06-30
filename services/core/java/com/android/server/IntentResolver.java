@@ -47,6 +47,7 @@ public abstract class IntentResolver<F extends IntentFilter, R extends Object> {
     final private static String TAG = "IntentResolver";
     final private static boolean DEBUG = false;
     final private static boolean localLOGV = DEBUG || false;
+    final private static boolean localVerificationLOGV = DEBUG || false;
 
     public void addFilter(F f) {
         if (localLOGV) {
@@ -225,7 +226,7 @@ public abstract class IntentResolver<F extends IntentFilter, R extends Object> {
             final int N = a.length;
             boolean printedHeader = false;
             F filter;
-            if (collapseDuplicates) {
+            if (collapseDuplicates && !printFilter) {
                 found.clear();
                 for (int i=0; i<N && (filter=a[i]) != null; i++) {
                     if (packageName != null && !isPackageForFilter(packageName, filter)) {
@@ -363,6 +364,7 @@ public abstract class IntentResolver<F extends IntentFilter, R extends Object> {
             buildResolveList(intent, categories, debug, defaultOnly,
                     resolvedType, scheme, listCut.get(i), resultList, userId);
         }
+        filterResults(resultList);
         sortResults(resultList);
         return resultList;
     }
@@ -456,6 +458,7 @@ public abstract class IntentResolver<F extends IntentFilter, R extends Object> {
             buildResolveList(intent, categories, debug, defaultOnly,
                     resolvedType, scheme, schemeCut, finalList, userId);
         }
+        filterResults(finalList);
         sortResults(finalList);
 
         if (debug) {
@@ -478,11 +481,27 @@ public abstract class IntentResolver<F extends IntentFilter, R extends Object> {
 
     /**
      * Returns whether the object associated with the given filter is
-     * "stopped," that is whether it should not be included in the result
+     * "stopped", that is whether it should not be included in the result
      * if the intent requests to excluded stopped objects.
      */
     protected boolean isFilterStopped(F filter, int userId) {
         return false;
+    }
+
+    /**
+     * Returns whether the given filter is "verified" that is whether it has been verified against
+     * its data URIs.
+     *
+     * The verification would happen only and only if the Intent action is
+     * {@link android.content.Intent#ACTION_VIEW} and the Intent category is
+     * {@link android.content.Intent#CATEGORY_BROWSABLE} and the Intent data scheme
+     * is "http" or "https".
+     *
+     * @see android.content.IntentFilter#setAutoVerify(boolean)
+     * @see android.content.IntentFilter#getAutoVerify()
+     */
+    protected boolean isFilterVerified(F filter) {
+        return filter.isVerified();
     }
 
     /**
@@ -502,6 +521,12 @@ public abstract class IntentResolver<F extends IntentFilter, R extends Object> {
     @SuppressWarnings("unchecked")
     protected void sortResults(List<R> results) {
         Collections.sort(results, mResolvePrioritySorter);
+    }
+
+    /**
+     * Apply filtering to the results. This happens before the results are sorted.
+     */
+    protected void filterResults(List<R> results) {
     }
 
     protected void dumpFilter(PrintWriter out, String prefix, F filter) {
@@ -710,6 +735,17 @@ public abstract class IntentResolver<F extends IntentFilter, R extends Object> {
                 continue;
             }
 
+            // Are we verified ?
+            if (filter.getAutoVerify()) {
+                if (localVerificationLOGV || debug) {
+                    Slog.v(TAG, "  Filter verified: " + isFilterVerified(filter));
+                    int authorities = filter.countDataAuthorities();
+                    for (int z = 0; z < authorities; z++) {
+                        Slog.v(TAG, "   " + filter.getDataAuthority(z).getHost());
+                    }
+                }
+            }
+
             // Do we already have this one?
             if (!allowFilterResult(filter, dest)) {
                 if (debug) {
@@ -751,11 +787,11 @@ public abstract class IntentResolver<F extends IntentFilter, R extends Object> {
             }
         }
 
-        if (hasNonDefaults) {
+        if (debug && hasNonDefaults) {
             if (dest.size() == 0) {
-                Slog.w(TAG, "resolveIntent failed: found match, but none with CATEGORY_DEFAULT");
+                Slog.v(TAG, "resolveIntent failed: found match, but none with CATEGORY_DEFAULT");
             } else if (dest.size() > 1) {
-                Slog.w(TAG, "resolveIntent: multiple matches, only some with CATEGORY_DEFAULT");
+                Slog.v(TAG, "resolveIntent: multiple matches, only some with CATEGORY_DEFAULT");
             }
         }
     }

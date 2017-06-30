@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
- * Copyright (C) 2016 RUBIS Laboratory at Seoul National University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +19,7 @@ package com.android.server.display;
 import android.graphics.Rect;
 import android.hardware.display.DisplayViewport;
 import android.os.IBinder;
+import android.view.Display;
 import android.view.Surface;
 import android.view.SurfaceControl;
 
@@ -47,6 +47,10 @@ abstract class DisplayDevice {
     // The display device owns its surface, but it should only set it
     // within a transaction from performTraversalInTransactionLocked.
     private Surface mCurrentSurface;
+
+    // DEBUG STATE: Last device info which was written to the log, or null if none.
+    // Do not use for any other purpose.
+    DisplayDeviceInfo mDebugLastLoggedDeviceInfo;
 
     public DisplayDevice(DisplayAdapter displayAdapter, IBinder displayToken, String uniqueId) {
         mDisplayAdapter = displayAdapter;
@@ -90,6 +94,11 @@ abstract class DisplayDevice {
     }
 
     /**
+     * Returns whether the unique id of the device is stable across reboots.
+     */
+    public abstract boolean hasStableUniqueId();
+
+    /**
      * Gets information about the display device.
      *
      * The information returned should not change between calls unless the display
@@ -119,29 +128,20 @@ abstract class DisplayDevice {
     /**
      * Sets the display state, if supported.
      *
+     * @param state The new display state.
+     * @param brightness The new display brightness.
      * @return A runnable containing work to be deferred until after we have
      * exited the critical section, or null if none.
      */
-    public Runnable requestDisplayStateLocked(int state) {
+    public Runnable requestDisplayStateLocked(int state, int brightness) {
         return null;
     }
 
     /**
-     * Sets the refresh rate, if supported.
+     * Sets the mode, if supported.
      */
-    public void requestRefreshRateLocked(float refreshRate) {
+    public void requestDisplayModesInTransactionLocked(int colorMode, int modeId) {
     }
-
-	/**
-	 * Date: Feb 25, 2016
-	 * Copyright (C) 2016 RUBIS Laboratory at Seoul National University
-	 * 
-	 * Gets the display layer stack.
-	 */
-    public int getLayerStack() {
-        return mCurrentLayerStack;
-    }
-	// END
 
     /**
      * Sets the display layer stack while in a transaction.

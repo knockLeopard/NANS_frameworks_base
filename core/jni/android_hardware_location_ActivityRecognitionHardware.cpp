@@ -123,7 +123,7 @@ static void activity_callback(
     detach_thread();
 }
 
-activity_recognition_callback_procs_t sCallbacks {
+activity_recognition_callback_procs_t sCallbacks = {
     activity_callback,
 };
 
@@ -275,7 +275,7 @@ static int flush(JNIEnv* env, jobject obj) {
 }
 
 
-static JNINativeMethod sMethods[] = {
+static const JNINativeMethod sMethods[] = {
     // {"name", "signature", (void*) functionPointer },
     { "nativeClassInit", "()V", (void*) class_init },
     { "nativeInitialize", "()V", (void*) initialize },

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
- * Copyright (C) 2016 RUBIS Laboratory at Seoul National University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -89,15 +88,7 @@ public final class InputWindowHandle {
     public int inputFeatures;
 
     // Display this input is on.
-	/**
-	 * Date: Feb 25, 2016
-	 * Copyright (C) 2016 RUBIS Laboratory at Seoul National University
-	 * 
-	 * Remove the final keyword of displayId in order to modify on run-time.
-	 */
-    // public final int displayId;
-    public int displayId;
-	// END
+    public final int displayId;
 
     private native void nativeDispose();
 
@@ -106,6 +97,18 @@ public final class InputWindowHandle {
         this.inputApplicationHandle = inputApplicationHandle;
         this.windowState = windowState;
         this.displayId = displayId;
+    }
+
+    @Override
+    public String toString() {
+        return new StringBuilder(name)
+                .append(", layer=").append(layer)
+                .append(", frame=[").append(frameLeft).append(",").append(frameTop).append(",")
+                        .append(frameRight).append(",").append(frameBottom).append("]")
+                .append(", touchableRegion=").append(touchableRegion)
+                .append(", visible=").append(visible)
+                .toString();
+
     }
 
     @Override

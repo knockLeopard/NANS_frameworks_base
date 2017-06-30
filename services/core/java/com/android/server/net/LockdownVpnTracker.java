@@ -17,6 +17,10 @@
 package com.android.server.net;
 
 import static android.Manifest.permission.CONNECTIVITY_INTERNAL;
+import static android.net.NetworkPolicyManager.FIREWALL_CHAIN_NONE;
+import static android.net.NetworkPolicyManager.FIREWALL_RULE_ALLOW;
+import static android.net.NetworkPolicyManager.FIREWALL_RULE_DEFAULT;
+import static android.provider.Settings.ACTION_VPN_SETTINGS;
 
 import android.app.Notification;
 import android.app.NotificationManager;
@@ -31,6 +35,7 @@ import android.net.LinkAddress;
 import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
+import android.net.NetworkPolicyManager;
 import android.os.INetworkManagementService;
 import android.os.RemoteException;
 import android.security.Credentials;
@@ -61,9 +66,6 @@ public class LockdownVpnTracker {
     private static final int MAX_ERROR_COUNT = 4;
 
     private static final String ACTION_LOCKDOWN_RESET = "com.android.server.action.LOCKDOWN_RESET";
-
-    private static final String ACTION_VPN_SETTINGS = "android.net.vpn.SETTINGS";
-    private static final String EXTRA_PICK_LOCKDOWN = "android.net.vpn.PICK_LOCKDOWN";
 
     private static final int ROOT_UID = 0;
 
@@ -97,7 +99,6 @@ public class LockdownVpnTracker {
         mProfile = Preconditions.checkNotNull(profile);
 
         final Intent configIntent = new Intent(ACTION_VPN_SETTINGS);
-        configIntent.putExtra(EXTRA_PICK_LOCKDOWN, true);
         mConfigIntent = PendingIntent.getActivity(mContext, 0, configIntent, 0);
 
         final Intent resetIntent = new Intent(ACTION_LOCKDOWN_RESET);
@@ -198,8 +199,8 @@ public class LockdownVpnTracker {
                     setFirewallEgressSourceRule(addr, true);
                 }
 
-                mNetService.setFirewallUidRule(ROOT_UID, true);
-                mNetService.setFirewallUidRule(Os.getuid(), true);
+                mNetService.setFirewallUidRule(FIREWALL_CHAIN_NONE, ROOT_UID, FIREWALL_RULE_ALLOW);
+                mNetService.setFirewallUidRule(FIREWALL_CHAIN_NONE, Os.getuid(), FIREWALL_RULE_ALLOW);
 
                 mErrorCount = 0;
                 mAcceptedIface = iface;
@@ -208,7 +209,9 @@ public class LockdownVpnTracker {
                 throw new RuntimeException("Problem setting firewall rules", e);
             }
 
-            mConnService.sendConnectedBroadcast(augmentNetworkInfo(egressInfo));
+            final NetworkInfo clone = new NetworkInfo(egressInfo);
+            augmentNetworkInfo(clone);
+            mConnService.sendConnectedBroadcast(clone);
         }
     }
 
@@ -235,9 +238,7 @@ public class LockdownVpnTracker {
             throw new RuntimeException("Problem setting firewall rules", e);
         }
 
-        synchronized (mStateLock) {
-            handleStateChangedLocked();
-        }
+        handleStateChangedLocked();
     }
 
     public void shutdown() {
@@ -288,8 +289,8 @@ public class LockdownVpnTracker {
                     setFirewallEgressSourceRule(addr, false);
                 }
 
-                mNetService.setFirewallUidRule(ROOT_UID, false);
-                mNetService.setFirewallUidRule(Os.getuid(), false);
+                mNetService.setFirewallUidRule(FIREWALL_CHAIN_NONE, ROOT_UID, FIREWALL_RULE_DEFAULT);
+                mNetService.setFirewallUidRule(FIREWALL_CHAIN_NONE,Os.getuid(), FIREWALL_RULE_DEFAULT);
 
                 mAcceptedSourceAddr = null;
             }
@@ -321,13 +322,11 @@ public class LockdownVpnTracker {
         }
     }
 
-    public NetworkInfo augmentNetworkInfo(NetworkInfo info) {
+    public void augmentNetworkInfo(NetworkInfo info) {
         if (info.isConnected()) {
             final NetworkInfo vpnInfo = mVpn.getNetworkInfo();
-            info = new NetworkInfo(info);
             info.setDetailedState(vpnInfo.getDetailedState(), vpnInfo.getReason(), null);
         }
-        return info;
     }
 
     private void showNotification(int titleRes, int iconRes) {
@@ -341,7 +340,7 @@ public class LockdownVpnTracker {
                 .setOngoing(true)
                 .addAction(R.drawable.ic_menu_refresh, mContext.getString(R.string.reset),
                         mResetIntent)
-                .setColor(mContext.getResources().getColor(
+                .setColor(mContext.getColor(
                         com.android.internal.R.color.system_notification_accent_color));
 
         NotificationManager.from(mContext).notify(TAG, 0, builder.build());

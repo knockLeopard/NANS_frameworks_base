@@ -17,31 +17,33 @@
 package com.android.systemui;
 
 import static android.opengl.GLES20.*;
+
 import static javax.microedition.khronos.egl.EGL10.*;
 
 import android.app.ActivityManager;
 import android.app.WallpaperManager;
-import android.content.BroadcastReceiver;
 import android.content.ComponentCallbacks2;
-import android.content.Context;
-import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Region.Op;
 import android.opengl.GLUtils;
+import android.os.AsyncTask;
 import android.os.SystemProperties;
+import android.os.Trace;
 import android.renderscript.Matrix4f;
 import android.service.wallpaper.WallpaperService;
 import android.util.Log;
 import android.view.Display;
+import android.view.DisplayInfo;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.WindowManager;
 
+import java.io.FileDescriptor;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -113,8 +115,10 @@ public class ImageWallpaper extends WallpaperService {
         float mYOffset = 0.5f;
         float mScale = 1f;
 
+        private Display mDefaultDisplay;
+        private final DisplayInfo mTmpDisplayInfo = new DisplayInfo();
+
         boolean mVisible = true;
-        boolean mRedrawNeeded;
         boolean mOffsetsChanged;
         int mLastXTranslation;
         int mLastYTranslation;
@@ -147,14 +151,25 @@ public class ImageWallpaper extends WallpaperService {
         private static final int TRIANGLE_VERTICES_DATA_POS_OFFSET = 0;
         private static final int TRIANGLE_VERTICES_DATA_UV_OFFSET = 3;
 
+        private int mRotationAtLastSurfaceSizeUpdate = -1;
+        private int mDisplayWidthAtLastSurfaceSizeUpdate = -1;
+        private int mDisplayHeightAtLastSurfaceSizeUpdate = -1;
+
+        private int mLastRequestedWidth = -1;
+        private int mLastRequestedHeight = -1;
+        private AsyncTask<Void, Void, Bitmap> mLoader;
+        private boolean mNeedsDrawAfterLoadingWallpaper;
+        private boolean mSurfaceValid;
+
         public DrawableEngine() {
             super();
             setFixedSizeAllowed(true);
         }
 
         public void trimMemory(int level) {
-            if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
-                    mBackground != null) {
+            if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
+                    && level <= ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+                    && mBackground != null) {
                 if (DEBUG) {
                     Log.d(TAG, "trimMemory");
                 }
@@ -174,9 +189,10 @@ public class ImageWallpaper extends WallpaperService {
 
             super.onCreate(surfaceHolder);
 
-            updateSurfaceSize(surfaceHolder);
-
+            mDefaultDisplay = getSystemService(WindowManager.class).getDefaultDisplay();
             setOffsetNotificationsEnabled(false);
+
+            updateSurfaceSize(surfaceHolder, getDefaultDisplayInfo(), false /* forDraw */);
         }
 
         @Override
@@ -186,43 +202,36 @@ public class ImageWallpaper extends WallpaperService {
             mWallpaperManager.forgetLoadedWallpaper();
         }
 
-        void updateSurfaceSize(SurfaceHolder surfaceHolder) {
-            Point p = getDefaultDisplaySize();
+        boolean updateSurfaceSize(SurfaceHolder surfaceHolder, DisplayInfo displayInfo,
+                boolean forDraw) {
+            boolean hasWallpaper = true;
 
             // Load background image dimensions, if we haven't saved them yet
             if (mBackgroundWidth <= 0 || mBackgroundHeight <= 0) {
                 // Need to load the image to get dimensions
                 mWallpaperManager.forgetLoadedWallpaper();
-                updateWallpaperLocked();
-                if (mBackgroundWidth <= 0 || mBackgroundHeight <= 0) {
-                    // Default to the display size if we can't find the dimensions
-                    mBackgroundWidth = p.x;
-                    mBackgroundHeight = p.y;
+                loadWallpaper(forDraw);
+                if (DEBUG) {
+                    Log.d(TAG, "Reloading, redoing updateSurfaceSize later.");
                 }
+                hasWallpaper = false;
             }
 
             // Force the wallpaper to cover the screen in both dimensions
-            int surfaceWidth = Math.max(p.x, mBackgroundWidth);
-            int surfaceHeight = Math.max(p.y, mBackgroundHeight);
-
-            // If the surface dimensions haven't changed, then just return
-            final Rect frame = surfaceHolder.getSurfaceFrame();
-            if (frame != null) {
-                final int dw = frame.width();
-                final int dh = frame.height();
-                if (surfaceWidth == dw && surfaceHeight == dh) {
-                    return;
-                }
-            }
+            int surfaceWidth = Math.max(displayInfo.logicalWidth, mBackgroundWidth);
+            int surfaceHeight = Math.max(displayInfo.logicalHeight, mBackgroundHeight);
 
             if (FIXED_SIZED_SURFACE) {
                 // Used a fixed size surface, because we are special.  We can do
                 // this because we know the current design of window animations doesn't
                 // cause this to break.
                 surfaceHolder.setFixedSize(surfaceWidth, surfaceHeight);
+                mLastRequestedWidth = surfaceWidth;
+                mLastRequestedHeight = surfaceHeight;
             } else {
                 surfaceHolder.setSizeFromLayout();
             }
+            return hasWallpaper;
         }
 
         @Override
@@ -236,13 +245,10 @@ public class ImageWallpaper extends WallpaperService {
                     Log.d(TAG, "Visibility changed to visible=" + visible);
                 }
                 mVisible = visible;
-                drawFrame();
+                if (visible) {
+                    drawFrame();
+                }
             }
-        }
-
-        @Override
-        public void onTouchEvent(MotionEvent event) {
-            super.onTouchEvent(event);
         }
 
         @Override
@@ -280,13 +286,23 @@ public class ImageWallpaper extends WallpaperService {
         @Override
         public void onSurfaceDestroyed(SurfaceHolder holder) {
             super.onSurfaceDestroyed(holder);
+            if (DEBUG) {
+                Log.i(TAG, "onSurfaceDestroyed");
+            }
+
             mLastSurfaceWidth = mLastSurfaceHeight = -1;
+            mSurfaceValid = false;
         }
 
         @Override
         public void onSurfaceCreated(SurfaceHolder holder) {
             super.onSurfaceCreated(holder);
+            if (DEBUG) {
+                Log.i(TAG, "onSurfaceCreated");
+            }
+
             mLastSurfaceWidth = mLastSurfaceHeight = -1;
+            mSurfaceValid = true;
         }
 
         @Override
@@ -295,30 +311,34 @@ public class ImageWallpaper extends WallpaperService {
                 Log.d(TAG, "onSurfaceRedrawNeeded");
             }
             super.onSurfaceRedrawNeeded(holder);
-
             drawFrame();
         }
 
-        private Point getDefaultDisplaySize() {
-            Point p = new Point();
-            Context c = ImageWallpaper.this.getApplicationContext();
-            WindowManager wm = (WindowManager)c.getSystemService(Context.WINDOW_SERVICE);
-            Display d = wm.getDefaultDisplay();
-            d.getRealSize(p);
-            return p;
+        private DisplayInfo getDefaultDisplayInfo() {
+            mDefaultDisplay.getDisplayInfo(mTmpDisplayInfo);
+            return mTmpDisplayInfo;
         }
 
         void drawFrame() {
+            if (!mSurfaceValid) {
+                return;
+            }
             try {
-                int newRotation = ((WindowManager) getSystemService(WINDOW_SERVICE)).
-                        getDefaultDisplay().getRotation();
+                Trace.traceBegin(Trace.TRACE_TAG_VIEW, "drawWallpaper");
+                DisplayInfo displayInfo = getDefaultDisplayInfo();
+                int newRotation = displayInfo.rotation;
 
                 // Sometimes a wallpaper is not large enough to cover the screen in one dimension.
                 // Call updateSurfaceSize -- it will only actually do the update if the dimensions
                 // should change
                 if (newRotation != mLastRotation) {
                     // Update surface size (if necessary)
-                    updateSurfaceSize(getSurfaceHolder());
+                    if (!updateSurfaceSize(getSurfaceHolder(), displayInfo, true /* forDraw */)) {
+                        return; // had to reload wallpaper, will retry later
+                    }
+                    mRotationAtLastSurfaceSizeUpdate = newRotation;
+                    mDisplayWidthAtLastSurfaceSizeUpdate = displayInfo.logicalWidth;
+                    mDisplayHeightAtLastSurfaceSizeUpdate = displayInfo.logicalHeight;
                 }
                 SurfaceHolder sh = getSurfaceHolder();
                 final Rect frame = sh.getSurfaceFrame();
@@ -337,8 +357,8 @@ public class ImageWallpaper extends WallpaperService {
                 }
                 mLastRotation = newRotation;
 
-                // Load bitmap if it is not yet loaded or if it was loaded at a different size
-                if (mBackground == null || surfaceDimensionsChanged) {
+                // Load bitmap if it is not yet loaded
+                if (mBackground == null) {
                     if (DEBUG) {
                         Log.d(TAG, "Reloading bitmap: mBackground, bgw, bgh, dw, dh = " +
                                 mBackground + ", " +
@@ -347,20 +367,11 @@ public class ImageWallpaper extends WallpaperService {
                                 dw + ", " + dh);
                     }
                     mWallpaperManager.forgetLoadedWallpaper();
-                    updateWallpaperLocked();
-                    if (mBackground == null) {
-                        if (DEBUG) {
-                            Log.d(TAG, "Unable to load bitmap");
-                        }
-                        return;
-                    }
+                    loadWallpaper(true /* needDraw */);
                     if (DEBUG) {
-                        if (dw != mBackground.getWidth() || dh != mBackground.getHeight()) {
-                            Log.d(TAG, "Surface != bitmap dimensions: surface w/h, bitmap w/h: " +
-                                    dw + ", " + dh + ", " + mBackground.getWidth() + ", " +
-                                    mBackground.getHeight());
-                        }
+                        Log.d(TAG, "Reloading, resuming draw later");
                     }
+                    return;
                 }
 
                 // Center the scaled image
@@ -382,7 +393,6 @@ public class ImageWallpaper extends WallpaperService {
                     yPixels += (int) (availhUnscaled * (mYOffset - .5f) + .5f);
 
                 mOffsetsChanged = false;
-                mRedrawNeeded = false;
                 if (surfaceDimensionsChanged) {
                     mLastSurfaceWidth = dw;
                     mLastSurfaceHeight = dh;
@@ -409,6 +419,7 @@ public class ImageWallpaper extends WallpaperService {
                     drawWallpaperWithCanvas(sh, availw, availh, xPixels, yPixels);
                 }
             } finally {
+                Trace.traceEnd(Trace.TRACE_TAG_VIEW);
                 if (FIXED_SIZED_SURFACE && !mIsHwAccelerated) {
                     // If the surface is fixed-size, we should only need to
                     // draw it once and then we'll let the window manager
@@ -421,36 +432,110 @@ public class ImageWallpaper extends WallpaperService {
             }
         }
 
-        private void updateWallpaperLocked() {
-            Throwable exception = null;
-            try {
-                mBackground = null;
-                mBackgroundWidth = -1;
-                mBackgroundHeight = -1;
-                mBackground = mWallpaperManager.getBitmap();
-                mBackgroundWidth = mBackground.getWidth();
-                mBackgroundHeight = mBackground.getHeight();
-            } catch (RuntimeException e) {
-                exception = e;
-            } catch (OutOfMemoryError e) {
-                exception = e;
-            }
-
-            if (exception != null) {
-                mBackground = null;
-                mBackgroundWidth = -1;
-                mBackgroundHeight = -1;
-                // Note that if we do fail at this, and the default wallpaper can't
-                // be loaded, we will go into a cycle.  Don't do a build where the
-                // default wallpaper can't be loaded.
-                Log.w(TAG, "Unable to load wallpaper!", exception);
-                try {
-                    mWallpaperManager.clear();
-                } catch (IOException ex) {
-                    // now we're really screwed.
-                    Log.w(TAG, "Unable reset to default wallpaper!", ex);
+        /**
+         * Loads the wallpaper on background thread and schedules updating the surface frame,
+         * and if {@param needsDraw} is set also draws a frame.
+         *
+         * If loading is already in-flight, subsequent loads are ignored (but needDraw is or-ed to
+         * the active request).
+         */
+        private void loadWallpaper(boolean needsDraw) {
+            mNeedsDrawAfterLoadingWallpaper |= needsDraw;
+            if (mLoader != null) {
+                if (DEBUG) {
+                    Log.d(TAG, "Skipping loadWallpaper, already in flight ");
                 }
+                return;
             }
+            mLoader = new AsyncTask<Void, Void, Bitmap>() {
+                @Override
+                protected Bitmap doInBackground(Void... params) {
+                    Throwable exception;
+                    try {
+                        return mWallpaperManager.getBitmap();
+                    } catch (RuntimeException | OutOfMemoryError e) {
+                        exception = e;
+                    }
+
+                    if (exception != null) {
+                        // Note that if we do fail at this, and the default wallpaper can't
+                        // be loaded, we will go into a cycle.  Don't do a build where the
+                        // default wallpaper can't be loaded.
+                        Log.w(TAG, "Unable to load wallpaper!", exception);
+                        try {
+                            mWallpaperManager.clear();
+                        } catch (IOException ex) {
+                            // now we're really screwed.
+                            Log.w(TAG, "Unable reset to default wallpaper!", ex);
+                        }
+
+                        try {
+                            return mWallpaperManager.getBitmap();
+                        } catch (RuntimeException | OutOfMemoryError e) {
+                            Log.w(TAG, "Unable to load default wallpaper!", e);
+                        }
+                    }
+                    return null;
+                }
+
+                @Override
+                protected void onPostExecute(Bitmap b) {
+                    mBackground = null;
+                    mBackgroundWidth = -1;
+                    mBackgroundHeight = -1;
+
+                    if (b != null) {
+                        mBackground = b;
+                        mBackgroundWidth = mBackground.getWidth();
+                        mBackgroundHeight = mBackground.getHeight();
+                    }
+
+                    if (DEBUG) {
+                        Log.d(TAG, "Wallpaper loaded: " + mBackground);
+                    }
+                    updateSurfaceSize(getSurfaceHolder(), getDefaultDisplayInfo(),
+                            false /* forDraw */);
+                    if (mNeedsDrawAfterLoadingWallpaper) {
+                        drawFrame();
+                    }
+
+                    mLoader = null;
+                    mNeedsDrawAfterLoadingWallpaper = false;
+                }
+            }.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+        }
+
+        @Override
+        protected void dump(String prefix, FileDescriptor fd, PrintWriter out, String[] args) {
+            super.dump(prefix, fd, out, args);
+
+            out.print(prefix); out.println("ImageWallpaper.DrawableEngine:");
+            out.print(prefix); out.print(" mBackground="); out.print(mBackground);
+            out.print(" mBackgroundWidth="); out.print(mBackgroundWidth);
+            out.print(" mBackgroundHeight="); out.println(mBackgroundHeight);
+
+            out.print(prefix); out.print(" mLastRotation="); out.print(mLastRotation);
+            out.print(" mLastSurfaceWidth="); out.print(mLastSurfaceWidth);
+            out.print(" mLastSurfaceHeight="); out.println(mLastSurfaceHeight);
+
+            out.print(prefix); out.print(" mXOffset="); out.print(mXOffset);
+            out.print(" mYOffset="); out.println(mYOffset);
+
+            out.print(prefix); out.print(" mVisible="); out.print(mVisible);
+            out.print(" mOffsetsChanged="); out.println(mOffsetsChanged);
+
+            out.print(prefix); out.print(" mLastXTranslation="); out.print(mLastXTranslation);
+            out.print(" mLastYTranslation="); out.print(mLastYTranslation);
+            out.print(" mScale="); out.println(mScale);
+
+            out.print(prefix); out.print(" mLastRequestedWidth="); out.print(mLastRequestedWidth);
+            out.print(" mLastRequestedHeight="); out.println(mLastRequestedHeight);
+
+            out.print(prefix); out.println(" DisplayInfo at last updateSurfaceSize:");
+            out.print(prefix);
+            out.print("  rotation="); out.print(mRotationAtLastSurfaceSizeUpdate);
+            out.print("  width="); out.print(mDisplayWidthAtLastSurfaceSizeUpdate);
+            out.print("  height="); out.println(mDisplayHeightAtLastSurfaceSizeUpdate);
         }
 
         private void drawWallpaperWithCanvas(SurfaceHolder sh, int w, int h, int left, int top) {

@@ -19,8 +19,6 @@ package com.android.commands.svc;
 import android.os.ServiceManager;
 import android.os.RemoteException;
 import android.net.wifi.IWifiManager;
-import android.net.IConnectivityManager;
-import android.net.ConnectivityManager;
 import android.content.Context;
 
 public class WifiCommand extends Svc.Command {
@@ -54,7 +52,7 @@ public class WifiCommand extends Svc.Command {
                 IWifiManager wifiMgr
                         = IWifiManager.Stub.asInterface(ServiceManager.getService(Context.WIFI_SERVICE));
                 try {
-                    wifiMgr.setWifiEnabled(flag);
+                    wifiMgr.setWifiEnabled("com.android.shell", flag);
                 }
                 catch (RemoteException e) {
                     System.err.println("Wi-Fi operation failed: " + e);

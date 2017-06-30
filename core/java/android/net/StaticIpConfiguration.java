@@ -21,7 +21,6 @@ import android.os.Parcelable;
 import android.os.Parcel;
 
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -132,7 +131,7 @@ public class StaticIpConfiguration implements Parcelable {
             str.append(" ").append(dnsServer.getHostAddress());
         }
 
-        str.append(" ] Domains");
+        str.append(" ] Domains ");
         if (domains != null) str.append(domains);
         return str.toString();
     }
@@ -188,6 +187,7 @@ public class StaticIpConfiguration implements Parcelable {
         for (InetAddress dnsServer : dnsServers) {
             NetworkUtils.parcelInetAddress(dest, dnsServer, flags);
         }
+        dest.writeString(domains);
     }
 
     protected static void readFromParcel(StaticIpConfiguration s, Parcel in) {
@@ -198,5 +198,6 @@ public class StaticIpConfiguration implements Parcelable {
         for (int i = 0; i < size; i++) {
             s.dnsServers.add(NetworkUtils.unparcelInetAddress(in));
         }
+        s.domains = in.readString();
     }
 }

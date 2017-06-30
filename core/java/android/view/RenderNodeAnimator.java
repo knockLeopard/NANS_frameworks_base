@@ -283,10 +283,10 @@ public class RenderNodeAnimator extends Animator {
     }
 
     public void setTarget(Canvas canvas) {
-        if (!(canvas instanceof GLES20RecordingCanvas)) {
+        if (!(canvas instanceof DisplayListCanvas)) {
             throw new IllegalArgumentException("Not a GLES20RecordingCanvas");
         }
-        final GLES20RecordingCanvas recordingCanvas = (GLES20RecordingCanvas) canvas;
+        final DisplayListCanvas recordingCanvas = (DisplayListCanvas) canvas;
         setTarget(recordingCanvas.mNode);
     }
 
@@ -334,6 +334,11 @@ public class RenderNodeAnimator extends Animator {
     @Override
     public long getDuration() {
         return mUnscaledDuration;
+    }
+
+    @Override
+    public long getTotalDuration() {
+        return mUnscaledDuration + mUnscaledStartDelay;
     }
 
     @Override

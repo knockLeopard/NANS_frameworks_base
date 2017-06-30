@@ -16,6 +16,7 @@
 
 package com.android.internal.telephony;
 
+import android.content.ContentResolver;
 import android.content.Context;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -51,6 +52,9 @@ import java.util.Locale;
 public class CallerInfo {
     private static final String TAG = "CallerInfo";
     private static final boolean VDBG = Rlog.isLoggable(TAG, Log.VERBOSE);
+
+    public static final long USER_TYPE_CURRENT = 0;
+    public static final long USER_TYPE_WORK = 1;
 
     /**
      * Please note that, any one of these member variables can be null,
@@ -101,6 +105,8 @@ public class CallerInfo {
     public boolean needUpdate;
     public Uri contactRefUri;
     public String lookupKey;
+
+    public long userType;
 
     /**
      * Contact display photo URI.  If a contact has no display photo but a thumbnail, it'll be
@@ -153,6 +159,7 @@ public class CallerInfo {
         // TODO: Move all the basic initialization here?
         mIsEmergency = false;
         mIsVoiceMail = false;
+        userType = USER_TYPE_CURRENT;
     }
 
     /**
@@ -172,6 +179,7 @@ public class CallerInfo {
         info.cachedPhoto = null;
         info.isCachedPhotoCurrent = false;
         info.contactExists = false;
+        info.userType = USER_TYPE_CURRENT;
 
         if (VDBG) Rlog.v(TAG, "getCallerInfo() based on cursor...");
 
@@ -224,6 +232,9 @@ public class CallerInfo {
                             Rlog.v(TAG, "==> got info.contactIdOrZero: " + info.contactIdOrZero);
                         }
                     }
+                    if (Contacts.isEnterpriseContactId(contactId)) {
+                        info.userType = USER_TYPE_WORK;
+                    }
                 } else {
                     // No valid columnIndex, so we can't look up person_id.
                     Rlog.w(TAG, "Couldn't find contact_id column for " + contactRef);
@@ -248,9 +259,17 @@ public class CallerInfo {
 
                 // look for the custom ringtone, create from the string stored
                 // in the database.
+                // An empty string ("") in the database indicates a silent ringtone,
+                // and we set contactRingtoneUri = Uri.EMPTY, so that no ringtone will be played.
+                // {null} in the database indicates the default ringtone,
+                // and we set contactRingtoneUri = null, so that default ringtone will be played.
                 columnIndex = cursor.getColumnIndex(PhoneLookup.CUSTOM_RINGTONE);
                 if ((columnIndex != -1) && (cursor.getString(columnIndex) != null)) {
-                    info.contactRingtoneUri = Uri.parse(cursor.getString(columnIndex));
+                    if (TextUtils.isEmpty(cursor.getString(columnIndex))) {
+                        info.contactRingtoneUri = Uri.EMPTY;
+                    } else {
+                        info.contactRingtoneUri = Uri.parse(cursor.getString(columnIndex));
+                    }
                 } else {
                     info.contactRingtoneUri = null;
                 }
@@ -282,10 +301,17 @@ public class CallerInfo {
      * number. The returned CallerInfo is null if no number is supplied.
      */
     public static CallerInfo getCallerInfo(Context context, Uri contactRef) {
-
-        return getCallerInfo(context, contactRef,
-                CallerInfoAsyncQuery.getCurrentProfileContentResolver(context)
-                        .query(contactRef, null, null, null, null));
+        CallerInfo info = null;
+        ContentResolver cr = CallerInfoAsyncQuery.getCurrentProfileContentResolver(context);
+        if (cr != null) {
+            try {
+                info = getCallerInfo(context, contactRef,
+                        cr.query(contactRef, null, null, null, null));
+            } catch (RuntimeException re) {
+                Rlog.e(TAG, "Error getting caller info.", re);
+            }
+        }
+        return info;
     }
 
     /**
@@ -301,7 +327,7 @@ public class CallerInfo {
     public static CallerInfo getCallerInfo(Context context, String number) {
         if (VDBG) Rlog.v(TAG, "getCallerInfo() based on number...");
 
-        int subId = SubscriptionManager.getDefaultSubId();
+        int subId = SubscriptionManager.getDefaultSubscriptionId();
         return getCallerInfo(context, number, subId);
     }
 
@@ -418,7 +444,7 @@ public class CallerInfo {
     // string in the phone number field.
     /* package */ CallerInfo markAsVoiceMail() {
 
-        int subId = SubscriptionManager.getDefaultSubId();
+        int subId = SubscriptionManager.getDefaultSubscriptionId();
         return markAsVoiceMail(subId);
 
     }
@@ -612,6 +638,7 @@ public class CallerInfo {
     /**
      * @return a string debug representation of this instance.
      */
+    @Override
     public String toString() {
         // Warning: never check in this file with VERBOSE_DEBUG = true
         // because that will result in PII in the system log.
@@ -642,6 +669,7 @@ public class CallerInfo {
                     .append("\nemergency: " + mIsEmergency)
                     .append("\nvoicemail " + mIsVoiceMail)
                     .append("\ncontactExists " + contactExists)
+                    .append("\nuserType " + userType)
                     .append(" }")
                     .toString();
         } else {

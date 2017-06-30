@@ -28,7 +28,6 @@ import android.content.Intent;
 import android.content.pm.IPackageManager;
 import android.content.pm.UserInfo;
 import android.os.Bundle;
-import android.os.Process;
 import android.os.RemoteException;
 import android.os.UserHandle;
 import android.os.UserManager;
@@ -46,8 +45,8 @@ public class IntentForwarderActivity extends Activity  {
 
     public static String TAG = "IntentForwarderActivity";
 
-    public static String FORWARD_INTENT_TO_USER_OWNER
-            = "com.android.internal.app.ForwardIntentToUserOwner";
+    public static String FORWARD_INTENT_TO_PARENT
+            = "com.android.internal.app.ForwardIntentToParent";
 
     public static String FORWARD_INTENT_TO_MANAGED_PROFILE
             = "com.android.internal.app.ForwardIntentToManagedProfile";
@@ -61,9 +60,9 @@ public class IntentForwarderActivity extends Activity  {
         final int targetUserId;
         final int userMessageId;
 
-        if (className.equals(FORWARD_INTENT_TO_USER_OWNER)) {
+        if (className.equals(FORWARD_INTENT_TO_PARENT)) {
             userMessageId = com.android.internal.R.string.forward_intent_to_owner;
-            targetUserId = UserHandle.USER_OWNER;
+            targetUserId = getProfileParent();
         } else if (className.equals(FORWARD_INTENT_TO_MANAGED_PROFILE)) {
             userMessageId = com.android.internal.R.string.forward_intent_to_work;
             targetUserId = getManagedProfile();
@@ -73,7 +72,7 @@ public class IntentForwarderActivity extends Activity  {
             targetUserId = UserHandle.USER_NULL;
         }
         if (targetUserId == UserHandle.USER_NULL) {
-            // This covers the case where there is no managed profile.
+            // This covers the case where there is no parent / managed profile.
             finish();
             return;
         }
@@ -86,11 +85,13 @@ public class IntentForwarderActivity extends Activity  {
         int callingUserId = getUserId();
 
         if (canForward(newIntent, targetUserId)) {
-            if (newIntent.getAction().equals(Intent.ACTION_CHOOSER)) {
+            if (Intent.ACTION_CHOOSER.equals(newIntent.getAction())) {
                 Intent innerIntent = (Intent) newIntent.getParcelableExtra(Intent.EXTRA_INTENT);
-                innerIntent.setContentUserHint(callingUserId);
+                // At this point, innerIntent is not null. Otherwise, canForward would have returned
+                // false.
+                innerIntent.prepareToLeaveUser(callingUserId);
             } else {
-                newIntent.setContentUserHint(callingUserId);
+                newIntent.prepareToLeaveUser(callingUserId);
             }
 
             final android.content.pm.ResolveInfo ri = getPackageManager().resolveActivityAsUser(
@@ -104,7 +105,7 @@ public class IntentForwarderActivity extends Activity  {
                     || ChooserActivity.class.getName().equals(ri.activityInfo.name));
 
             try {
-                startActivityAsCaller(newIntent, null, targetUserId);
+                startActivityAsCaller(newIntent, null, false, targetUserId);
             } catch (RuntimeException e) {
                 int launchedFromUid = -1;
                 String launchedFromPackage = "?";
@@ -125,7 +126,7 @@ public class IntentForwarderActivity extends Activity  {
                 Toast.makeText(this, getString(userMessageId), Toast.LENGTH_LONG).show();
             }
         } else {
-            Slog.wtf(TAG, "the intent: " + newIntent + "cannot be forwarded from user "
+            Slog.wtf(TAG, "the intent: " + newIntent + " cannot be forwarded from user "
                     + callingUserId + " to user " + targetUserId);
         }
         finish();
@@ -133,7 +134,7 @@ public class IntentForwarderActivity extends Activity  {
 
     boolean canForward(Intent intent, int targetUserId)  {
         IPackageManager ipm = AppGlobals.getPackageManager();
-        if (intent.getAction().equals(Intent.ACTION_CHOOSER)) {
+        if (Intent.ACTION_CHOOSER.equals(intent.getAction())) {
             // The EXTRA_INITIAL_INTENTS may not be allowed to be forwarded.
             if (intent.hasExtra(Intent.EXTRA_INITIAL_INTENTS)) {
                 Slog.wtf(TAG, "An chooser intent with extra initial intents cannot be forwarded to"
@@ -146,6 +147,11 @@ public class IntentForwarderActivity extends Activity  {
                 return false;
             }
             intent = (Intent) intent.getParcelableExtra(Intent.EXTRA_INTENT);
+            if (intent == null) {
+                Slog.wtf(TAG, "Cannot forward a chooser intent with no extra "
+                        + Intent.EXTRA_INTENT);
+                return false;
+            }
         }
         String resolvedType = intent.resolveTypeIfNeeded(getContentResolver());
         if (intent.getSelector() != null) {
@@ -169,12 +175,27 @@ public class IntentForwarderActivity extends Activity  {
      */
     private int getManagedProfile() {
         UserManager userManager = (UserManager) getSystemService(Context.USER_SERVICE);
-        List<UserInfo> relatedUsers = userManager.getProfiles(UserHandle.USER_OWNER);
+        List<UserInfo> relatedUsers = userManager.getProfiles(UserHandle.myUserId());
         for (UserInfo userInfo : relatedUsers) {
             if (userInfo.isManagedProfile()) return userInfo.id;
         }
         Slog.wtf(TAG, FORWARD_INTENT_TO_MANAGED_PROFILE
                 + " has been called, but there is no managed profile");
         return UserHandle.USER_NULL;
+    }
+
+    /**
+     * Returns the userId of the profile parent or UserHandle.USER_NULL if there is
+     * no parent.
+     */
+    private int getProfileParent() {
+        UserManager userManager = (UserManager) getSystemService(Context.USER_SERVICE);
+        UserInfo parent = userManager.getProfileParent(UserHandle.myUserId());
+        if (parent == null) {
+            Slog.wtf(TAG, FORWARD_INTENT_TO_PARENT
+                    + " has been called, but there is no parent");
+            return UserHandle.USER_NULL;
+        }
+        return parent.id;
     }
 }

@@ -1,10 +1,12 @@
 #include "CreateJavaOutputStreamAdaptor.h"
-#include "JNIHelp.h"
 #include "SkData.h"
 #include "SkRefCnt.h"
 #include "SkStream.h"
 #include "SkTypes.h"
 #include "Utils.h"
+
+#include <JNIHelp.h>
+#include <memory>
 
 static jmethodID    gInputStream_readMethodID;
 static jmethodID    gInputStream_skipMethodID;
@@ -24,7 +26,6 @@ public:
     }
 
     virtual size_t read(void* buffer, size_t size) {
-        JNIEnv* env = fEnv;
         if (NULL == buffer) {
             if (0 == size) {
                 return 0;
@@ -165,7 +166,7 @@ static SkMemoryStream* adaptor_to_mem_stream(SkStream* stream) {
 
 SkStreamRewindable* CopyJavaInputStream(JNIEnv* env, jobject stream,
                                         jbyteArray storage) {
-    SkAutoTUnref<SkStream> adaptor(CreateJavaInputStreamAdaptor(env, stream, storage));
+    std::unique_ptr<SkStream> adaptor(CreateJavaInputStreamAdaptor(env, stream, storage));
     if (NULL == adaptor.get()) {
         return NULL;
     }

@@ -19,11 +19,14 @@ package com.android.layoutlib.bridge.impl;
 import com.android.layoutlib.bridge.util.Debug;
 import com.android.layoutlib.bridge.util.SparseWeakArray;
 
+import android.annotation.Nullable;
 import android.util.SparseArray;
 
+import java.io.PrintStream;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Manages native delegates.
@@ -48,7 +51,7 @@ import java.util.List;
  * int -> Delegate class link.
  *
  * Native methods usually always have the int as parameters. The first thing the delegate method
- * will do is call {@link #getDelegate(int)} to get the Java object matching the int.
+ * will do is call {@link #getDelegate(long)} to get the Java object matching the int.
  *
  * Typical native init methods are returning a new int back to the Java class, so
  * {@link #addNewDelegate(Object)} does the same.
@@ -57,7 +60,7 @@ import java.util.List;
  * the Java object needs to count as a reference (even though it only holds an int), we use the
  * following mechanism:
  *
- * - {@link #addNewDelegate(Object)} and {@link #removeJavaReferenceFor(int)} adds and removes
+ * - {@link #addNewDelegate(Object)} and {@link #removeJavaReferenceFor(long)} adds and removes
  *   the delegate to/from a list. This list hold the reference and prevents the GC from reclaiming
  *   the delegate.
  *
@@ -70,15 +73,16 @@ import java.util.List;
  * @param <T> the delegate class to manage
  */
 public final class DelegateManager<T> {
+    @SuppressWarnings("FieldCanBeLocal")
     private final Class<T> mClass;
-    private final SparseWeakArray<T> mDelegates = new SparseWeakArray<T>();
+    private static final SparseWeakArray<Object> sDelegates = new SparseWeakArray<>();
     /** list used to store delegates when their main object holds a reference to them.
      * This is to ensure that the WeakReference in the SparseWeakArray doesn't get GC'ed
      * @see #addNewDelegate(Object)
-     * @see #removeJavaReferenceFor(int)
+     * @see #removeJavaReferenceFor(long)
      */
-    private final List<T> mJavaReferences = new ArrayList<T>();
-    private int mDelegateCounter = 0;
+    private static final List<Object> sJavaReferences = new ArrayList<>();
+    private static final AtomicLong sDelegateCounter = new AtomicLong(1);
 
     public DelegateManager(Class<T> theClass) {
         mClass = theClass;
@@ -94,19 +98,24 @@ public final class DelegateManager<T> {
      * @param native_object the native int.
      * @return the delegate or null if not found.
      */
+    @Nullable
     public T getDelegate(long native_object) {
         if (native_object > 0) {
-            T delegate =  mDelegates.get(native_object);
+            Object delegate;
+            synchronized (DelegateManager.class) {
+                delegate = sDelegates.get(native_object);
+            }
 
             if (Debug.DEBUG) {
                 if (delegate == null) {
-                    System.out.println("Unknown " + mClass.getSimpleName() + " with int " +
+                    System.err.println("Unknown " + mClass.getSimpleName() + " with int " +
                             native_object);
                 }
             }
 
             assert delegate != null;
-            return delegate;
+            //noinspection unchecked
+            return (T)delegate;
         }
         return null;
     }
@@ -117,13 +126,18 @@ public final class DelegateManager<T> {
      * @return a unique native int to identify the delegate
      */
     public long addNewDelegate(T newDelegate) {
-        long native_object = ++mDelegateCounter;
-        mDelegates.put(native_object, newDelegate);
-        assert !mJavaReferences.contains(newDelegate);
-        mJavaReferences.add(newDelegate);
+        long native_object = sDelegateCounter.getAndIncrement();
+        synchronized (DelegateManager.class) {
+            sDelegates.put(native_object, newDelegate);
+            assert !sJavaReferences.contains(newDelegate);
+            sJavaReferences.add(newDelegate);
+        }
 
         if (Debug.DEBUG) {
-            System.out.println("New " + mClass.getSimpleName() + " with int " + native_object);
+            System.out.println(
+                    "New " + mClass.getSimpleName() + " " +
+                            "with int " +
+                            native_object);
         }
 
         return native_object;
@@ -134,13 +148,22 @@ public final class DelegateManager<T> {
      * @param native_object the native integer representing the delegate.
      */
     public void removeJavaReferenceFor(long native_object) {
-        T delegate = getDelegate(native_object);
+        synchronized (DelegateManager.class) {
+            T delegate = getDelegate(native_object);
 
-        if (Debug.DEBUG) {
-            System.out.println("Removing main Java ref on " + mClass.getSimpleName() +
-                    " with int " + native_object);
+            if (Debug.DEBUG) {
+                System.out.println("Removing main Java ref on " + mClass.getSimpleName() +
+                        " with int " + native_object);
+            }
+
+            sJavaReferences.remove(delegate);
         }
+    }
 
-        mJavaReferences.remove(delegate);
+    public synchronized static void dump(PrintStream out) {
+        for (Object reference : sJavaReferences) {
+            int idx = sDelegates.indexOfValue(reference);
+            out.printf("[%d] %s\n", sDelegates.keyAt(idx), reference.getClass().getSimpleName());
+        }
     }
 }

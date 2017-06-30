@@ -379,6 +379,7 @@ public class AnimatedStateListDrawable extends StateListDrawable {
                 r, theme, attrs, R.styleable.AnimatedStateListDrawable);
         super.inflateWithAttributes(r, parser, a, R.styleable.AnimatedStateListDrawable_visible);
         updateStateFromTypedArray(a);
+        updateDensity(r);
         a.recycle();
 
         inflateChildElements(r, parser, attrs, theme);
@@ -575,7 +576,7 @@ public class AnimatedStateListDrawable extends StateListDrawable {
             }
         }
 
-        private void mutate() {
+        void mutate() {
             mTransitions = mTransitions.clone();
             mStateIds = mStateIds.clone();
         }
@@ -594,7 +595,7 @@ public class AnimatedStateListDrawable extends StateListDrawable {
                 mTransitions.append(keyToFrom, pos | REVERSED_BIT | reversibleBit);
             }
 
-            return addChild(anim);
+            return pos;
         }
 
         int addStateSet(@NonNull int[] stateSet, @NonNull Drawable drawable, int id) {

@@ -16,13 +16,7 @@
 
 <resources xmlns:android="http://schemas.android.com/apk/res/android">
     <style name="BrightnessDialogContainer" parent="@style/BaseBrightnessDialogContainer">
-        <item name="android:layout_width">480dp</item>
-    </style>
-
-    <style name="SearchPanelScrim">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">@dimen/search_panel_scrim_height</item>
-        <item name="android:layout_gravity">bottom</item>
+        <item name="android:layout_width">@dimen/standard_notification_panel_width</item>
     </style>
 
     <style name="UserDetailView">

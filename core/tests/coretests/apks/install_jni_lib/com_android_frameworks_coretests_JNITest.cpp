@@ -22,13 +22,13 @@ static jint checkFunction(JNIEnv*, jclass) {
     return 1;
 }
 
-static JNINativeMethod sMethods[] = {
+static const JNINativeMethod sMethods[] = {
     /* name, signature, funcPtr */
     { "checkFunction", "()I", (void*) checkFunction },
 };
 
-int register_com_android_framework_coretests_JNITests(JNIEnv* env) {
-    return jniRegisterNativeMethods(env, "com/android/framework/coretests/JNITests", sMethods,
+int register_com_android_frameworks_coretests_JNITests(JNIEnv* env) {
+    return jniRegisterNativeMethods(env, "com/android/frameworks/coretests/JNITests", sMethods,
             NELEM(sMethods));
 }
 
@@ -37,7 +37,7 @@ int register_com_android_framework_coretests_JNITests(JNIEnv* env) {
 /*
  * JNI Initialization
  */
-jint JNI_OnLoad(JavaVM *jvm, void *reserved) {
+jint JNI_OnLoad(JavaVM *jvm, void */* reserved */) {
     JNIEnv *e;
     int status;
 
@@ -46,7 +46,7 @@ jint JNI_OnLoad(JavaVM *jvm, void *reserved) {
         return JNI_ERR;
     }
 
-    if ((status = android::register_com_android_framework_coretests_JNITests(e)) < 0) {
+    if ((status = android::register_com_android_frameworks_coretests_JNITests(e)) < 0) {
         return JNI_ERR;
     }
 

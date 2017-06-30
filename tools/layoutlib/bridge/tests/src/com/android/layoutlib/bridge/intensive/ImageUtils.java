@@ -16,7 +16,7 @@
 
 package com.android.layoutlib.bridge.intensive;
 
-import com.android.annotations.NonNull;
+import android.annotation.NonNull;
 
 import java.awt.AlphaComposite;
 import java.awt.Color;
@@ -56,7 +56,7 @@ public class ImageUtils {
 
     private static final int THUMBNAIL_SIZE = 250;
 
-    private static final double MAX_PERCENT_DIFFERENCE = 0.1;
+    private static final double MAX_PERCENT_DIFFERENCE = 0.3;
 
     public static void requireSimilar(@NonNull String relativePath, @NonNull BufferedImage image)
             throws IOException {
@@ -75,8 +75,12 @@ public class ImageUtils {
             }
         }
         else {
-            BufferedImage goldenImage = ImageIO.read(is);
-            assertImageSimilar(relativePath, goldenImage, thumbnail, MAX_PERCENT_DIFFERENCE);
+            try {
+                BufferedImage goldenImage = ImageIO.read(is);
+                assertImageSimilar(relativePath, goldenImage, thumbnail, MAX_PERCENT_DIFFERENCE);
+            } finally {
+                is.close();
+            }
         }
     }
 

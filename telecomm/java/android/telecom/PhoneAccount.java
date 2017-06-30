@@ -17,16 +17,9 @@
 package android.telecom;
 
 import android.annotation.SystemApi;
-import android.content.ComponentName;
-import android.content.Context;
-import android.content.pm.PackageManager;
-import android.content.res.Resources.NotFoundException;
-import android.graphics.Bitmap;
-import android.graphics.Color;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.ColorDrawable;
-import android.graphics.drawable.Drawable;
+import android.graphics.drawable.Icon;
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.TextUtils;
@@ -35,21 +28,44 @@ import java.lang.String;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.MissingResourceException;
 
 /**
  * Represents a distinct method to place or receive a phone call. Apps which can place calls and
  * want those calls to be integrated into the dialer and in-call UI should build an instance of
- * this class and register it with the system using {@link TelecomManager#registerPhoneAccount}.
+ * this class and register it with the system using {@link TelecomManager}.
  * <p>
  * {@link TelecomManager} uses registered {@link PhoneAccount}s to present the user with
  * alternative options when placing a phone call. When building a {@link PhoneAccount}, the app
- * should supply a valid {@link PhoneAccountHandle} that references the {@link ConnectionService}
+ * should supply a valid {@link PhoneAccountHandle} that references the connection service
  * implementation Telecom will use to interact with the app.
- * @hide
  */
-@SystemApi
-public class PhoneAccount implements Parcelable {
+public final class PhoneAccount implements Parcelable {
+
+    /**
+     * {@link PhoneAccount} extras key (see {@link PhoneAccount#getExtras()}) which determines the
+     * maximum permitted length of a call subject specified via the
+     * {@link TelecomManager#EXTRA_CALL_SUBJECT} extra on an
+     * {@link android.content.Intent#ACTION_CALL} intent.  Ultimately a {@link ConnectionService} is
+     * responsible for enforcing the maximum call subject length when sending the message, however
+     * this extra is provided so that the user interface can proactively limit the length of the
+     * call subject as the user types it.
+     */
+    public static final String EXTRA_CALL_SUBJECT_MAX_LENGTH =
+            "android.telecom.extra.CALL_SUBJECT_MAX_LENGTH";
+
+    /**
+     * {@link PhoneAccount} extras key (see {@link PhoneAccount#getExtras()}) which determines the
+     * character encoding to be used when determining the length of messages.
+     * The user interface can use this when determining the number of characters the user may type
+     * in a call subject.  If empty-string, the call subject message size limit will be enforced on
+     * a 1:1 basis.  That is, each character will count towards the messages size limit as a single
+     * character.  If a character encoding is specified, the message size limit will be based on the
+     * number of bytes in the message per the specified encoding.  See
+     * {@link #EXTRA_CALL_SUBJECT_MAX_LENGTH} for more information on the call subject maximum
+     * length.
+     */
+    public static final String EXTRA_CALL_SUBJECT_CHARACTER_ENCODING =
+            "android.telecom.extra.CALL_SUBJECT_CHARACTER_ENCODING";
 
     /**
      * Flag indicating that this {@code PhoneAccount} can act as a connection manager for
@@ -74,7 +90,6 @@ public class PhoneAccount implements Parcelable {
      * <p>
      * See {@link #getCapabilities}
      * <p>
-     * {@hide}
      */
     public static final int CAPABILITY_CALL_PROVIDER = 0x2;
 
@@ -92,7 +107,6 @@ public class PhoneAccount implements Parcelable {
      * Flag indicating that this {@code PhoneAccount} is capable of placing video calls.
      * <p>
      * See {@link #getCapabilities}
-     * @hide
      */
     public static final int CAPABILITY_VIDEO_CALLING = 0x8;
 
@@ -111,7 +125,48 @@ public class PhoneAccount implements Parcelable {
      * See {@link #getCapabilities}
      * @hide
      */
+    @SystemApi
     public static final int CAPABILITY_MULTI_USER = 0x20;
+
+    /**
+     * Flag indicating that this {@code PhoneAccount} supports a subject for Calls.  This means a
+     * caller is able to specify a short subject line for an outgoing call.  A capable receiving
+     * device displays the call subject on the incoming call screen.
+     * <p>
+     * See {@link #getCapabilities}
+     */
+    public static final int CAPABILITY_CALL_SUBJECT = 0x40;
+
+    /**
+     * Flag indicating that this {@code PhoneAccount} should only be used for emergency calls.
+     * <p>
+     * See {@link #getCapabilities}
+     * @hide
+     */
+    public static final int CAPABILITY_EMERGENCY_CALLS_ONLY = 0x80;
+
+    /**
+     * Flag indicating that for this {@code PhoneAccount}, the ability to make a video call to a
+     * number relies on presence.  Should only be set if the {@code PhoneAccount} also has
+     * {@link #CAPABILITY_VIDEO_CALLING}.
+     * <p>
+     * When set, the {@link ConnectionService} is responsible for toggling the
+     * {@link android.provider.ContactsContract.Data#CARRIER_PRESENCE_VT_CAPABLE} bit on the
+     * {@link android.provider.ContactsContract.Data#CARRIER_PRESENCE} column to indicate whether
+     * a contact's phone number supports video calling.
+     * <p>
+     * See {@link #getCapabilities}
+     */
+    public static final int CAPABILITY_VIDEO_CALLING_RELIES_ON_PRESENCE = 0x100;
+
+    /**
+     * Flag indicating that for this {@link PhoneAccount}, emergency video calling is allowed.
+     * <p>
+     * When set, Telecom will allow emergency video calls to be placed.  When not set, Telecom will
+     * convert all outgoing video calls to emergency numbers to audio-only.
+     * @hide
+     */
+    public static final int CAPABILITY_EMERGENCY_VIDEO_CALLING = 0x200;
 
     /**
      * URI scheme for telephone number URIs.
@@ -130,6 +185,7 @@ public class PhoneAccount implements Parcelable {
 
     /**
      * Indicating no icon tint is set.
+     * @hide
      */
     public static final int NO_ICON_TINT = 0;
 
@@ -147,31 +203,34 @@ public class PhoneAccount implements Parcelable {
     private final Uri mAddress;
     private final Uri mSubscriptionAddress;
     private final int mCapabilities;
-    private final int mIconResId;
-    private final String mIconPackageName;
-    private final Bitmap mIconBitmap;
-    private final int mIconTint;
     private final int mHighlightColor;
     private final CharSequence mLabel;
     private final CharSequence mShortDescription;
     private final List<String> mSupportedUriSchemes;
+    private final int mSupportedAudioRoutes;
+    private final Icon mIcon;
+    private final Bundle mExtras;
+    private boolean mIsEnabled;
+    private String mGroupId;
 
     /**
      * Helper class for creating a {@link PhoneAccount}.
      */
     public static class Builder {
+
         private PhoneAccountHandle mAccountHandle;
         private Uri mAddress;
         private Uri mSubscriptionAddress;
         private int mCapabilities;
-        private int mIconResId;
-        private String mIconPackageName;
-        private Bitmap mIconBitmap;
-        private int mIconTint = NO_ICON_TINT;
+        private int mSupportedAudioRoutes = CallAudioState.ROUTE_ALL;
         private int mHighlightColor = NO_HIGHLIGHT_COLOR;
         private CharSequence mLabel;
         private CharSequence mShortDescription;
         private List<String> mSupportedUriSchemes = new ArrayList<String>();
+        private Icon mIcon;
+        private Bundle mExtras;
+        private boolean mIsEnabled = false;
+        private String mGroupId = "";
 
         /**
          * Creates a builder with the specified {@link PhoneAccountHandle} and label.
@@ -192,20 +251,15 @@ public class PhoneAccount implements Parcelable {
             mAddress = phoneAccount.getAddress();
             mSubscriptionAddress = phoneAccount.getSubscriptionAddress();
             mCapabilities = phoneAccount.getCapabilities();
-            mIconResId = phoneAccount.getIconResId();
-            mIconPackageName = phoneAccount.getIconPackageName();
-            mIconBitmap = phoneAccount.getIconBitmap();
-            mIconTint = phoneAccount.getIconTint();
             mHighlightColor = phoneAccount.getHighlightColor();
             mLabel = phoneAccount.getLabel();
             mShortDescription = phoneAccount.getShortDescription();
             mSupportedUriSchemes.addAll(phoneAccount.getSupportedUriSchemes());
-        }
-
-        /** @hide */
-        public Builder setAccountHandle(PhoneAccountHandle accountHandle) {
-            mAccountHandle = accountHandle;
-            return this;
+            mIcon = phoneAccount.getIcon();
+            mIsEnabled = phoneAccount.isEnabled();
+            mExtras = phoneAccount.getExtras();
+            mGroupId = phoneAccount.getGroupId();
+            mSupportedAudioRoutes = phoneAccount.getSupportedAudioRoutes();
         }
 
         /**
@@ -242,65 +296,12 @@ public class PhoneAccount implements Parcelable {
         }
 
         /**
-         * Sets the icon. See {@link PhoneAccount#createIconDrawable}.
+         * Sets the icon. See {@link PhoneAccount#getIcon}.
          *
-         * @param packageContext The package from which to load an icon.
-         * @param iconResId The resource in {@code iconPackageName} representing the icon.
-         * @return The builder.
+         * @param icon The icon to set.
          */
-        public Builder setIcon(Context packageContext, int iconResId) {
-            return setIcon(packageContext.getPackageName(), iconResId);
-        }
-
-        /**
-         * Sets the icon. See {@link PhoneAccount#createIconDrawable}.
-         *
-         * @param iconPackageName The package from which to load an icon.
-         * @param iconResId The resource in {@code iconPackageName} representing the icon.
-         * @return The builder.
-         */
-        public Builder setIcon(String iconPackageName, int iconResId) {
-            return setIcon(iconPackageName, iconResId, NO_ICON_TINT);
-        }
-
-        /**
-         * Sets the icon. See {@link PhoneAccount#createIconDrawable}.
-         *
-         * @param packageContext The package from which to load an icon.
-         * @param iconResId The resource in {@code iconPackageName} representing the icon.
-         * @param iconTint A color with which to tint this icon.
-         * @return The builder.
-         */
-        public Builder setIcon(Context packageContext, int iconResId, int iconTint) {
-            return setIcon(packageContext.getPackageName(), iconResId, iconTint);
-        }
-
-        /**
-         * Sets the icon. See {@link PhoneAccount#createIconDrawable}.
-         *
-         * @param iconPackageName The package from which to load an icon.
-         * @param iconResId The resource in {@code iconPackageName} representing the icon.
-         * @param iconTint A color with which to tint this icon.
-         * @return The builder.
-         */
-        public Builder setIcon(String iconPackageName, int iconResId, int iconTint) {
-            this.mIconPackageName = iconPackageName;
-            this.mIconResId = iconResId;
-            this.mIconTint = iconTint;
-            return this;
-        }
-
-        /**
-         * Sets the icon. See {@link PhoneAccount#createIconDrawable}.
-         *
-         * @param iconBitmap The icon bitmap.
-         * @return The builder.
-         */
-        public Builder setIcon(Bitmap iconBitmap) {
-            this.mIconBitmap = iconBitmap;
-            this.mIconPackageName = null;
-            this.mIconResId = NO_RESOURCE_ID;
-            this.mIconTint = NO_ICON_TINT;
+        public Builder setIcon(Icon icon) {
+            mIcon = icon;
             return this;
         }
 
@@ -331,7 +332,6 @@ public class PhoneAccount implements Parcelable {
          *
          * @param uriScheme The URI scheme.
          * @return The builder.
-         * @hide
          */
         public Builder addSupportedUriScheme(String uriScheme) {
             if (!TextUtils.isEmpty(uriScheme) && !mSupportedUriSchemes.contains(uriScheme)) {
@@ -358,6 +358,65 @@ public class PhoneAccount implements Parcelable {
         }
 
         /**
+         * Specifies the extras associated with the {@link PhoneAccount}.
+         * <p>
+         * {@code PhoneAccount}s only support extra values of type: {@link String}, {@link Integer},
+         * and {@link Boolean}.  Extras which are not of these types are ignored.
+         *
+         * @param extras
+         * @return
+         */
+        public Builder setExtras(Bundle extras) {
+            mExtras = extras;
+            return this;
+        }
+
+        /**
+         * Sets the enabled state of the phone account.
+         *
+         * @param isEnabled The enabled state.
+         * @return The builder.
+         * @hide
+         */
+        public Builder setIsEnabled(boolean isEnabled) {
+            mIsEnabled = isEnabled;
+            return this;
+        }
+
+        /**
+         * Sets the group Id of the {@link PhoneAccount}. When a new {@link PhoneAccount} is
+         * registered to Telecom, it will replace another {@link PhoneAccount} that is already
+         * registered in Telecom and take on the current user defaults and enabled status. There can
+         * only be one {@link PhoneAccount} with a non-empty group number registered to Telecom at a
+         * time. By default, there is no group Id for a {@link PhoneAccount} (an empty String). Only
+         * grouped {@link PhoneAccount}s with the same {@link ConnectionService} can be replaced.
+         * @param groupId The group Id of the {@link PhoneAccount} that will replace any other
+         * registered {@link PhoneAccount} in Telecom with the same Group Id.
+         * @return The builder
+         * @hide
+         */
+        public Builder setGroupId(String groupId) {
+            if (groupId != null) {
+                mGroupId = groupId;
+            } else {
+                mGroupId = "";
+            }
+            return this;
+        }
+
+        /**
+         * Sets the audio routes supported by this {@link PhoneAccount}.
+         *
+         * @param routes bit mask of available routes.
+         * @return The builder.
+         * @hide
+         */
+        public Builder setSupportedAudioRoutes(int routes) {
+            mSupportedAudioRoutes = routes;
+            return this;
+        }
+
+        /**
          * Creates an instance of a {@link PhoneAccount} based on the current builder settings.
          *
          * @return The {@link PhoneAccount}.
@@ -373,14 +432,15 @@ public class PhoneAccount implements Parcelable {
                     mAddress,
                     mSubscriptionAddress,
                     mCapabilities,
-                    mIconResId,
-                    mIconPackageName,
-                    mIconBitmap,
-                    mIconTint,
+                    mIcon,
                     mHighlightColor,
                     mLabel,
                     mShortDescription,
-                    mSupportedUriSchemes);
+                    mSupportedUriSchemes,
+                    mExtras,
+                    mSupportedAudioRoutes,
+                    mIsEnabled,
+                    mGroupId);
         }
     }
 
@@ -389,26 +449,28 @@ public class PhoneAccount implements Parcelable {
             Uri address,
             Uri subscriptionAddress,
             int capabilities,
-            int iconResId,
-            String iconPackageName,
-            Bitmap iconBitmap,
-            int iconTint,
+            Icon icon,
             int highlightColor,
             CharSequence label,
             CharSequence shortDescription,
-            List<String> supportedUriSchemes) {
+            List<String> supportedUriSchemes,
+            Bundle extras,
+            int supportedAudioRoutes,
+            boolean isEnabled,
+            String groupId) {
         mAccountHandle = account;
         mAddress = address;
         mSubscriptionAddress = subscriptionAddress;
         mCapabilities = capabilities;
-        mIconResId = iconResId;
-        mIconPackageName = iconPackageName;
-        mIconBitmap = iconBitmap;
-        mIconTint = iconTint;
+        mIcon = icon;
         mHighlightColor = highlightColor;
         mLabel = label;
         mShortDescription = shortDescription;
         mSupportedUriSchemes = Collections.unmodifiableList(supportedUriSchemes);
+        mExtras = extras;
+        mSupportedAudioRoutes = supportedAudioRoutes;
+        mIsEnabled = isEnabled;
+        mGroupId = groupId;
     }
 
     public static Builder builder(
@@ -421,7 +483,6 @@ public class PhoneAccount implements Parcelable {
      * Returns a builder initialized with the current {@link PhoneAccount} instance.
      *
      * @return The builder.
-     * @hide
      */
     public Builder toBuilder() { return new Builder(this); }
 
@@ -474,10 +535,21 @@ public class PhoneAccount implements Parcelable {
      * bit mask.
      *
      * @param capability The capabilities to check.
-     * @return {@code True} if the phone account has the capability.
+     * @return {@code true} if the phone account has the capability.
      */
     public boolean hasCapabilities(int capability) {
         return (mCapabilities & capability) == capability;
+    }
+
+    /**
+     * Determines if this {@code PhoneAccount} has routes specified by the passed in bit mask.
+     *
+     * @param route The routes to check.
+     * @return {@code true} if the phone account has the routes.
+     * @hide
+     */
+    public boolean hasAudioRoutes(int routes) {
+        return (mSupportedAudioRoutes & routes) == routes;
     }
 
     /**
@@ -508,11 +580,66 @@ public class PhoneAccount implements Parcelable {
     }
 
     /**
+     * The extras associated with this {@code PhoneAccount}.
+     * <p>
+     * A {@link ConnectionService} may provide implementation specific information about the
+     * {@link PhoneAccount} via the extras.
+     *
+     * @return The extras.
+     */
+    public Bundle getExtras() {
+        return mExtras;
+    }
+
+    /**
+     * The audio routes supported by this {@code PhoneAccount}.
+     *
+     * @hide
+     */
+    public int getSupportedAudioRoutes() {
+        return mSupportedAudioRoutes;
+    }
+
+    /**
+     * The icon to represent this {@code PhoneAccount}.
+     *
+     * @return The icon.
+     */
+    public Icon getIcon() {
+        return mIcon;
+    }
+
+    /**
+     * Indicates whether the user has enabled this {@code PhoneAccount} or not. This value is only
+     * populated for {@code PhoneAccount}s returned by {@link TelecomManager#getPhoneAccount}.
+     *
+     * @return {@code true} if the account is enabled by the user, {@code false} otherwise.
+     */
+    public boolean isEnabled() {
+        return mIsEnabled;
+    }
+
+    /**
+     * A non-empty {@link String} representing the group that A {@link PhoneAccount} is in or an
+     * empty {@link String} if the {@link PhoneAccount} is not in a group. If this
+     * {@link PhoneAccount} is in a group, this new {@link PhoneAccount} will replace a registered
+     * {@link PhoneAccount} that is in the same group. When the {@link PhoneAccount} is replaced,
+     * its user defined defaults and enabled status will also pass to this new {@link PhoneAccount}.
+     * Only {@link PhoneAccount}s that share the same {@link ConnectionService} can be replaced.
+     *
+     * @return A non-empty String Id if this {@link PhoneAccount} belongs to a group.
+     * @hide
+     */
+    public String getGroupId() {
+        return mGroupId;
+    }
+
+    /**
      * Determines if the {@link PhoneAccount} supports calls to/from addresses with a specified URI
      * scheme.
      *
      * @param uriScheme The URI scheme to check.
-     * @return {@code True} if the {@code PhoneAccount} supports calls to/from addresses with the
+     * @return {@code true} if the {@code PhoneAccount} supports calls to/from addresses with the
      * specified URI scheme.
      */
     public boolean supportsUriScheme(String uriScheme) {
@@ -529,59 +656,6 @@ public class PhoneAccount implements Parcelable {
     }
 
     /**
-     * The icon resource ID for the icon of this {@code PhoneAccount}.
-     * <p>
-     * Creators of a {@code PhoneAccount} who possess the icon in static resources should prefer
-     * this method of indicating the icon rather than using {@link #getIconBitmap()}, since it
-     * leads to less resource usage.
-     * <p>
-     * Clients wishing to display a {@code PhoneAccount} should use {@link #createIconDrawable(Context)}.
-     *
-     * @return A resource ID.
-     */
-    public int getIconResId() {
-        return mIconResId;
-    }
-
-    /**
-     * The package name from which to load the icon of this {@code PhoneAccount}.
-     * <p>
-     * If this property is {@code null}, the resource {@link #getIconResId()} will be loaded from
-     * the package in the {@link ComponentName} of the {@link #getAccountHandle()}.
-     * <p>
-     * Clients wishing to display a {@code PhoneAccount} should use {@link #createIconDrawable(Context)}.
-     *
-     * @return A package name.
-     */
-    public String getIconPackageName() {
-        return mIconPackageName;
-    }
-
-    /**
-     * A tint to apply to the icon of this {@code PhoneAccount}.
-     *
-     * @return A hexadecimal color value.
-     */
-    public int getIconTint() {
-        return mIconTint;
-    }
-
-    /**
-     * A literal icon bitmap to represent this {@code PhoneAccount} in a user interface.
-     * <p>
-     * If this property is specified, it is to be considered the preferred icon. Otherwise, the
-     * resource specified by {@link #getIconResId()} should be used.
-     * <p>
-     * Clients wishing to display a {@code PhoneAccount} should use
-     * {@link #createIconDrawable(Context)}.
-     *
-     * @return A bitmap.
-     */
-    public Bitmap getIconBitmap() {
-        return mIconBitmap;
-    }
-
-    /**
      * A highlight color to use in displaying information about this {@code PhoneAccount}.
      *
      * @return A hexadecimal color value.
@@ -591,38 +665,11 @@ public class PhoneAccount implements Parcelable {
     }
 
     /**
-     * Builds and returns an icon {@code Drawable} to represent this {@code PhoneAccount} in a user
-     * interface. Uses the properties {@link #getIconResId()}, {@link #getIconPackageName()}, and
-     * {@link #getIconBitmap()} as necessary.
-     *
-     * @param context A {@code Context} to use for loading {@code Drawable}s.
-     *
-     * @return An icon for this {@code PhoneAccount}.
+     * Sets the enabled state of the phone account.
+     * @hide
      */
-    public Drawable createIconDrawable(Context context) {
-        if (mIconBitmap != null) {
-            return new BitmapDrawable(context.getResources(), mIconBitmap);
-        }
-
-        if (mIconResId != 0) {
-            try {
-                Context packageContext = context.createPackageContext(mIconPackageName, 0);
-                try {
-                    Drawable iconDrawable = packageContext.getDrawable(mIconResId);
-                    if (mIconTint != NO_ICON_TINT) {
-                        iconDrawable.setTint(mIconTint);
-                    }
-                    return iconDrawable;
-                } catch (NotFoundException | MissingResourceException e) {
-                    Log.e(this, e, "Cannot find icon %d in package %s",
-                            mIconResId, mIconPackageName);
-                }
-            } catch (PackageManager.NameNotFoundException e) {
-                Log.w(this, "Cannot find package %s", mIconPackageName);
-            }
-        }
-
-        return new ColorDrawable(Color.TRANSPARENT);
+    public void setIsEnabled(boolean isEnabled) {
+        mIsEnabled = isEnabled;
     }
 
     //
@@ -655,19 +702,21 @@ public class PhoneAccount implements Parcelable {
             mSubscriptionAddress.writeToParcel(out, flags);
         }
         out.writeInt(mCapabilities);
-        out.writeInt(mIconResId);
-        out.writeString(mIconPackageName);
-        if (mIconBitmap == null) {
-            out.writeInt(0);
-        } else {
-            out.writeInt(1);
-            mIconBitmap.writeToParcel(out, flags);
-        }
-        out.writeInt(mIconTint);
         out.writeInt(mHighlightColor);
         out.writeCharSequence(mLabel);
         out.writeCharSequence(mShortDescription);
         out.writeStringList(mSupportedUriSchemes);
+
+        if (mIcon == null) {
+            out.writeInt(0);
+        } else {
+            out.writeInt(1);
+            mIcon.writeToParcel(out, flags);
+        }
+        out.writeByte((byte) (mIsEnabled ? 1 : 0));
+        out.writeBundle(mExtras);
+        out.writeString(mGroupId);
+        out.writeInt(mSupportedAudioRoutes);
     }
 
     public static final Creator<PhoneAccount> CREATOR
@@ -700,32 +749,101 @@ public class PhoneAccount implements Parcelable {
             mSubscriptionAddress = null;
         }
         mCapabilities = in.readInt();
-        mIconResId = in.readInt();
-        mIconPackageName = in.readString();
-        if (in.readInt() > 0) {
-            mIconBitmap = Bitmap.CREATOR.createFromParcel(in);
-        } else {
-            mIconBitmap = null;
-        }
-        mIconTint = in.readInt();
         mHighlightColor = in.readInt();
         mLabel = in.readCharSequence();
         mShortDescription = in.readCharSequence();
         mSupportedUriSchemes = Collections.unmodifiableList(in.createStringArrayList());
+        if (in.readInt() > 0) {
+            mIcon = Icon.CREATOR.createFromParcel(in);
+        } else {
+            mIcon = null;
+        }
+        mIsEnabled = in.readByte() == 1;
+        mExtras = in.readBundle();
+        mGroupId = in.readString();
+        mSupportedAudioRoutes = in.readInt();
     }
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder().append("[PhoneAccount: ")
+        StringBuilder sb = new StringBuilder().append("[[")
+                .append(mIsEnabled ? 'X' : ' ')
+                .append("] PhoneAccount: ")
                 .append(mAccountHandle)
                 .append(" Capabilities: ")
-                .append(mCapabilities)
+                .append(capabilitiesToString())
+                .append(" Audio Routes: ")
+                .append(audioRoutesToString())
                 .append(" Schemes: ");
         for (String scheme : mSupportedUriSchemes) {
             sb.append(scheme)
                     .append(" ");
         }
+        sb.append(" Extras: ");
+        sb.append(mExtras);
+        sb.append(" GroupId: ");
+        sb.append(Log.pii(mGroupId));
         sb.append("]");
+        return sb.toString();
+    }
+
+    /**
+     * Generates a string representation of a capabilities bitmask.
+     *
+     * @param capabilities The capabilities bitmask.
+     * @return String representation of the capabilities bitmask.
+     */
+    private String capabilitiesToString() {
+        StringBuilder sb = new StringBuilder();
+        if (hasCapabilities(CAPABILITY_VIDEO_CALLING)) {
+            sb.append("Video ");
+        }
+        if (hasCapabilities(CAPABILITY_VIDEO_CALLING_RELIES_ON_PRESENCE)) {
+            sb.append("Presence ");
+        }
+        if (hasCapabilities(CAPABILITY_CALL_PROVIDER)) {
+            sb.append("CallProvider ");
+        }
+        if (hasCapabilities(CAPABILITY_CALL_SUBJECT)) {
+            sb.append("CallSubject ");
+        }
+        if (hasCapabilities(CAPABILITY_CONNECTION_MANAGER)) {
+            sb.append("ConnectionMgr ");
+        }
+        if (hasCapabilities(CAPABILITY_EMERGENCY_CALLS_ONLY)) {
+            sb.append("EmergOnly ");
+        }
+        if (hasCapabilities(CAPABILITY_MULTI_USER)) {
+            sb.append("MultiUser ");
+        }
+        if (hasCapabilities(CAPABILITY_PLACE_EMERGENCY_CALLS)) {
+            sb.append("PlaceEmerg ");
+        }
+        if (hasCapabilities(CAPABILITY_EMERGENCY_VIDEO_CALLING)) {
+            sb.append("EmergVideo ");
+        }
+        if (hasCapabilities(CAPABILITY_SIM_SUBSCRIPTION)) {
+            sb.append("SimSub ");
+        }
+        return sb.toString();
+    }
+
+    private String audioRoutesToString() {
+        StringBuilder sb = new StringBuilder();
+
+        if (hasAudioRoutes(CallAudioState.ROUTE_BLUETOOTH)) {
+            sb.append("B");
+        }
+        if (hasAudioRoutes(CallAudioState.ROUTE_EARPIECE)) {
+            sb.append("E");
+        }
+        if (hasAudioRoutes(CallAudioState.ROUTE_SPEAKER)) {
+            sb.append("S");
+        }
+        if (hasAudioRoutes(CallAudioState.ROUTE_WIRED_HEADSET)) {
+            sb.append("W");
+        }
+
         return sb.toString();
     }
 }

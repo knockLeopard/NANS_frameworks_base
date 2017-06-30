@@ -17,6 +17,10 @@
 package com.android.server.wm;
 
 
+import static com.android.server.wm.WindowManagerDebugConfig.DEBUG_SURFACE_TRACE;
+import static com.android.server.wm.WindowManagerDebugConfig.TAG_WITH_CLASS_NAME;
+import static com.android.server.wm.WindowManagerDebugConfig.TAG_WM;
+
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -25,7 +29,6 @@ import android.graphics.Point;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
-import android.util.Slog;
 import android.view.Display;
 import android.view.Surface;
 import android.view.Surface.OutOfResourcesException;
@@ -33,7 +36,7 @@ import android.view.SurfaceControl;
 import android.view.SurfaceSession;
 
 class EmulatorDisplayOverlay {
-    private static final String TAG = "EmulatorDisplayOverlay";
+    private static final String TAG = TAG_WITH_CLASS_NAME ? "EmulatorDisplayOverlay" : TAG_WM;
 
     // Display dimensions
     private Point mScreenSize;
@@ -54,8 +57,8 @@ class EmulatorDisplayOverlay {
 
         SurfaceControl ctrl = null;
         try {
-            if (WindowManagerService.DEBUG_SURFACE_TRACE) {
-                ctrl = new WindowStateAnimator.SurfaceTrace(session, "EmulatorDisplayOverlay",
+            if (DEBUG_SURFACE_TRACE) {
+                ctrl = new WindowSurfaceController.SurfaceTrace(session, "EmulatorDisplayOverlay",
                         mScreenSize.x, mScreenSize.y, PixelFormat.TRANSLUCENT,
                         SurfaceControl.HIDDEN);
             } else {
@@ -93,7 +96,9 @@ class EmulatorDisplayOverlay {
         }
         c.drawColor(Color.TRANSPARENT, PorterDuff.Mode.SRC);
         mSurfaceControl.setPosition(0, 0);
-        mOverlay.setBounds(0, 0, mScreenSize.x, mScreenSize.y);
+        // Always draw the overlay with square dimensions
+        int size = Math.max(mScreenSize.x, mScreenSize.y);
+        mOverlay.setBounds(0, 0, size, size);
         mOverlay.draw(c);
         mSurface.unlockCanvasAndPost(c);
     }

@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "OpenGLRenderer"
-
 #include <utils/JenkinsHash.h>
 #include <utils/Log.h>
 
 #include "Caches.h"
+#include "Patch.h"
 #include "PatchCache.h"
 #include "Properties.h"
+#include "renderstate/RenderState.h"
 
 namespace android {
 namespace uirenderer {
@@ -30,32 +30,28 @@ namespace uirenderer {
 // Constructors/destructor
 ///////////////////////////////////////////////////////////////////////////////
 
-PatchCache::PatchCache():
-        mSize(0), mCache(LruCache<PatchDescription, Patch*>::kUnlimitedCapacity),
-        mMeshBuffer(0), mFreeBlocks(NULL), mGenerationId(0) {
-    char property[PROPERTY_VALUE_MAX];
-    if (property_get(PROPERTY_PATCH_CACHE_SIZE, property, NULL) > 0) {
-        INIT_LOGD("  Setting patch cache size to %skB", property);
-        mMaxSize = KB(atoi(property));
-    } else {
-        INIT_LOGD("  Using default patch cache size of %.2fkB", DEFAULT_PATCH_CACHE_SIZE);
-        mMaxSize = KB(DEFAULT_PATCH_CACHE_SIZE);
-    }
-}
+PatchCache::PatchCache(RenderState& renderState)
+        : mRenderState(renderState)
+        , mMaxSize(Properties::patchCacheSize)
+        , mSize(0)
+        , mCache(LruCache<PatchDescription, Patch*>::kUnlimitedCapacity)
+        , mMeshBuffer(0)
+        , mFreeBlocks(nullptr)
+        , mGenerationId(0) {}
 
 PatchCache::~PatchCache() {
     clear();
 }
 
-void PatchCache::init(Caches& caches) {
+void PatchCache::init() {
     bool created = false;
     if (!mMeshBuffer) {
         glGenBuffers(1, &mMeshBuffer);
         created = true;
     }
 
-    caches.bindMeshBuffer(mMeshBuffer);
-    caches.resetVertexPointers();
+    mRenderState.meshState().bindMeshBuffer(mMeshBuffer);
+    mRenderState.meshState().resetVertexPointers();
 
     if (created) {
         createVertexBuffer();
@@ -84,7 +80,7 @@ void PatchCache::clear() {
     clearCache();
 
     if (mMeshBuffer) {
-        Caches::getInstance().unbindMeshBuffer();
+        mRenderState.meshState().unbindMeshBuffer();
         glDeleteBuffers(1, &mMeshBuffer);
         mMeshBuffer = 0;
         mSize = 0;
@@ -104,7 +100,7 @@ void PatchCache::clearCache() {
         delete block;
         block = next;
     }
-    mFreeBlocks = NULL;
+    mFreeBlocks = nullptr;
 }
 
 void PatchCache::remove(Vector<patch_pair_t>& patchesToRemove, Res_png_9patch* patch) {
@@ -124,11 +120,11 @@ void PatchCache::removeDeferred(Res_png_9patch* patch) {
     size_t count = mGarbage.size();
     for (size_t i = 0; i < count; i++) {
         if (patch == mGarbage[i]) {
-            patch = NULL;
+            patch = nullptr;
             break;
         }
     }
-    LOG_ALWAYS_FATAL_IF(patch == NULL);
+    LOG_ALWAYS_FATAL_IF(patch == nullptr);
 
     mGarbage.push(patch);
 }
@@ -156,7 +152,7 @@ void PatchCache::clearGarbage() {
 
         // Release the patch and mark the space in the free list
         Patch* patch = pair.getSecond();
-        BufferBlock* block = new BufferBlock(patch->offset, patch->getSize());
+        BufferBlock* block = new BufferBlock(patch->positionOffset, patch->getSize());
         block->next = mFreeBlocks;
         mFreeBlocks = block;
 
@@ -174,7 +170,7 @@ void PatchCache::clearGarbage() {
 }
 
 void PatchCache::createVertexBuffer() {
-    glBufferData(GL_ARRAY_BUFFER, mMaxSize, NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, mMaxSize, nullptr, GL_DYNAMIC_DRAW);
     mSize = 0;
     mFreeBlocks = new BufferBlock(0, mMaxSize);
     mGenerationId++;
@@ -184,9 +180,9 @@ void PatchCache::createVertexBuffer() {
  * Sets the mesh's offsets and copies its associated vertices into
  * the mesh buffer (VBO).
  */
-void PatchCache::setupMesh(Patch* newMesh, TextureVertex* vertices) {
+void PatchCache::setupMesh(Patch* newMesh) {
     // This call ensures the VBO exists and that it is bound
-    init(Caches::getInstance());
+    init();
 
     // If we're running out of space, let's clear the entire cache
     uint32_t size = newMesh->getSize();
@@ -196,7 +192,7 @@ void PatchCache::setupMesh(Patch* newMesh, TextureVertex* vertices) {
     }
 
     // Find a block where we can fit the mesh
-    BufferBlock* previous = NULL;
+    BufferBlock* previous = nullptr;
     BufferBlock* block = mFreeBlocks;
     while (block) {
         // The mesh fits
@@ -212,14 +208,14 @@ void PatchCache::setupMesh(Patch* newMesh, TextureVertex* vertices) {
     if (!block) {
         clearCache();
         createVertexBuffer();
-        previous = NULL;
+        previous = nullptr;
         block = mFreeBlocks;
     }
 
     // Copy the 9patch mesh in the VBO
-    newMesh->offset = (GLintptr) (block->offset);
-    newMesh->textureOffset = newMesh->offset + gMeshTextureOffset;
-    glBufferSubData(GL_ARRAY_BUFFER, newMesh->offset, size, vertices);
+    newMesh->positionOffset = (GLintptr) (block->offset);
+    newMesh->textureOffset = newMesh->positionOffset + kMeshTextureOffset;
+    glBufferSubData(GL_ARRAY_BUFFER, newMesh->positionOffset, size, newMesh->vertices.get());
 
     // Remove the block since we've used it entirely
     if (block->size == size) {
@@ -238,6 +234,8 @@ void PatchCache::setupMesh(Patch* newMesh, TextureVertex* vertices) {
     mSize += size;
 }
 
+static const UvMapper sIdentity;
+
 const Patch* PatchCache::get(const AssetAtlas::Entry* entry,
         const uint32_t bitmapWidth, const uint32_t bitmapHeight,
         const float pixelWidth, const float pixelHeight, const Res_png_9patch* patch) {
@@ -246,20 +244,12 @@ const Patch* PatchCache::get(const AssetAtlas::Entry* entry,
     const Patch* mesh = mCache.get(description);
 
     if (!mesh) {
-        Patch* newMesh = new Patch();
-        TextureVertex* vertices;
+        const UvMapper& mapper = entry ? entry->uvMapper : sIdentity;
+        Patch* newMesh = new Patch(bitmapWidth, bitmapHeight,
+                pixelWidth, pixelHeight, mapper, patch);
 
-        if (entry) {
-            // An atlas entry has a UV mapper
-            vertices = newMesh->createMesh(bitmapWidth, bitmapHeight,
-                    pixelWidth, pixelHeight, entry->uvMapper, patch);
-        } else {
-            vertices = newMesh->createMesh(bitmapWidth, bitmapHeight,
-                    pixelWidth, pixelHeight, patch);
-        }
-
-        if (vertices) {
-            setupMesh(newMesh, vertices);
+        if (newMesh->vertices) {
+            setupMesh(newMesh);
         }
 
 #if DEBUG_PATCHES
@@ -278,7 +268,7 @@ void PatchCache::dumpFreeBlocks(const char* prefix) {
     String8 dump;
     BufferBlock* block = mFreeBlocks;
     while (block) {
-        dump.appendFormat("->(%d, %d)", block->offset, block->size);
+        dump.appendFormat("->(%d, %d)", block->positionOffset, block->size);
         block = block->next;
     }
     ALOGD("%s: Free blocks%s", prefix, dump.string());

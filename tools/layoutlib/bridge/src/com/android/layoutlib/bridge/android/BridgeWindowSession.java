@@ -47,7 +47,7 @@ public final class BridgeWindowSession implements IWindowSession {
 
     @Override
     public int addToDisplay(IWindow arg0, int seq, LayoutParams arg1, int arg2, int displayId,
-                            Rect arg3, Rect arg4, InputChannel outInputchannel)
+                            Rect arg3, Rect arg4, Rect arg5, InputChannel outInputchannel)
             throws RemoteException {
         // pass for now.
         return 0;
@@ -89,9 +89,17 @@ public final class BridgeWindowSession implements IWindowSession {
     @Override
     public int relayout(IWindow iWindow, int i, LayoutParams layoutParams, int i2,
             int i3, int i4, int i5, Rect rect, Rect rect2, Rect rect3, Rect rect4, Rect rect5,
-            Configuration configuration, Surface surface) throws RemoteException {
+            Rect rect6, Rect rect7, Configuration configuration, Surface surface)
+            throws RemoteException {
         // pass for now.
         return 0;
+    }
+
+    @Override
+    public void repositionChild(IWindow window, int left, int top, int right, int bottom,
+            long deferTransactionUntilFrame, Rect outFrame) {
+        // pass for now.
+        return;
     }
 
     @Override
@@ -140,7 +148,7 @@ public final class BridgeWindowSession implements IWindowSession {
 
     @Override
     public boolean performDrag(IWindow window, IBinder dragToken,
-            float touchX, float touchY, float thumbCenterX, float thumbCenterY,
+            int touchSource, float touchX, float touchY, float thumbCenterX, float thumbCenterY,
             ClipData data)
             throws RemoteException {
         // pass for now
@@ -148,7 +156,19 @@ public final class BridgeWindowSession implements IWindowSession {
     }
 
     @Override
+    public boolean startMovingTask(IWindow window, float startX, float startY)
+            throws RemoteException {
+        // pass for now
+        return false;
+    }
+
+    @Override
     public void reportDropResult(IWindow window, boolean consumed) throws RemoteException {
+        // pass for now
+    }
+
+    @Override
+    public void cancelDragAndDrop(IBinder dragToken) throws RemoteException {
         // pass for now
     }
 
@@ -191,12 +211,6 @@ public final class BridgeWindowSession implements IWindowSession {
     }
 
     @Override
-    public void setUniverseTransform(IBinder window, float alpha, float offx, float offy,
-            float dsdx, float dtdx, float dsdy, float dtdy) {
-        // pass for now.
-    }
-
-    @Override
     public IBinder asBinder() {
         // pass for now.
         return null;
@@ -213,15 +227,18 @@ public final class BridgeWindowSession implements IWindowSession {
         return null;
     }
 
-	// RUBIS ockwon
-	@Override
-	public int getLastWallpaperX() {
-		return 0;
-	}
-	
-	@Override
-	public int getLastWallpaperY() {
-		return 0;
-	}
-	// END
+    @Override
+    public void pokeDrawLock(IBinder window) {
+        // pass for now.
+    }
+
+    @Override
+    public void prepareToReplaceWindows(IBinder appToken, boolean childrenOnly) {
+        // pass for now.
+    }
+
+    @Override
+    public void updatePointerIcon(IWindow window) {
+        // pass for now.
+    }
 }

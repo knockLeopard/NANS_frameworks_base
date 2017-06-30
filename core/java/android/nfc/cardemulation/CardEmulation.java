@@ -40,7 +40,7 @@ import java.util.List;
  * NFC card emulation services.
  *
  * For a general introduction into NFC card emulation,
- * please read the <a href="{@docRoot}guide/topics/nfc/ce.html">
+ * please read the <a href="{@docRoot}guide/topics/connectivity/nfc/hce.html">
  * NFC card emulation developer guide</a>.</p>
  *
  * <p class="note">Use of this class requires the
@@ -156,7 +156,7 @@ public final class CardEmulation {
                 throw new UnsupportedOperationException();
             }
             try {
-                if (!pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION)) {
+                if (!pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION, 0)) {
                     Log.e(TAG, "This device does not support card emulation");
                     throw new UnsupportedOperationException();
                 }

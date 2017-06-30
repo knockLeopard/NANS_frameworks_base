@@ -20,7 +20,7 @@
 
 #include "jni.h"
 #include "JNIHelp.h"
-#include "android_runtime/AndroidRuntime.h"
+#include "core_jni_helpers.h"
 
 #include <usbhost/usbhost.h>
 
@@ -190,7 +190,7 @@ android_hardware_UsbRequest_cancel(JNIEnv *env, jobject thiz)
     return (usb_request_cancel(request) == 0);
 }
 
-static JNINativeMethod method_table[] = {
+static const JNINativeMethod method_table[] = {
     {"native_init",             "(Landroid/hardware/usb/UsbDeviceConnection;IIII)Z",
                                             (void *)android_hardware_UsbRequest_init},
     {"native_close",            "()V",      (void *)android_hardware_UsbRequest_close},
@@ -215,7 +215,7 @@ int register_android_hardware_UsbRequest(JNIEnv *env)
         return -1;
     }
 
-    return AndroidRuntime::registerNativeMethods(env, "android/hardware/usb/UsbRequest",
+    return RegisterMethodsOrDie(env, "android/hardware/usb/UsbRequest",
             method_table, NELEM(method_table));
 }
 

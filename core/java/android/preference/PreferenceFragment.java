@@ -16,20 +16,25 @@
 
 package android.preference;
 
+import android.annotation.Nullable;
+import android.annotation.XmlRes;
 import android.app.Activity;
 import android.app.Fragment;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.TypedArray;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.View.OnKeyListener;
+import android.view.ViewGroup;
 import android.widget.ListView;
+import android.widget.TextView;
 
 /**
  * Shows a hierarchy of {@link Preference} objects as
@@ -153,15 +158,15 @@ public abstract class PreferenceFragment extends Fragment implements
     }
 
     @Override
-    public void onCreate(Bundle savedInstanceState) {
+    public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         mPreferenceManager = new PreferenceManager(getActivity(), FIRST_REQUEST_CODE);
         mPreferenceManager.setFragment(this);
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-            Bundle savedInstanceState) {
+    public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
 
         TypedArray a = getActivity().obtainStyledAttributes(null,
                 com.android.internal.R.styleable.PreferenceFragment,
@@ -177,7 +182,26 @@ public abstract class PreferenceFragment extends Fragment implements
     }
 
     @Override
-    public void onActivityCreated(Bundle savedInstanceState) {
+    public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        TypedArray a = getActivity().obtainStyledAttributes(null,
+                com.android.internal.R.styleable.PreferenceFragment,
+                com.android.internal.R.attr.preferenceFragmentStyle,
+                0);
+
+        ListView lv = (ListView) view.findViewById(android.R.id.list);
+        if (lv != null
+                && a.hasValueOrEmpty(com.android.internal.R.styleable.PreferenceFragment_divider)) {
+            lv.setDivider(
+                    a.getDrawable(com.android.internal.R.styleable.PreferenceFragment_divider));
+        }
+
+        a.recycle();
+    }
+
+    @Override
+    public void onActivityCreated(@Nullable Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
 
         if (mHavePrefs) {
@@ -212,6 +236,9 @@ public abstract class PreferenceFragment extends Fragment implements
 
     @Override
     public void onDestroyView() {
+        if (mList != null) {
+            mList.setOnKeyListener(null);
+        }
         mList = null;
         mHandler.removeCallbacks(mRequestFocus);
         mHandler.removeMessages(MSG_BIND_PREFERENCES);
@@ -293,7 +320,7 @@ public abstract class PreferenceFragment extends Fragment implements
      *
      * @param preferencesResId The XML resource ID to inflate.
      */
-    public void addPreferencesFromResource(int preferencesResId) {
+    public void addPreferencesFromResource(@XmlRes int preferencesResId) {
         requirePreferenceManager();
 
         setPreferenceScreen(mPreferenceManager.inflateFromResource(getActivity(),
@@ -341,6 +368,20 @@ public abstract class PreferenceFragment extends Fragment implements
     private void bindPreferences() {
         final PreferenceScreen preferenceScreen = getPreferenceScreen();
         if (preferenceScreen != null) {
+            View root = getView();
+            if (root != null) {
+                View titleView = root.findViewById(android.R.id.title);
+                if (titleView instanceof TextView) {
+                    CharSequence title = preferenceScreen.getTitle();
+                    if (TextUtils.isEmpty(title)) {
+                        titleView.setVisibility(View.GONE);
+                    } else {
+                        ((TextView) titleView).setText(title);
+                        titleView.setVisibility(View.VISIBLE);
+                    }
+                }
+            }
+
             preferenceScreen.bind(getListView());
         }
         onBindPreferences();

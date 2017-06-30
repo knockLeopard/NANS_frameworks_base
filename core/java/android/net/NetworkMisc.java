@@ -45,6 +45,22 @@ public class NetworkMisc implements Parcelable {
     public boolean explicitlySelected;
 
     /**
+     * Set if the user desires to use this network even if it is unvalidated. This field has meaning
+     * only if {#link explicitlySelected} is true. If it is, this field must also be set to the
+     * appropriate value based on previous user choice.
+     */
+    public boolean acceptUnvalidated;
+
+    /**
+     * Set to avoid surfacing the "Sign in to network" notification.
+     * if carrier receivers/apps are registered to handle the carrier-specific provisioning
+     * procedure, a carrier specific provisioning notification will be placed.
+     * only one notification should be displayed. This field is set based on
+     * which notification should be used for provisioning.
+     */
+    public boolean provisioningNotificationDisabled;
+
+    /**
      * For mobile networks, this is the subscriber ID (such as IMSI).
      */
     public String subscriberId;
@@ -56,7 +72,9 @@ public class NetworkMisc implements Parcelable {
         if (nm != null) {
             allowBypass = nm.allowBypass;
             explicitlySelected = nm.explicitlySelected;
+            acceptUnvalidated = nm.acceptUnvalidated;
             subscriberId = nm.subscriberId;
+            provisioningNotificationDisabled = nm.provisioningNotificationDisabled;
         }
     }
 
@@ -69,7 +87,9 @@ public class NetworkMisc implements Parcelable {
     public void writeToParcel(Parcel out, int flags) {
         out.writeInt(allowBypass ? 1 : 0);
         out.writeInt(explicitlySelected ? 1 : 0);
+        out.writeInt(acceptUnvalidated ? 1 : 0);
         out.writeString(subscriberId);
+        out.writeInt(provisioningNotificationDisabled ? 1 : 0);
     }
 
     public static final Creator<NetworkMisc> CREATOR = new Creator<NetworkMisc>() {
@@ -78,7 +98,9 @@ public class NetworkMisc implements Parcelable {
             NetworkMisc networkMisc = new NetworkMisc();
             networkMisc.allowBypass = in.readInt() != 0;
             networkMisc.explicitlySelected = in.readInt() != 0;
+            networkMisc.acceptUnvalidated = in.readInt() != 0;
             networkMisc.subscriberId = in.readString();
+            networkMisc.provisioningNotificationDisabled = in.readInt() != 0;
             return networkMisc;
         }
 

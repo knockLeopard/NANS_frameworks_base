@@ -16,10 +16,12 @@
 
 package android.os;
 
+import android.content.Context;
 import android.os.BatteryProperty;
 import android.os.IBatteryPropertiesRegistrar;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import com.android.internal.app.IBatteryStats;
 
 /**
  * The BatteryManager class contains strings and constants used for values
@@ -99,6 +101,27 @@ public class BatteryManager {
      */
     public static final String EXTRA_INVALID_CHARGER = "invalid_charger";
 
+    /**
+     * Extra for {@link android.content.Intent#ACTION_BATTERY_CHANGED}:
+     * Int value set to the maximum charging current supported by the charger in micro amperes.
+     * {@hide}
+     */
+    public static final String EXTRA_MAX_CHARGING_CURRENT = "max_charging_current";
+
+    /**
+     * Extra for {@link android.content.Intent#ACTION_BATTERY_CHANGED}:
+     * Int value set to the maximum charging voltage supported by the charger in micro volts.
+     * {@hide}
+     */
+    public static final String EXTRA_MAX_CHARGING_VOLTAGE = "max_charging_voltage";
+
+    /**
+     * Extra for {@link android.content.Intent#ACTION_BATTERY_CHANGED}:
+     * integer containing the charge counter present in the battery.
+     * {@hide}
+     */
+     public static final String EXTRA_CHARGE_COUNTER = "charge_counter";
+
     // values for "status" field in the ACTION_BATTERY_CHANGED Intent
     public static final int BATTERY_STATUS_UNKNOWN = 1;
     public static final int BATTERY_STATUS_CHARGING = 2;
@@ -127,6 +150,26 @@ public class BatteryManager {
     /** @hide */
     public static final int BATTERY_PLUGGED_ANY =
             BATTERY_PLUGGED_AC | BATTERY_PLUGGED_USB | BATTERY_PLUGGED_WIRELESS;
+
+    /**
+     * Sent when the device's battery has started charging (or has reached full charge
+     * and the device is on power).  This is a good time to do work that you would like to
+     * avoid doing while on battery (that is to avoid draining the user's battery due to
+     * things they don't care enough about).
+     *
+     * This is paired with {@link #ACTION_DISCHARGING}.  The current state can always
+     * be retrieved with {@link #isCharging()}.
+     */
+    public static final String ACTION_CHARGING = "android.os.action.CHARGING";
+
+    /**
+     * Sent when the device's battery may be discharging, so apps should avoid doing
+     * extraneous work that would cause it to discharge faster.
+     *
+     * This is paired with {@link #ACTION_CHARGING}.  The current state can always
+     * be retrieved with {@link #isCharging()}.
+     */
+    public static final String ACTION_DISCHARGING = "android.os.action.DISCHARGING";
 
     /*
      * Battery property identifiers.  These must match the values in
@@ -162,7 +205,32 @@ public class BatteryManager {
      */
     public static final int BATTERY_PROPERTY_ENERGY_COUNTER = 5;
 
-    private IBatteryPropertiesRegistrar mBatteryPropertiesRegistrar;
+    private final IBatteryStats mBatteryStats;
+    private final IBatteryPropertiesRegistrar mBatteryPropertiesRegistrar;
+
+    /**
+     * @removed Was previously made visible by accident.
+     */
+    public BatteryManager() {
+        mBatteryStats = IBatteryStats.Stub.asInterface(
+                ServiceManager.getService(BatteryStats.SERVICE_NAME));
+        mBatteryPropertiesRegistrar = IBatteryPropertiesRegistrar.Stub.asInterface(
+                ServiceManager.getService("batteryproperties"));
+    }
+
+    /**
+     * Return true if the battery is currently considered to be charging.  This means that
+     * the device is plugged in and is supplying sufficient power that the battery level is
+     * going up (or the battery is fully charged).  Changes in this state are matched by
+     * broadcasts of {@link #ACTION_CHARGING} and {@link #ACTION_DISCHARGING}.
+     */
+    public boolean isCharging() {
+        try {
+            return mBatteryStats.isCharging();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
 
     /**
      * Query a battery property from the batteryproperties service.
@@ -174,12 +242,7 @@ public class BatteryManager {
         long ret;
 
         if (mBatteryPropertiesRegistrar == null) {
-            IBinder b = ServiceManager.getService("batteryproperties");
-            mBatteryPropertiesRegistrar =
-                IBatteryPropertiesRegistrar.Stub.asInterface(b);
-
-            if (mBatteryPropertiesRegistrar == null)
-                return Long.MIN_VALUE;
+            return Long.MIN_VALUE;
         }
 
         try {
@@ -190,7 +253,7 @@ public class BatteryManager {
             else
                 ret = Long.MIN_VALUE;
         } catch (RemoteException e) {
-            ret = Long.MIN_VALUE;
+            throw e.rethrowFromSystemServer();
         }
 
         return ret;

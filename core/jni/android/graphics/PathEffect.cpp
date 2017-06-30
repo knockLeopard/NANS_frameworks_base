@@ -1,12 +1,12 @@
-#include <jni.h>
 #include "GraphicsJNI.h"
-
-#include "SkPathEffect.h"
+#include "Sk1DPathEffect.h"
 #include "SkCornerPathEffect.h"
 #include "SkDashPathEffect.h"
 #include "SkDiscretePathEffect.h"
-#include "Sk1DPathEffect.h"
-#include "SkTemplates.h"
+#include "SkPathEffect.h"
+#include "core_jni_helpers.h"
+
+#include <jni.h>
 
 class SkPathEffectGlue {
 public:
@@ -69,52 +69,50 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static JNINativeMethod gPathEffectMethods[] = {
+static const JNINativeMethod gPathEffectMethods[] = {
     { "nativeDestructor", "(J)V", (void*)SkPathEffectGlue::destructor }
 };
 
-static JNINativeMethod gComposePathEffectMethods[] = {
+static const JNINativeMethod gComposePathEffectMethods[] = {
     { "nativeCreate", "(JJ)J", (void*)SkPathEffectGlue::Compose_constructor }
 };
 
-static JNINativeMethod gSumPathEffectMethods[] = {
+static const JNINativeMethod gSumPathEffectMethods[] = {
     { "nativeCreate", "(JJ)J", (void*)SkPathEffectGlue::Sum_constructor }
 };
 
-static JNINativeMethod gDashPathEffectMethods[] = {
+static const JNINativeMethod gDashPathEffectMethods[] = {
     { "nativeCreate", "([FF)J", (void*)SkPathEffectGlue::Dash_constructor }
 };
 
-static JNINativeMethod gPathDashPathEffectMethods[] = {
+static const JNINativeMethod gPathDashPathEffectMethods[] = {
     { "nativeCreate", "(JFFI)J", (void*)SkPathEffectGlue::OneD_constructor }
 };
 
-static JNINativeMethod gCornerPathEffectMethods[] = {
+static const JNINativeMethod gCornerPathEffectMethods[] = {
     { "nativeCreate", "(F)J", (void*)SkPathEffectGlue::Corner_constructor }
 };
 
-static JNINativeMethod gDiscretePathEffectMethods[] = {
+static const JNINativeMethod gDiscretePathEffectMethods[] = {
     { "nativeCreate", "(FF)J", (void*)SkPathEffectGlue::Discrete_constructor }
 };
 
-#include <android_runtime/AndroidRuntime.h>
-
-#define REG(env, name, array)                                              \
-    result = android::AndroidRuntime::registerNativeMethods(env, name, array, \
-                                                  SK_ARRAY_COUNT(array));  \
-    if (result < 0) return result
-
 int register_android_graphics_PathEffect(JNIEnv* env)
 {
-    int result;
-
-    REG(env, "android/graphics/PathEffect", gPathEffectMethods);
-    REG(env, "android/graphics/ComposePathEffect", gComposePathEffectMethods);
-    REG(env, "android/graphics/SumPathEffect", gSumPathEffectMethods);
-    REG(env, "android/graphics/DashPathEffect", gDashPathEffectMethods);
-    REG(env, "android/graphics/PathDashPathEffect", gPathDashPathEffectMethods);
-    REG(env, "android/graphics/CornerPathEffect", gCornerPathEffectMethods);
-    REG(env, "android/graphics/DiscretePathEffect", gDiscretePathEffectMethods);
+    android::RegisterMethodsOrDie(env, "android/graphics/PathEffect", gPathEffectMethods,
+                         NELEM(gPathEffectMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/ComposePathEffect",
+                                  gComposePathEffectMethods, NELEM(gComposePathEffectMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/SumPathEffect", gSumPathEffectMethods,
+                                  NELEM(gSumPathEffectMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/DashPathEffect", gDashPathEffectMethods,
+                                  NELEM(gDashPathEffectMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/PathDashPathEffect",
+                                  gPathDashPathEffectMethods, NELEM(gPathDashPathEffectMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/CornerPathEffect",
+                                  gCornerPathEffectMethods, NELEM(gCornerPathEffectMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/DiscretePathEffect",
+                                  gDiscretePathEffectMethods, NELEM(gDiscretePathEffectMethods));
 
     return 0;
 }

@@ -18,14 +18,20 @@ package com.android.systemui.qs;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.res.Configuration;
+import android.content.Intent;
+import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.os.UserHandle;
+import android.provider.Settings;
+import android.text.SpannableStringBuilder;
+import android.text.method.LinkMovementMethod;
+import android.text.style.ClickableSpan;
 import android.util.Log;
-import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.View.OnClickListener;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -36,6 +42,8 @@ import com.android.systemui.statusbar.phone.QSTileHost;
 import com.android.systemui.statusbar.phone.SystemUIDialog;
 import com.android.systemui.statusbar.policy.SecurityController;
 
+import static android.provider.Settings.ACTION_VPN_SETTINGS;
+
 public class QSFooter implements OnClickListener, DialogInterface.OnClickListener {
     protected static final String TAG = "QSFooter";
     protected static final boolean DEBUG = Log.isLoggable(TAG, Log.DEBUG);
@@ -43,6 +51,7 @@ public class QSFooter implements OnClickListener, DialogInterface.OnClickListene
     private final View mRootView;
     private final TextView mFooterText;
     private final ImageView mFooterIcon;
+    private final ImageView mFooterIcon2;
     private final Context mContext;
     private final Callback mCallback = new Callback();
 
@@ -54,7 +63,10 @@ public class QSFooter implements OnClickListener, DialogInterface.OnClickListene
 
     private boolean mIsVisible;
     private boolean mIsIconVisible;
+    private boolean mIsIcon2Visible;
     private int mFooterTextId;
+    private int mFooterIconId;
+    private int mFooterIcon2Id;
 
     public QSFooter(QSPanel qsPanel, Context context) {
         mRootView = LayoutInflater.from(context)
@@ -62,6 +74,9 @@ public class QSFooter implements OnClickListener, DialogInterface.OnClickListene
         mRootView.setOnClickListener(this);
         mFooterText = (TextView) mRootView.findViewById(R.id.footer_text);
         mFooterIcon = (ImageView) mRootView.findViewById(R.id.footer_icon);
+        mFooterIcon2 = (ImageView) mRootView.findViewById(R.id.footer_icon2);
+        mFooterIconId = R.drawable.ic_qs_vpn;
+        mFooterIcon2Id = R.drawable.ic_qs_network_logging;
         mContext = context;
         mMainHandler = new Handler();
     }
@@ -98,6 +113,10 @@ public class QSFooter implements OnClickListener, DialogInterface.OnClickListene
     }
 
     private void handleClick() {
+        showDeviceMonitoringDialog();
+    }
+
+    public void showDeviceMonitoringDialog() {
         mHost.collapsePanels();
         // TODO: Delay dialog creation until after panels are collapsed.
         createDialog();
@@ -108,21 +127,34 @@ public class QSFooter implements OnClickListener, DialogInterface.OnClickListene
     }
 
     private void handleRefreshState() {
-        if (mSecurityController.hasDeviceOwner()) {
+        // If the device has device owner, show "Device may be monitored", but --
+        // TODO See b/25779452 -- device owner doesn't actually have monitoring power.
+        boolean isVpnEnabled = mSecurityController.isVpnEnabled();
+        boolean isNetworkLoggingEnabled = mSecurityController.isNetworkLoggingEnabled();
+        mIsIconVisible = isVpnEnabled || isNetworkLoggingEnabled;
+        mIsIcon2Visible = isVpnEnabled && isNetworkLoggingEnabled;
+        if (mSecurityController.isDeviceManaged()) {
             mFooterTextId = R.string.device_owned_footer;
             mIsVisible = true;
-            mIsIconVisible = false;
-        } else if (mSecurityController.hasProfileOwner()) {
-            mFooterTextId = R.string.profile_owned_footer;
-            mIsVisible = true;
-            mIsIconVisible = false;
-        } else if (mSecurityController.isVpnEnabled()) {
-            mFooterTextId = R.string.vpn_footer;
-            mIsVisible = true;
-            mIsIconVisible = true;
+            int footerIconId = isVpnEnabled
+                    ? R.drawable.ic_qs_vpn
+                    : R.drawable.ic_qs_network_logging;
+            if (mFooterIconId != footerIconId) {
+                mFooterIconId = footerIconId;
+                mMainHandler.post(mUpdateIcon);
+            }
         } else {
-            mIsVisible = false;
-            mIsIconVisible = false;
+            boolean isBranded = mSecurityController.isVpnBranded();
+            mFooterTextId = isBranded ? R.string.branded_vpn_footer : R.string.vpn_footer;
+            // Update the VPN footer icon, if needed.
+            int footerIconId = isVpnEnabled
+                    ? (isBranded ? R.drawable.ic_qs_branded_vpn : R.drawable.ic_qs_vpn)
+                    : R.drawable.ic_qs_network_logging;
+            if (mFooterIconId != footerIconId) {
+                mFooterIconId = footerIconId;
+                mMainHandler.post(mUpdateIcon);
+            }
+            mIsVisible = mIsIconVisible;
         }
         mMainHandler.post(mUpdateDisplayState);
     }
@@ -130,112 +162,126 @@ public class QSFooter implements OnClickListener, DialogInterface.OnClickListene
     @Override
     public void onClick(DialogInterface dialog, int which) {
         if (which == DialogInterface.BUTTON_NEGATIVE) {
-            mSecurityController.disconnectFromVpn();
+            final Intent settingsIntent = new Intent(ACTION_VPN_SETTINGS);
+            mHost.startActivityDismissingKeyguard(settingsIntent);
         }
     }
 
     private void createDialog() {
+        final String deviceOwnerPackage = mSecurityController.getDeviceOwnerName();
+        final String profileOwnerPackage = mSecurityController.getProfileOwnerName();
+        final boolean isNetworkLoggingEnabled = mSecurityController.isNetworkLoggingEnabled();
+        final String primaryVpn = mSecurityController.getPrimaryVpnName();
+        final String profileVpn = mSecurityController.getProfileVpnName();
+        boolean hasProfileOwner = mSecurityController.hasProfileOwner();
+        boolean isBranded = deviceOwnerPackage == null && mSecurityController.isVpnBranded();
+
         mDialog = new SystemUIDialog(mContext);
-        mDialog.setTitle(getTitle());
-        mDialog.setMessage(getMessage());
-        mDialog.setButton(DialogInterface.BUTTON_POSITIVE, getPositiveButton(), this);
-        if (mSecurityController.isVpnEnabled()) {
-            mDialog.setButton(DialogInterface.BUTTON_NEGATIVE, getNegativeButton(), this);
+        if (!isBranded) {
+            mDialog.setTitle(getTitle(deviceOwnerPackage));
         }
+        CharSequence msg = getMessage(deviceOwnerPackage, profileOwnerPackage, primaryVpn,
+                profileVpn, hasProfileOwner, isBranded);
+        if (deviceOwnerPackage == null) {
+            mDialog.setMessage(msg);
+            if (mSecurityController.isVpnEnabled() && !mSecurityController.isVpnRestricted()) {
+                mDialog.setButton(DialogInterface.BUTTON_NEGATIVE, getSettingsButton(), this);
+            }
+        } else {
+            View dialogView = LayoutInflater.from(mContext)
+                   .inflate(R.layout.quick_settings_footer_dialog, null, false);
+            mDialog.setView(dialogView);
+            TextView deviceOwnerWarning =
+                    (TextView) dialogView.findViewById(R.id.device_owner_warning);
+            deviceOwnerWarning.setText(msg);
+            // Make the link "learn more" clickable.
+            deviceOwnerWarning.setMovementMethod(new LinkMovementMethod());
+            if (primaryVpn == null) {
+                dialogView.findViewById(R.id.vpn_icon).setVisibility(View.GONE);
+                dialogView.findViewById(R.id.vpn_subtitle).setVisibility(View.GONE);
+                dialogView.findViewById(R.id.vpn_warning).setVisibility(View.GONE);
+            } else {
+                final SpannableStringBuilder message = new SpannableStringBuilder();
+                message.append(mContext.getString(R.string.monitoring_description_do_body_vpn,
+                        primaryVpn));
+                if (!mSecurityController.isVpnRestricted()) {
+                    message.append(mContext.getString(
+                            R.string.monitoring_description_vpn_settings_separator));
+                    message.append(mContext.getString(R.string.monitoring_description_vpn_settings),
+                            new VpnSpan(), 0);
+                }
+
+                TextView vpnWarning = (TextView) dialogView.findViewById(R.id.vpn_warning);
+                vpnWarning.setText(message);
+                // Make the link "Open VPN Settings" clickable.
+                vpnWarning.setMovementMethod(new LinkMovementMethod());
+            }
+            if (!isNetworkLoggingEnabled) {
+                dialogView.findViewById(R.id.network_logging_icon).setVisibility(View.GONE);
+                dialogView.findViewById(R.id.network_logging_subtitle).setVisibility(View.GONE);
+                dialogView.findViewById(R.id.network_logging_warning).setVisibility(View.GONE);
+            }
+        }
+
+        mDialog.setButton(DialogInterface.BUTTON_POSITIVE, getPositiveButton(isBranded), this);
         mDialog.show();
+        mDialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT,
+                                      ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
-    private String getNegativeButton() {
-        if (mSecurityController.isLegacyVpn()) {
-            return mContext.getString(R.string.disconnect_vpn);
+    private String getSettingsButton() {
+        return mContext.getString(R.string.status_bar_settings_settings_button);
+    }
+
+    private String getPositiveButton(boolean isBranded) {
+        return mContext.getString(isBranded ? android.R.string.ok : R.string.quick_settings_done);
+    }
+
+    protected CharSequence getMessage(String deviceOwnerPackage, String profileOwnerPackage,
+            String primaryVpn, String profileVpn, boolean hasProfileOwner, boolean isBranded) {
+        if (deviceOwnerPackage != null) {
+            return mContext.getString(R.string.monitoring_description_device_owned,
+                    deviceOwnerPackage);
+        } else if (primaryVpn != null) {
+            if (profileVpn != null) {
+                return mContext.getString(R.string.monitoring_description_app_personal_work,
+                        profileOwnerPackage, profileVpn, primaryVpn);
+            } else {
+                if (isBranded) {
+                    return mContext.getString(R.string.branded_monitoring_description_app_personal,
+                            primaryVpn);
+                } else {
+                    return mContext.getString(R.string.monitoring_description_app_personal,
+                            primaryVpn);
+                }
+            }
+        } else if (profileVpn != null) {
+            return mContext.getString(R.string.monitoring_description_app_work,
+                    profileOwnerPackage, profileVpn);
+        } else if (profileOwnerPackage != null && hasProfileOwner) {
+            return mContext.getString(R.string.monitoring_description_device_owned,
+                    profileOwnerPackage);
         } else {
-            return mContext.getString(R.string.disable_vpn);
+            // No device owner, no personal VPN, no work VPN, no user owner. Why are we here?
+            return null;
         }
     }
 
-    private String getPositiveButton() {
-        return mContext.getString(R.string.quick_settings_done);
-    }
-
-    private String getMessage() {
-        if (mSecurityController.hasDeviceOwner()) {
-            if (mSecurityController.hasProfileOwner()) {
-                if (mSecurityController.isVpnEnabled()) {
-                    if (mSecurityController.isLegacyVpn()) {
-                        return mContext.getString(
-                                R.string.monitoring_description_legacy_vpn_device_and_profile_owned,
-                                mSecurityController.getDeviceOwnerName(),
-                                mSecurityController.getProfileOwnerName(),
-                                mSecurityController.getLegacyVpnName());
-                    } else {
-                        return mContext.getString(
-                                R.string.monitoring_description_vpn_device_and_profile_owned,
-                                mSecurityController.getDeviceOwnerName(),
-                                mSecurityController.getProfileOwnerName(),
-                                mSecurityController.getVpnApp());
-                    }
-                } else {
-                    return mContext.getString(
-                            R.string.monitoring_description_device_and_profile_owned,
-                            mSecurityController.getDeviceOwnerName(),
-                            mSecurityController.getProfileOwnerName());
-                }
-            } else {
-                if (mSecurityController.isVpnEnabled()) {
-                    if (mSecurityController.isLegacyVpn()) {
-                        return mContext.getString(
-                                R.string.monitoring_description_legacy_vpn_device_owned,
-                                mSecurityController.getDeviceOwnerName(),
-                                mSecurityController.getLegacyVpnName());
-                    } else {
-                        return mContext.getString(R.string.monitoring_description_vpn_device_owned,
-                                mSecurityController.getDeviceOwnerName(),
-                                mSecurityController.getVpnApp());
-                    }
-                } else {
-                    return mContext.getString(R.string.monitoring_description_device_owned,
-                            mSecurityController.getDeviceOwnerName());
-                }
-            }
-        } else if (mSecurityController.hasProfileOwner()) {
-            if (mSecurityController.isVpnEnabled()) {
-                if (mSecurityController.isLegacyVpn()) {
-                    return mContext.getString(
-                            R.string.monitoring_description_legacy_vpn_profile_owned,
-                            mSecurityController.getProfileOwnerName(),
-                            mSecurityController.getLegacyVpnName());
-                } else {
-                    return mContext.getString(
-                            R.string.monitoring_description_vpn_profile_owned,
-                            mSecurityController.getProfileOwnerName(),
-                            mSecurityController.getVpnApp());
-                }
-            } else {
-                return mContext.getString(
-                        R.string.monitoring_description_profile_owned,
-                        mSecurityController.getProfileOwnerName());
-            }
-        } else {
-            if (mSecurityController.isLegacyVpn()) {
-                return mContext.getString(R.string.monitoring_description_legacy_vpn,
-                        mSecurityController.getLegacyVpnName());
-
-            } else {
-                return mContext.getString(R.string.monitoring_description_vpn,
-                        mSecurityController.getVpnApp());
-            }
-        }
-    }
-
-    private int getTitle() {
-        if (mSecurityController.hasDeviceOwner()) {
+    private int getTitle(String deviceOwner) {
+        if (deviceOwner != null) {
             return R.string.monitoring_title_device_owned;
+        } else {
+            return R.string.monitoring_title;
         }
-        if (mSecurityController.hasProfileOwner()) {
-            return R.string.monitoring_title_profile_owned;
-        }
-        return R.string.monitoring_title;
     }
+
+    private final Runnable mUpdateIcon = new Runnable() {
+        @Override
+        public void run() {
+            mFooterIcon.setImageResource(mFooterIconId);
+            mFooterIcon2.setImageResource(mFooterIcon2Id);
+        }
+    };
 
     private final Runnable mUpdateDisplayState = new Runnable() {
         @Override
@@ -245,6 +291,7 @@ public class QSFooter implements OnClickListener, DialogInterface.OnClickListene
             }
             mRootView.setVisibility(mIsVisible ? View.VISIBLE : View.GONE);
             mFooterIcon.setVisibility(mIsIconVisible ? View.VISIBLE : View.INVISIBLE);
+            mFooterIcon2.setVisibility(mIsIcon2Visible ? View.VISIBLE : View.INVISIBLE);
         }
     };
 
@@ -282,4 +329,13 @@ public class QSFooter implements OnClickListener, DialogInterface.OnClickListene
         }
     }
 
+    protected class VpnSpan extends ClickableSpan {
+        @Override
+        public void onClick(View widget) {
+            final Intent intent = new Intent(Settings.ACTION_VPN_SETTINGS);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            mDialog.dismiss();
+            mContext.startActivity(intent);
+        }
+    }
 }

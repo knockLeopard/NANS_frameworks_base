@@ -24,21 +24,22 @@ import com.android.i18n.phonenumbers.ShortNumberUtil;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.database.Cursor;
 import android.location.CountryDetector;
 import android.net.Uri;
 import android.os.SystemProperties;
+import android.os.PersistableBundle;
 import android.provider.Contacts;
 import android.provider.ContactsContract;
+import android.telecom.PhoneAccount;
 import android.text.Editable;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
-import android.telephony.Rlog;
 import android.text.style.TtsSpan;
 import android.util.SparseIntArray;
 
-import static com.android.internal.telephony.PhoneConstants.SUBSCRIPTION_KEY;
 import static com.android.internal.telephony.TelephonyProperties.PROPERTY_OPERATOR_IDP_STRING;
 
 import java.util.Locale;
@@ -179,15 +180,19 @@ public class PhoneNumberUtils
             phoneColumn = ContactsContract.CommonDataKinds.Phone.NUMBER;
         }
 
-        final Cursor c = context.getContentResolver().query(uri, new String[] {
-            phoneColumn
-        }, null, null, null);
-        if (c != null) {
-            try {
+        Cursor c = null;
+        try {
+            c = context.getContentResolver().query(uri, new String[] { phoneColumn },
+                    null, null, null);
+            if (c != null) {
                 if (c.moveToFirst()) {
                     number = c.getString(c.getColumnIndex(phoneColumn));
                 }
-            } finally {
+            }
+        } catch (RuntimeException e) {
+            Rlog.e(LOG_TAG, "Error getting phone number.", e);
+        } finally {
+            if (c != null) {
                 c.close();
             }
         }
@@ -1133,6 +1138,8 @@ public class PhoneNumberUtils
         "VI", // U.S. Virgin Islands
     };
 
+    private static final String KOREA_ISO_COUNTRY_CODE = "KR";
+
     /**
      * Breaks the given number down and formats it according to the rules
      * for the country the number is from.
@@ -1143,6 +1150,7 @@ public class PhoneNumberUtils
      *
      * @deprecated Use link #formatNumber(String phoneNumber, String defaultCountryIso) instead
      */
+    @Deprecated
     public static String formatNumber(String source) {
         SpannableStringBuilder text = new SpannableStringBuilder(source);
         formatNumber(text, getFormatTypeForLocale(Locale.getDefault()));
@@ -1161,6 +1169,7 @@ public class PhoneNumberUtils
      * @hide
      * @deprecated Use link #formatNumber(String phoneNumber, String defaultCountryIso) instead
      */
+    @Deprecated
     public static String formatNumber(String source, int defaultFormattingType) {
         SpannableStringBuilder text = new SpannableStringBuilder(source);
         formatNumber(text, defaultFormattingType);
@@ -1176,6 +1185,7 @@ public class PhoneNumberUtils
      *
      * @deprecated Use link #formatNumber(String phoneNumber, String defaultCountryIso) instead
      */
+    @Deprecated
     public static int getFormatTypeForLocale(Locale locale) {
         String country = locale.getCountry();
 
@@ -1192,6 +1202,7 @@ public class PhoneNumberUtils
      *
      * @deprecated Use link #formatNumber(String phoneNumber, String defaultCountryIso) instead
      */
+    @Deprecated
     public static void formatNumber(Editable text, int defaultFormattingType) {
         int formatType = defaultFormattingType;
 
@@ -1240,6 +1251,7 @@ public class PhoneNumberUtils
      *
      * @deprecated Use link #formatNumber(String phoneNumber, String defaultCountryIso) instead
      */
+    @Deprecated
     public static void formatNanpNumber(Editable text) {
         int length = text.length();
         if (length > "+1-nnn-nnn-nnnn".length()) {
@@ -1355,6 +1367,7 @@ public class PhoneNumberUtils
      *
      * @deprecated Use link #formatNumber(String phoneNumber, String defaultCountryIso) instead
      */
+    @Deprecated
     public static void formatJapaneseNumber(Editable text) {
         JapanesePhoneNumberFormatter.format(text);
     }
@@ -1376,32 +1389,52 @@ public class PhoneNumberUtils
     }
 
     /**
-     * Format the given phoneNumber to the E.164 representation.
-     * <p>
-     * The given phone number must have an area code and could have a country
-     * code.
-     * <p>
-     * The defaultCountryIso is used to validate the given number and generate
-     * the E.164 phone number if the given number doesn't have a country code.
+     * Formats the specified {@code phoneNumber} to the E.164 representation.
      *
-     * @param phoneNumber
-     *            the phone number to format
-     * @param defaultCountryIso
-     *            the ISO 3166-1 two letters country code
-     * @return the E.164 representation, or null if the given phone number is
-     *         not valid.
+     * @param phoneNumber the phone number to format.
+     * @param defaultCountryIso the ISO 3166-1 two letters country code.
+     * @return the E.164 representation, or null if the given phone number is not valid.
      */
     public static String formatNumberToE164(String phoneNumber, String defaultCountryIso) {
+        return formatNumberInternal(phoneNumber, defaultCountryIso, PhoneNumberFormat.E164);
+    }
+
+    /**
+     * Formats the specified {@code phoneNumber} to the RFC3966 representation.
+     *
+     * @param phoneNumber the phone number to format.
+     * @param defaultCountryIso the ISO 3166-1 two letters country code.
+     * @return the RFC3966 representation, or null if the given phone number is not valid.
+     */
+    public static String formatNumberToRFC3966(String phoneNumber, String defaultCountryIso) {
+        return formatNumberInternal(phoneNumber, defaultCountryIso, PhoneNumberFormat.RFC3966);
+    }
+
+    /**
+     * Formats the raw phone number (string) using the specified {@code formatIdentifier}.
+     * <p>
+     * The given phone number must have an area code and could have a country code.
+     * <p>
+     * The defaultCountryIso is used to validate the given number and generate the formatted number
+     * if the specified number doesn't have a country code.
+     *
+     * @param rawPhoneNumber The phone number to format.
+     * @param defaultCountryIso The ISO 3166-1 two letters country code.
+     * @param formatIdentifier The (enum) identifier of the desired format.
+     * @return the formatted representation, or null if the specified number is not valid.
+     */
+    private static String formatNumberInternal(
+            String rawPhoneNumber, String defaultCountryIso, PhoneNumberFormat formatIdentifier) {
+
         PhoneNumberUtil util = PhoneNumberUtil.getInstance();
-        String result = null;
         try {
-            PhoneNumber pn = util.parse(phoneNumber, defaultCountryIso);
-            if (util.isValidNumber(pn)) {
-                result = util.format(pn, PhoneNumberFormat.E164);
+            PhoneNumber phoneNumber = util.parse(rawPhoneNumber, defaultCountryIso);
+            if (util.isValidNumber(phoneNumber)) {
+                return util.format(phoneNumber, formatIdentifier);
             }
-        } catch (NumberParseException e) {
-        }
-        return result;
+        } catch (NumberParseException ignored) { }
+
+        return null;
     }
 
     /**
@@ -1427,7 +1460,19 @@ public class PhoneNumberUtils
         String result = null;
         try {
             PhoneNumber pn = util.parseAndKeepRawInput(phoneNumber, defaultCountryIso);
-            result = util.formatInOriginalFormat(pn, defaultCountryIso);
+            /**
+             * Need to reformat any local Korean phone numbers (when the user is in Korea) with
+             * country code to corresponding national format which would replace the leading
+             * +82 with 0.
+             */
+            if (KOREA_ISO_COUNTRY_CODE.equals(defaultCountryIso) &&
+                    (pn.getCountryCode() == util.getCountryCodeForRegion(KOREA_ISO_COUNTRY_CODE)) &&
+                    (pn.getCountryCodeSource() ==
+                            PhoneNumber.CountryCodeSource.FROM_NUMBER_WITH_PLUS_SIGN)) {
+                result = util.format(pn, PhoneNumberUtil.PhoneNumberFormat.NATIONAL);
+            } else {
+                result = util.formatInOriginalFormat(pn, defaultCountryIso);
+            }
         } catch (NumberParseException e) {
         }
         return result;
@@ -1815,9 +1860,6 @@ public class PhoneNumberUtils
         // to the list.
         number = extractNetworkPortionAlt(number);
 
-        Rlog.d(LOG_TAG, "subId:" + subId + ", defaultCountryIso:" +
-                ((defaultCountryIso == null) ? "NULL" : defaultCountryIso));
-
         String emergencyNumbers = "";
         int slotId = SubscriptionManager.getSlotId(subId);
 
@@ -1827,7 +1869,8 @@ public class PhoneNumberUtils
 
         emergencyNumbers = SystemProperties.get(ecclist, "");
 
-        Rlog.d(LOG_TAG, "slotId:" + slotId + ", emergencyNumbers: " +  emergencyNumbers);
+        Rlog.d(LOG_TAG, "slotId:" + slotId + " subId:" + subId + " country:"
+                + defaultCountryIso + " emergencyNumbers: " +  emergencyNumbers);
 
         if (TextUtils.isEmpty(emergencyNumbers)) {
             // then read-only ecclist property since old RIL only uses this
@@ -2040,7 +2083,7 @@ public class PhoneNumberUtils
      * to read the VM number.
      */
     public static boolean isVoiceMailNumber(String number) {
-        return isVoiceMailNumber(SubscriptionManager.getDefaultSubId(), number);
+        return isVoiceMailNumber(SubscriptionManager.getDefaultSubscriptionId(), number);
     }
 
     /**
@@ -2056,21 +2099,71 @@ public class PhoneNumberUtils
      * @hide
      */
     public static boolean isVoiceMailNumber(int subId, String number) {
-        String vmNumber;
+        return isVoiceMailNumber(null, subId, number);
+    }
 
+    /**
+     * isVoiceMailNumber: checks a given number against the voicemail
+     *   number provided by the RIL and SIM card. The caller must have
+     *   the READ_PHONE_STATE credential.
+     *
+     * @param context {@link Context}.
+     * @param subId the subscription id of the SIM.
+     * @param number the number to look up.
+     * @return true if the number is in the list of voicemail. False
+     * otherwise, including if the caller does not have the permission
+     * to read the VM number.
+     * @hide
+     */
+    public static boolean isVoiceMailNumber(Context context, int subId, String number) {
+        String vmNumber, mdn;
         try {
-            vmNumber = TelephonyManager.getDefault().getVoiceMailNumber(subId);
+            final TelephonyManager tm;
+            if (context == null) {
+                tm = TelephonyManager.getDefault();
+                if (DBG) log("isVoiceMailNumber: default tm");
+            } else {
+                tm = TelephonyManager.from(context);
+                if (DBG) log("isVoiceMailNumber: tm from context");
+            }
+            vmNumber = tm.getVoiceMailNumber(subId);
+            mdn = tm.getLine1Number(subId);
+            if (DBG) log("isVoiceMailNumber: mdn=" + mdn + ", vmNumber=" + vmNumber
+                    + ", number=" + number);
         } catch (SecurityException ex) {
+            if (DBG) log("isVoiceMailNumber: SecurityExcpetion caught");
             return false;
         }
-
         // Strip the separators from the number before comparing it
         // to the list.
         number = extractNetworkPortionAlt(number);
+        if (TextUtils.isEmpty(number)) {
+            if (DBG) log("isVoiceMailNumber: number is empty after stripping");
+            return false;
+        }
 
-        // compare tolerates null so we need to make sure that we
-        // don't return true when both are null.
-        return !TextUtils.isEmpty(number) && compare(number, vmNumber);
+        // check if the carrier considers MDN to be an additional voicemail number
+        boolean compareWithMdn = false;
+        if (context != null) {
+            CarrierConfigManager configManager = (CarrierConfigManager)
+                    context.getSystemService(Context.CARRIER_CONFIG_SERVICE);
+            if (configManager != null) {
+                PersistableBundle b = configManager.getConfigForSubId(subId);
+                if (b != null) {
+                    compareWithMdn = b.getBoolean(CarrierConfigManager.
+                            KEY_MDN_IS_ADDITIONAL_VOICEMAIL_NUMBER_BOOL);
+                    if (DBG) log("isVoiceMailNumber: compareWithMdn=" + compareWithMdn);
+                }
+            }
+        }
+
+        if (compareWithMdn) {
+            if (DBG) log("isVoiceMailNumber: treating mdn as additional vm number");
+            return compare(number, vmNumber) || compare(number, mdn);
+        } else {
+            if (DBG) log("isVoiceMailNumber: returning regular compare");
+            return compare(number, vmNumber);
+        }
     }
 
     /**
@@ -2291,7 +2384,7 @@ public class PhoneNumberUtils
                         tempDialStr = postDialStr.substring(dialableIndex);
                     } else {
                         // Non-dialable character such as P/W should not be at the end of
-                        // the dial string after P/W processing in CdmaConnection.java
+                        // the dial string after P/W processing in GsmCdmaConnection.java
                         // Set the postDialStr to "" to break out of the loop
                         if (dialableIndex < 0) {
                             postDialStr = "";
@@ -2311,16 +2404,44 @@ public class PhoneNumberUtils
      *
      * @param phoneNumber A {@code CharSequence} the entirety of which represents a phone number.
      * @return A {@code CharSequence} with appropriate annotations.
-     *
-     * @hide
      */
-    public static CharSequence ttsSpanAsPhoneNumber(CharSequence phoneNumber) {
+    public static CharSequence createTtsSpannable(CharSequence phoneNumber) {
         if (phoneNumber == null) {
             return null;
         }
         Spannable spannable = Spannable.Factory.getInstance().newSpannable(phoneNumber);
-        PhoneNumberUtils.ttsSpanAsPhoneNumber(spannable, 0, spannable.length());
+        PhoneNumberUtils.addTtsSpan(spannable, 0, spannable.length());
         return spannable;
+    }
+
+    /**
+     * Attach a {@link TtsSpan} to the supplied {@code Spannable} at the indicated location,
+     * annotating that location as containing a phone number.
+     *
+     * @param s A {@code Spannable} to annotate.
+     * @param start The starting character position of the phone number in {@code s}.
+     * @param endExclusive The position after the ending character in the phone number {@code s}.
+     */
+    public static void addTtsSpan(Spannable s, int start, int endExclusive) {
+        s.setSpan(createTtsSpan(s.subSequence(start, endExclusive).toString()),
+                start,
+                endExclusive,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+    }
+
+    /**
+     * Wrap the supplied {@code CharSequence} with a {@code TtsSpan}, annotating it as
+     * containing a phone number in its entirety.
+     *
+     * @param phoneNumber A {@code CharSequence} the entirety of which represents a phone number.
+     * @return A {@code CharSequence} with appropriate annotations.
+     * @deprecated Renamed {@link #createTtsSpannable}.
+     *
+     * @hide
+     */
+    @Deprecated
+    public static CharSequence ttsSpanAsPhoneNumber(CharSequence phoneNumber) {
+        return createTtsSpannable(phoneNumber);
     }
 
     /**
@@ -2331,16 +2452,50 @@ public class PhoneNumberUtils
      * @param start The starting character position of the phone number in {@code s}.
      * @param end The ending character position of the phone number in {@code s}.
      *
+     * @deprecated Renamed {@link #addTtsSpan}.
+     *
      * @hide
      */
+    @Deprecated
     public static void ttsSpanAsPhoneNumber(Spannable s, int start, int end) {
-        s.setSpan(
-                new TtsSpan.TelephoneBuilder()
-                        .setNumberParts(splitAtNonNumerics(s.subSequence(start, end)))
-                        .build(),
-                start,
-                end,
-                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        addTtsSpan(s, start, end);
+    }
+
+    /**
+     * Create a {@code TtsSpan} for the supplied {@code String}.
+     *
+     * @param phoneNumberString A {@code String} the entirety of which represents a phone number.
+     * @return A {@code TtsSpan} for {@param phoneNumberString}.
+     */
+    public static TtsSpan createTtsSpan(String phoneNumberString) {
+        if (phoneNumberString == null) {
+            return null;
+        }
+
+        // Parse the phone number
+        final PhoneNumberUtil phoneNumberUtil = PhoneNumberUtil.getInstance();
+        PhoneNumber phoneNumber = null;
+        try {
+            // Don't supply a defaultRegion so this fails for non-international numbers because
+            // we don't want to TalkBalk to read a country code (e.g. +1) if it is not already
+            // present
+            phoneNumber = phoneNumberUtil.parse(phoneNumberString, /* defaultRegion */ null);
+        } catch (NumberParseException ignored) {
+        }
+
+        // Build a telephone tts span
+        final TtsSpan.TelephoneBuilder builder = new TtsSpan.TelephoneBuilder();
+        if (phoneNumber == null) {
+            // Strip separators otherwise TalkBack will be silent
+            // (this behavior was observed with TalkBalk 4.0.2 from their alpha channel)
+            builder.setNumberParts(splitAtNonNumerics(phoneNumberString));
+        } else {
+            if (phoneNumber.hasCountryCode()) {
+                builder.setCountryCode(Integer.toString(phoneNumber.getCountryCode()));
+            }
+            builder.setNumberParts(Long.toString(phoneNumber.getNationalNumber()));
+        }
+        return builder.build();
     }
 
     // Split a phone number like "+20(123)-456#" using spaces, ignoring anything that is not
@@ -2359,9 +2514,13 @@ public class PhoneNumberUtils
     }
 
     private static String getCurrentIdp(boolean useNanp) {
-        // in case, there is no IDD is found, we shouldn't convert it.
-        String ps = SystemProperties.get(
-                PROPERTY_OPERATOR_IDP_STRING, useNanp ? NANP_IDP_STRING : PLUS_SIGN_STRING);
+        String ps = null;
+        if (useNanp) {
+            ps = NANP_IDP_STRING;
+        } else {
+            // in case, there is no IDD is found, we shouldn't convert it.
+            ps = SystemProperties.get(PROPERTY_OPERATOR_IDP_STRING, PLUS_SIGN_STRING);
+        }
         return ps;
     }
 
@@ -2452,7 +2611,7 @@ public class PhoneNumberUtils
      *
      * @param number SIP address of the form "username@domainname"
      *               (or the URI-escaped equivalent "username%40domainname")
-     * @see isUriNumber
+     * @see #isUriNumber
      *
      * @hide
      */
@@ -2469,6 +2628,48 @@ public class PhoneNumberUtils
             delimiterIndex = number.length();
         }
         return number.substring(0, delimiterIndex);
+    }
+
+    /**
+     * Given a {@link Uri} with a {@code sip} scheme, attempts to build an equivalent {@code tel}
+     * scheme {@link Uri}.  If the source {@link Uri} does not contain a valid number, or is not
+     * using the {@code sip} scheme, the original {@link Uri} is returned.
+     *
+     * @param source The {@link Uri} to convert.
+     * @return The equivalent {@code tel} scheme {@link Uri}.
+     *
+     * @hide
+     */
+    public static Uri convertSipUriToTelUri(Uri source) {
+        // A valid SIP uri has the format: sip:user:password@host:port;uri-parameters?headers
+        // Per RFC3261, the "user" can be a telephone number.
+        // For example: sip:1650555121;phone-context=blah.com@host.com
+        // In this case, the phone number is in the user field of the URI, and the parameters can be
+        // ignored.
+        //
+        // A SIP URI can also specify a phone number in a format similar to:
+        // sip:+1-212-555-1212@something.com;user=phone
+        // In this case, the phone number is again in user field and the parameters can be ignored.
+        // We can get the user field in these instances by splitting the string on the @, ;, or :
+        // and looking at the first found item.
+
+        String scheme = source.getScheme();
+
+        if (!PhoneAccount.SCHEME_SIP.equals(scheme)) {
+            // Not a sip URI, bail.
+            return source;
+        }
+
+        String number = source.getSchemeSpecificPart();
+        String numberParts[] = number.split("[@;:]");
+
+        if (numberParts.length == 0) {
+            // Number not found, bail.
+            return source;
+        }
+        number = numberParts[0];
+
+        return Uri.fromParts(PhoneAccount.SCHEME_TEL, number, null);
     }
 
     /**
@@ -2848,7 +3049,82 @@ public class PhoneNumberUtils
      * Returns Default voice subscription Id.
      */
     private static int getDefaultVoiceSubId() {
-        return SubscriptionManager.getDefaultVoiceSubId();
+        return SubscriptionManager.getDefaultVoiceSubscriptionId();
     }
     //==== End of utility methods used only in compareStrictly() =====
+
+
+    /*
+     * The config held calling number conversion map, expected to convert to emergency number.
+     */
+    private static final String[] CONVERT_TO_EMERGENCY_MAP = Resources.getSystem().getStringArray(
+            com.android.internal.R.array.config_convert_to_emergency_number_map);
+    /**
+     * Check whether conversion to emergency number is enabled
+     *
+     * @return {@code true} when conversion to emergency numbers is enabled,
+     *         {@code false} otherwise
+     *
+     * @hide
+     */
+    public static boolean isConvertToEmergencyNumberEnabled() {
+        return CONVERT_TO_EMERGENCY_MAP != null && CONVERT_TO_EMERGENCY_MAP.length > 0;
+    }
+
+    /**
+     * Converts to emergency number based on the conversion map.
+     * The conversion map is declared as config_convert_to_emergency_number_map.
+     *
+     * Make sure {@link #isConvertToEmergencyNumberEnabled} is true before calling
+     * this function.
+     *
+     * @return The converted emergency number if the number matches conversion map,
+     * otherwise original number.
+     *
+     * @hide
+     */
+    public static String convertToEmergencyNumber(String number) {
+        if (TextUtils.isEmpty(number)) {
+            return number;
+        }
+
+        String normalizedNumber = normalizeNumber(number);
+
+        // The number is already emergency number. Skip conversion.
+        if (isEmergencyNumber(normalizedNumber)) {
+            return number;
+        }
+
+        for (String convertMap : CONVERT_TO_EMERGENCY_MAP) {
+            if (DBG) log("convertToEmergencyNumber: " + convertMap);
+            String[] entry = null;
+            String[] filterNumbers = null;
+            String convertedNumber = null;
+            if (!TextUtils.isEmpty(convertMap)) {
+                entry = convertMap.split(":");
+            }
+            if (entry != null && entry.length == 2) {
+                convertedNumber = entry[1];
+                if (!TextUtils.isEmpty(entry[0])) {
+                    filterNumbers = entry[0].split(",");
+                }
+            }
+            // Skip if the format of entry is invalid
+            if (TextUtils.isEmpty(convertedNumber) || filterNumbers == null
+                    || filterNumbers.length == 0) {
+                continue;
+            }
+
+            for (String filterNumber : filterNumbers) {
+                if (DBG) log("convertToEmergencyNumber: filterNumber = " + filterNumber
+                        + ", convertedNumber = " + convertedNumber);
+                if (!TextUtils.isEmpty(filterNumber) && filterNumber.equals(normalizedNumber)) {
+                    if (DBG) log("convertToEmergencyNumber: Matched. Successfully converted to: "
+                            + convertedNumber);
+                    return convertedNumber;
+                }
+            }
+        }
+        return number;
+    }
 }

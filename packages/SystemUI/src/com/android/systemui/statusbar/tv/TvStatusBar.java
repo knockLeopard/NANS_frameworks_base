@@ -16,38 +16,36 @@
 
 package com.android.systemui.statusbar.tv;
 
+import android.content.ComponentName;
+import android.graphics.Rect;
 import android.os.IBinder;
 import android.service.notification.NotificationListenerService.RankingMap;
 import android.service.notification.StatusBarNotification;
 import android.view.View;
-import android.view.ViewGroup.LayoutParams;
-import android.view.WindowManager;
 
 import com.android.internal.statusbar.StatusBarIcon;
 import com.android.systemui.statusbar.ActivatableNotificationView;
 import com.android.systemui.statusbar.BaseStatusBar;
+import com.android.systemui.statusbar.NotificationData;
+import com.android.systemui.tv.pip.PipManager;
 
-/*
+/**
  * Status bar implementation for "large screen" products that mostly present no on-screen nav
  */
 
 public class TvStatusBar extends BaseStatusBar {
 
     @Override
-    public void addIcon(String slot, int index, int viewIndex, StatusBarIcon icon) {
+    public void setIcon(String slot, StatusBarIcon icon) {
     }
 
     @Override
-    public void updateIcon(String slot, int index, int viewIndex, StatusBarIcon old,
-            StatusBarIcon icon) {
+    public void removeIcon(String slot) {
     }
 
     @Override
-    public void removeIcon(String slot, int index, int viewIndex) {
-    }
-
-    @Override
-    public void addNotification(StatusBarNotification notification, RankingMap ranking) {
+    public void addNotification(StatusBarNotification notification, RankingMap ranking,
+            NotificationData.Entry entry) {
     }
 
     @Override
@@ -59,7 +57,7 @@ public class TvStatusBar extends BaseStatusBar {
     }
 
     @Override
-    public void disable(int state, boolean animate) {
+    public void disable(int state1, int state2, boolean animate) {
     }
 
     @Override
@@ -71,7 +69,8 @@ public class TvStatusBar extends BaseStatusBar {
     }
 
     @Override
-    public void setSystemUiVisibility(int vis, int mask) {
+    public void setSystemUiVisibility(int vis, int fullscreenStackVis, int dockedStackVis,
+            int mask, Rect fullscreenStackBounds, Rect dockedStackBounds) {
     }
 
     @Override
@@ -81,10 +80,6 @@ public class TvStatusBar extends BaseStatusBar {
     @Override
     public void setImeWindowStatus(IBinder token, int vis, int backDisposition,
             boolean showImeSwitcher) {
-    }
-
-    @Override
-    public void toggleRecentApps() {
     }
 
     @Override // CommandQueue
@@ -104,16 +99,6 @@ public class TvStatusBar extends BaseStatusBar {
     }
 
     @Override
-    protected WindowManager.LayoutParams getSearchLayoutParams(
-            LayoutParams layoutParams) {
-        return null;
-    }
-
-    @Override
-    protected void haltTicker() {
-    }
-
-    @Override
     protected void setAreThereNotifications() {
     }
 
@@ -122,15 +107,7 @@ public class TvStatusBar extends BaseStatusBar {
     }
 
     @Override
-    protected void tick(StatusBarNotification n, boolean firstTime) {
-    }
-
-    @Override
-    protected void updateExpandedViewPos(int expandedPosition) {
-    }
-
-    @Override
-    protected boolean shouldDisableNavbarGestures() {
+    public boolean shouldDisableNavbarGestures() {
         return true;
     }
 
@@ -139,28 +116,25 @@ public class TvStatusBar extends BaseStatusBar {
     }
 
     @Override
-    public void resetHeadsUpDecayTimer() {
+    protected void toggleSplitScreenMode(int metricsDockAction, int metricsUndockAction) {
     }
 
     @Override
-    public void scheduleHeadsUpOpen() {
+    public void maybeEscalateHeadsUp() {
     }
 
     @Override
-    public void scheduleHeadsUpEscalation() {
+    public boolean isPanelFullyCollapsed() {
+        return false;
     }
 
     @Override
-    public void scheduleHeadsUpClose() {
-    }
-
-    @Override
-    protected int getMaxKeyguardNotifications() {
+    protected int getMaxKeyguardNotifications(boolean recompute) {
         return 0;
     }
 
     @Override
-    public void animateExpandSettingsPanel() {
+    public void animateExpandSettingsPanel(String subPanel) {
     }
 
     @Override
@@ -180,6 +154,67 @@ public class TvStatusBar extends BaseStatusBar {
     }
 
     @Override
-    public void showScreenPinningRequest() {
+    public void showScreenPinningRequest(int taskId) {
+    }
+
+    @Override
+    public void appTransitionPending() {
+    }
+
+    @Override
+    public void appTransitionCancelled() {
+    }
+
+    @Override
+    public void appTransitionStarting(long startTime, long duration) {
+    }
+
+    @Override
+    public void appTransitionFinished() {
+    }
+
+    @Override
+    public void onCameraLaunchGestureDetected(int source) {
+    }
+
+    @Override
+    public void showTvPictureInPictureMenu() {
+        PipManager.getInstance().showTvPictureInPictureMenu();
+    }
+
+    @Override
+    protected void updateHeadsUp(String key, NotificationData.Entry entry, boolean shouldPeek,
+            boolean alertAgain) {
+    }
+
+    @Override
+    protected void setHeadsUpUser(int newUserId) {
+    }
+
+    protected boolean isSnoozedPackage(StatusBarNotification sbn) {
+        return false;
+    }
+
+    @Override
+    public void addQsTile(ComponentName tile) {
+    }
+
+    @Override
+    public void remQsTile(ComponentName tile) {
+    }
+
+    @Override
+    public void clickTile(ComponentName tile) {
+    }
+
+    @Override
+    public void start() {
+        super.start();
+        putComponent(TvStatusBar.class, this);
+    }
+
+    @Override
+    public void handleSystemNavigationKey(int arg1) {
+        // Not implemented
     }
 }

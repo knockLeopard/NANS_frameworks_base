@@ -20,6 +20,8 @@ import android.os.IBinder;
 import android.os.SystemClock;
 import android.util.EventLog;
 
+import dalvik.system.VMRuntime;
+
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 
@@ -91,12 +93,14 @@ public class BinderInternal {
      * @hide
      */
     public static final native void disableBackgroundScheduling(boolean disable);
+
+    public static final native void setMaxThreads(int numThreads);
     
     static native final void handleGc();
     
     public static void forceGc(String reason) {
         EventLog.writeEvent(2741, reason);
-        Runtime.getRuntime().gc();
+        VMRuntime.getRuntime().requestConcurrentGC();
     }
     
     static void forceBinderGc() {

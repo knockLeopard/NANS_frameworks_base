@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "OpenGLRenderer"
-
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -154,11 +152,6 @@ void Matrix4::load(const float* v) {
     mType = kTypeUnknown;
 }
 
-void Matrix4::load(const Matrix4& v) {
-    memcpy(data, v.data, sizeof(data));
-    mType = v.getType();
-}
-
 void Matrix4::load(const SkMatrix& v) {
     memset(data, 0, sizeof(data));
 
@@ -203,6 +196,34 @@ void Matrix4::copyTo(SkMatrix& v) const {
 }
 
 void Matrix4::loadInverse(const Matrix4& v) {
+    // Fast case for common translation matrices
+    if (v.isPureTranslate()) {
+        // Reset the matrix
+        // Unnamed fields are never written to except by
+        // loadIdentity(), they don't need to be reset
+        data[kScaleX]       = 1.0f;
+        data[kSkewX]        = 0.0f;
+
+        data[kScaleY]       = 1.0f;
+        data[kSkewY]        = 0.0f;
+
+        data[kScaleZ]       = 1.0f;
+
+        data[kPerspective0] = 0.0f;
+        data[kPerspective1] = 0.0f;
+        data[kPerspective2] = 1.0f;
+
+        // No need to deal with kTranslateZ because isPureTranslate()
+        // only returns true when the kTranslateZ component is 0
+        data[kTranslateX]   = -v.data[kTranslateX];
+        data[kTranslateY]   = -v.data[kTranslateY];
+        data[kTranslateZ]   = 0.0f;
+
+        // A "pure translate" matrix can be identity or translation
+        mType = v.getType();
+        return;
+    }
+
     double scale = 1.0 /
             (v.data[kScaleX] * ((double) v.data[kScaleY]  * v.data[kPerspective2] -
                     (double) v.data[kTranslateY] * v.data[kPerspective1]) +
@@ -212,18 +233,18 @@ void Matrix4::loadInverse(const Matrix4& v) {
                      (double) v.data[kScaleY] * v.data[kPerspective0]));
 
     data[kScaleX] = (v.data[kScaleY] * v.data[kPerspective2] -
-            v.data[kTranslateY] * v.data[kPerspective1])  * scale;
+            v.data[kTranslateY] * v.data[kPerspective1]) * scale;
     data[kSkewX] = (v.data[kTranslateX] * v.data[kPerspective1] -
             v.data[kSkewX]  * v.data[kPerspective2]) * scale;
     data[kTranslateX] = (v.data[kSkewX] * v.data[kTranslateY] -
-            v.data[kTranslateX] * v.data[kScaleY])  * scale;
+            v.data[kTranslateX] * v.data[kScaleY]) * scale;
 
     data[kSkewY] = (v.data[kTranslateY] * v.data[kPerspective0] -
             v.data[kSkewY]  * v.data[kPerspective2]) * scale;
     data[kScaleY] = (v.data[kScaleX] * v.data[kPerspective2] -
-            v.data[kTranslateX] * v.data[kPerspective0])  * scale;
+            v.data[kTranslateX] * v.data[kPerspective0]) * scale;
     data[kTranslateY] = (v.data[kTranslateX] * v.data[kSkewY] -
-            v.data[kScaleX]  * v.data[kTranslateY]) * scale;
+            v.data[kScaleX] * v.data[kTranslateY]) * scale;
 
     data[kPerspective0] = (v.data[kSkewY] * v.data[kPerspective1] -
             v.data[kScaleY] * v.data[kPerspective0]) * scale;
@@ -416,6 +437,14 @@ void Matrix4::mapPoint(float& x, float& y) const {
     y = dy * dz;
 }
 
+/**
+ * Set the contents of the rect to be the bounding rect around each of the corners, mapped by the
+ * matrix.
+ *
+ * NOTE: an empty rect to an arbitrary matrix isn't guaranteed to have an empty output, since that's
+ * important for conservative bounds estimation (e.g. rotate45Matrix.mapRect of Rect(0, 10) should
+ * result in non-empty.
+ */
 void Matrix4::mapRect(Rect& r) const {
     if (isIdentity()) return;
 

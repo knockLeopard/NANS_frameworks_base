@@ -19,16 +19,16 @@
 
 #include "RenderTask.h"
 
-#include <memory>
-#include <set>
+#include "../JankTracker.h"
+#include "TimeLord.h"
 
 #include <cutils/compiler.h>
+#include <ui/DisplayInfo.h>
 #include <utils/Looper.h>
-#include <utils/Mutex.h>
-#include <utils/Singleton.h>
 #include <utils/Thread.h>
 
-#include "TimeLord.h"
+#include <memory>
+#include <set>
 
 namespace android {
 
@@ -37,6 +37,7 @@ class DisplayEventReceiver;
 namespace uirenderer {
 
 class RenderState;
+class TestUtils;
 
 namespace renderthread {
 
@@ -69,11 +70,12 @@ protected:
     ~IFrameCallback() {}
 };
 
-class ANDROID_API RenderThread : public Thread, protected Singleton<RenderThread> {
+class ANDROID_API RenderThread : public Thread {
 public:
     // RenderThread takes complete ownership of tasks that are queued
     // and will delete them after they are run
     ANDROID_API void queue(RenderTask* task);
+    ANDROID_API void queueAndWait(RenderTask* task);
     ANDROID_API void queueAtFront(RenderTask* task);
     void queueAt(RenderTask* task, nsecs_t runAtNs);
     void remove(RenderTask* task);
@@ -88,17 +90,23 @@ public:
     TimeLord& timeLord() { return mTimeLord; }
     RenderState& renderState() { return *mRenderState; }
     EglManager& eglManager() { return *mEglManager; }
+    JankTracker& jankTracker() { return *mJankTracker; }
+
+    const DisplayInfo& mainDisplayInfo() { return mDisplayInfo; }
 
 protected:
-    virtual bool threadLoop();
+    virtual bool threadLoop() override;
 
 private:
-    friend class Singleton<RenderThread>;
     friend class DispatchFrameCallbacks;
     friend class RenderProxy;
+    friend class android::uirenderer::TestUtils;
 
     RenderThread();
     virtual ~RenderThread();
+
+    static bool hasInstance();
+    static RenderThread& getInstance();
 
     void initThreadLocals();
     void initializeDisplayEventReceiver();
@@ -118,6 +126,8 @@ private:
     nsecs_t mNextWakeup;
     TaskQueue mQueue;
 
+    DisplayInfo mDisplayInfo;
+
     DisplayEventReceiver* mDisplayEventReceiver;
     bool mVsyncRequested;
     std::set<IFrameCallback*> mFrameCallbacks;
@@ -132,6 +142,8 @@ private:
     TimeLord mTimeLord;
     RenderState* mRenderState;
     EglManager* mEglManager;
+
+    JankTracker* mJankTracker = nullptr;
 };
 
 } /* namespace renderthread */

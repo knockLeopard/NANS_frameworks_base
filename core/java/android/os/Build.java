@@ -16,6 +16,7 @@
 
 package android.os;
 
+import android.annotation.SystemApi;
 import android.text.TextUtils;
 import android.util.Slog;
 
@@ -91,7 +92,13 @@ public class Build {
     /** The name of the hardware (from the kernel command line or /proc). */
     public static final String HARDWARE = getString("ro.hardware");
 
-    /** A hardware serial number, if available.  Alphanumeric only, case-insensitive. */ 
+    /**
+     * Whether this build was for an emulator device.
+     * @hide
+     */
+    public static final boolean IS_EMULATOR = getString("ro.kernel.qemu").equals("1");
+
+    /** A hardware serial number, if available.  Alphanumeric only, case-insensitive. */
     public static final String SERIAL = getString("ro.serialno");
 
     /**
@@ -157,9 +164,20 @@ public class Build {
         public static final String RELEASE = getString("ro.build.version.release");
 
         /**
+         * The base OS build the product is based on.
+         */
+        public static final String BASE_OS = SystemProperties.get("ro.build.version.base_os", "");
+
+        /**
+         * The user-visible security patch level.
+         */
+        public static final String SECURITY_PATCH = SystemProperties.get(
+                "ro.build.version.security_patch", "");
+
+        /**
          * The user-visible SDK version of the framework in its raw String
          * representation; use {@link #SDK_INT} instead.
-         * 
+         *
          * @deprecated Use {@link #SDK_INT} to easily get this as an integer.
          */
         @Deprecated
@@ -171,6 +189,27 @@ public class Build {
          */
         public static final int SDK_INT = SystemProperties.getInt(
                 "ro.build.version.sdk", 0);
+
+        /**
+         * The developer preview revision of a prerelease SDK. This value will always
+         * be <code>0</code> on production platform builds/devices.
+         *
+         * <p>When this value is nonzero, any new API added since the last
+         * officially published {@link #SDK_INT API level} is only guaranteed to be present
+         * on that specific preview revision. For example, an API <code>Activity.fooBar()</code>
+         * might be present in preview revision 1 but renamed or removed entirely in
+         * preview revision 2, which may cause an app attempting to call it to crash
+         * at runtime.</p>
+         *
+         * <p>Experimental apps targeting preview APIs should check this value for
+         * equality (<code>==</code>) with the preview SDK revision they were built for
+         * before using any prerelease platform APIs. Apps that detect a preview SDK revision
+         * other than the specific one they expect should fall back to using APIs from
+         * the previously published API level only to avoid unwanted runtime exceptions.
+         * </p>
+         */
+        public static final int PREVIEW_SDK_INT = SystemProperties.getInt(
+                "ro.build.version.preview_sdk", 0);
 
         /**
          * The current development codename, or the string "REL" if this is
@@ -207,25 +246,25 @@ public class Build {
          * not yet turned into an official release.
          */
         public static final int CUR_DEVELOPMENT = 10000;
-        
+
         /**
          * October 2008: The original, first, version of Android.  Yay!
          */
         public static final int BASE = 1;
-        
+
         /**
          * February 2009: First Android update, officially called 1.1.
          */
         public static final int BASE_1_1 = 2;
-        
+
         /**
          * May 2009: Android 1.5.
          */
         public static final int CUPCAKE = 3;
-        
+
         /**
          * September 2009: Android 1.6.
-         * 
+         *
          * <p>Applications targeting this or a later release will get these
          * new changes in behavior:</p>
          * <ul>
@@ -247,10 +286,10 @@ public class Build {
          * </ul>
          */
         public static final int DONUT = 4;
-        
+
         /**
          * November 2009: Android 2.0
-         * 
+         *
          * <p>Applications targeting this or a later release will get these
          * new changes in behavior:</p>
          * <ul>
@@ -267,22 +306,22 @@ public class Build {
          * </ul>
          */
         public static final int ECLAIR = 5;
-        
+
         /**
          * December 2009: Android 2.0.1
          */
         public static final int ECLAIR_0_1 = 6;
-        
+
         /**
          * January 2010: Android 2.1
          */
         public static final int ECLAIR_MR1 = 7;
-        
+
         /**
          * June 2010: Android 2.2
          */
         public static final int FROYO = 8;
-        
+
         /**
          * November 2010: Android 2.3
          *
@@ -294,7 +333,7 @@ public class Build {
          * </ul>
          */
         public static final int GINGERBREAD = 9;
-        
+
         /**
          * February 2011: Android 2.3.3.
          */
@@ -339,12 +378,12 @@ public class Build {
          * </ul>
          */
         public static final int HONEYCOMB = 11;
-        
+
         /**
          * May 2011: Android 3.1.
          */
         public static final int HONEYCOMB_MR1 = 12;
-        
+
         /**
          * June 2011: Android 3.2.
          *
@@ -518,7 +557,8 @@ public class Build {
          * <p>Applications targeting this or a later release will get these
          * new changes in behavior:</p>
          * <ul>
-         * <li> The default result of {android.preference.PreferenceActivity#isValidFragment
+         * <li> The default result of
+         * {@link android.preference.PreferenceActivity#isValidFragment(String)
          * PreferenceActivity.isValueFragment} becomes false instead of true.</li>
          * <li> In {@link android.webkit.WebView}, apps targeting earlier versions will have
          * JS URLs evaluated directly and any result of the evaluation will not replace
@@ -544,7 +584,7 @@ public class Build {
         public static final int KITKAT = 19;
 
         /**
-         * Android 4.4W: KitKat for watches, snacks on the run.
+         * June 2014: Android 4.4W. KitKat for watches, snacks on the run.
          *
          * <p>Applications targeting this or a later release will get these
          * new changes in behavior:</p>
@@ -562,7 +602,7 @@ public class Build {
         public static final int L = 21;
 
         /**
-         * Lollipop.  A flat one with beautiful shadows.  But still tasty.
+         * November 2014: Lollipop.  A flat one with beautiful shadows.  But still tasty.
          *
          * <p>Applications targeting this or a later release will get these
          * new changes in behavior:</p>
@@ -593,11 +633,100 @@ public class Build {
         public static final int LOLLIPOP = 21;
 
         /**
-         * Lollipop with an extra sugar coating on the outside!
+         * March 2015: Lollipop with an extra sugar coating on the outside!
          */
         public static final int LOLLIPOP_MR1 = 22;
+
+        /**
+         * M is for Marshmallow!
+         *
+         * <p>Applications targeting this or a later release will get these
+         * new changes in behavior:</p>
+         * <ul>
+         * <li> Runtime permissions.  Dangerous permissions are no longer granted at
+         * install time, but must be requested by the application at runtime through
+         * {@link android.app.Activity#requestPermissions}.</li>
+         * <li> Bluetooth and Wi-Fi scanning now requires holding the location permission.</li>
+         * <li> {@link android.app.AlarmManager#setTimeZone AlarmManager.setTimeZone} will fail if
+         * the given timezone is non-Olson.</li>
+         * <li> Activity transitions will only return shared
+         * elements mapped in the returned view hierarchy back to the calling activity.</li>
+         * <li> {@link android.view.View} allows a number of behaviors that may break
+         * existing apps: Canvas throws an exception if restore() is called too many times,
+         * widgets may return a hint size when returning UNSPECIFIED measure specs, and it
+         * will respect the attributes {@link android.R.attr#foreground},
+         * {@link android.R.attr#foregroundGravity}, {@link android.R.attr#foregroundTint}, and
+         * {@link android.R.attr#foregroundTintMode}.</li>
+         * <li> {@link android.view.MotionEvent#getButtonState MotionEvent.getButtonState}
+         * will no longer report {@link android.view.MotionEvent#BUTTON_PRIMARY}
+         * and {@link android.view.MotionEvent#BUTTON_SECONDARY} as synonyms for
+         * {@link android.view.MotionEvent#BUTTON_STYLUS_PRIMARY} and
+         * {@link android.view.MotionEvent#BUTTON_STYLUS_SECONDARY}.</li>
+         * <li> {@link android.widget.ScrollView} now respects the layout param margins
+         * when measuring.</li>
+         * </ul>
+         */
+        public static final int M = 23;
+
+        /**
+         * N is for Nougat.
+         *
+         * <p>Applications targeting this or a later release will get these
+         * new changes in behavior:</p>
+         * <ul>
+         * <li> {@link android.app.DownloadManager.Request#setAllowedNetworkTypes
+         * DownloadManager.Request.setAllowedNetworkTypes}
+         * will disable "allow over metered" when specifying only
+         * {@link android.app.DownloadManager.Request#NETWORK_WIFI}.</li>
+         * <li> {@link android.app.DownloadManager} no longer allows access to raw
+         * file paths.</li>
+         * <li> {@link android.app.Notification.Builder#setShowWhen
+         * Notification.Builder.setShowWhen}
+         * must be called explicitly to have the time shown, and various other changes in
+         * {@link android.app.Notification.Builder Notification.Builder} to how notifications
+         * are shown.</li>
+         * <li>{@link android.content.Context#MODE_WORLD_READABLE} and
+         * {@link android.content.Context#MODE_WORLD_WRITEABLE} are no longer supported.</li>
+         * <li>{@link android.os.FileUriExposedException} will be thrown to applications.</li>
+         * <li>Applications will see global drag and drops as per
+         * {@link android.view.View#DRAG_FLAG_GLOBAL}.</li>
+         * <li>{@link android.webkit.WebView#evaluateJavascript WebView.evaluateJavascript}
+         * will not persist state from an empty WebView.</li>
+         * <li>{@link android.animation.AnimatorSet} will not ignore calls to end() before
+         * start().</li>
+         * <li>{@link android.app.AlarmManager#cancel(android.app.PendingIntent)
+         * AlarmManager.cancel} will throw a NullPointerException if given a null operation.</li>
+         * <li>{@link android.app.FragmentManager} will ensure fragments have been created
+         * before being placed on the back stack.</li>
+         * <li>{@link android.app.FragmentManager} restores fragments in
+         * {@link android.app.Fragment#onCreate Fragment.onCreate} rather than after the
+         * method returns.</li>
+         * <li>{@link android.R.attr#resizeableActivity} defaults to true.</li>
+         * <li>{@link android.graphics.drawable.AnimatedVectorDrawable} throws exceptions when
+         * opening invalid VectorDrawable animations.</li>
+         * <li>{@link android.view.ViewGroup.MarginLayoutParams} will no longer be dropped
+         * when converting between some types of layout params (such as
+         * {@link android.widget.LinearLayout.LayoutParams LinearLayout.LayoutParams} to
+         * {@link android.widget.RelativeLayout.LayoutParams RelativeLayout.LayoutParams}).</li>
+         * <li>Your application processes will not be killed when the device density changes.</li>
+         * <li>Drag and drop. After a view receives the
+         * {@link android.view.DragEvent#ACTION_DRAG_ENTERED} event, when the drag shadow moves into
+         * a descendant view that can accept the data, the view receives the
+         * {@link android.view.DragEvent#ACTION_DRAG_EXITED} event and won’t receive
+         * {@link android.view.DragEvent#ACTION_DRAG_LOCATION} and
+         * {@link android.view.DragEvent#ACTION_DROP} events while the drag shadow is within that
+         * descendant view, even if the descendant view returns <code>false</code> from its handler
+         * for these events.</li>
+         * </ul>
+         */
+        public static final int N = 24;
+
+        /**
+         * N MR1: Nougat++.
+         */
+        public static final int N_MR1 = 25;
     }
-    
+
     /** The type of build, like "user" or "eng". */
     public static final String TYPE = getString("ro.build.type");
 
@@ -644,14 +773,25 @@ public class Build {
     }
 
     /**
-     * Check that device fingerprint is defined and that it matches across
-     * various partitions.
+     * Verifies the the current flash of the device is consistent with what
+     * was expected at build time.
+     * 1) Checks that device fingerprint is defined and that it matches across
+     *    various partitions.
+     * 2) Verifies radio and bootloader partitions are those expected in the build.
      *
      * @hide
      */
-    public static boolean isFingerprintConsistent() {
+    public static boolean isBuildConsistent() {
+        // Don't care on eng builds.  Incremental build may trigger false negative.
+        if ("eng".equals(TYPE)) return true;
+
         final String system = SystemProperties.get("ro.build.fingerprint");
         final String vendor = SystemProperties.get("ro.vendor.build.fingerprint");
+        final String bootimage = SystemProperties.get("ro.bootimage.build.fingerprint");
+        final String requiredBootloader = SystemProperties.get("ro.build.expect.bootloader");
+        final String currentBootloader = SystemProperties.get("ro.bootloader");
+        final String requiredRadio = SystemProperties.get("ro.build.expect.baseband");
+        final String currentRadio = SystemProperties.get("gsm.version.baseband");
 
         if (TextUtils.isEmpty(system)) {
             Slog.e(TAG, "Required ro.build.fingerprint is empty!");
@@ -665,6 +805,32 @@ public class Build {
                 return false;
             }
         }
+
+        /* TODO: Figure out issue with checks failing
+        if (!TextUtils.isEmpty(bootimage)) {
+            if (!Objects.equals(system, bootimage)) {
+                Slog.e(TAG, "Mismatched fingerprints; system reported " + system
+                        + " but bootimage reported " + bootimage);
+                return false;
+            }
+        }
+
+        if (!TextUtils.isEmpty(requiredBootloader)) {
+            if (!Objects.equals(currentBootloader, requiredBootloader)) {
+                Slog.e(TAG, "Mismatched bootloader version: build requires " + requiredBootloader
+                        + " but runtime reports " + currentBootloader);
+                return false;
+            }
+        }
+
+        if (!TextUtils.isEmpty(requiredRadio)) {
+            if (!Objects.equals(currentRadio, requiredRadio)) {
+                Slog.e(TAG, "Mismatched radio version: build requires " + requiredRadio
+                        + " but runtime reports " + currentRadio);
+                return false;
+            }
+        }
+        */
 
         return true;
     }
@@ -680,6 +846,19 @@ public class Build {
      */
     public static final boolean IS_DEBUGGABLE =
             SystemProperties.getInt("ro.debuggable", 0) == 1;
+
+    /**
+     * Specifies whether the permissions needed by a legacy app should be
+     * reviewed before any of its components can run. A legacy app is one
+     * with targetSdkVersion < 23, i.e apps using the old permission model.
+     * If review is not required, permissions are reviewed before the app
+     * is installed.
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final boolean PERMISSIONS_REVIEW_REQUIRED =
+            SystemProperties.getInt("ro.permission_review_required", 0) == 1;
 
     /**
      * Returns the version string for the radio firmware.  May return

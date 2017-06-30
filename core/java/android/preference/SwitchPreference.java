@@ -16,6 +16,7 @@
 
 package android.preference;
 
+import android.annotation.StringRes;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.util.AttributeSet;
@@ -121,7 +122,7 @@ public class SwitchPreference extends TwoStatePreference {
     protected void onBindView(View view) {
         super.onBindView(view);
 
-        View checkableView = view.findViewById(com.android.internal.R.id.switchWidget);
+        View checkableView = view.findViewById(com.android.internal.R.id.switch_widget);
         if (checkableView != null && checkableView instanceof Checkable) {
             if (checkableView instanceof Switch) {
                 final Switch switchView = (Switch) checkableView;
@@ -169,7 +170,7 @@ public class SwitchPreference extends TwoStatePreference {
      *
      * @param resId The text as a string resource ID
      */
-    public void setSwitchTextOn(int resId) {
+    public void setSwitchTextOn(@StringRes int resId) {
         setSwitchTextOn(getContext().getString(resId));
     }
 
@@ -179,7 +180,7 @@ public class SwitchPreference extends TwoStatePreference {
      *
      * @param resId The text as a string resource ID
      */
-    public void setSwitchTextOff(int resId) {
+    public void setSwitchTextOff(@StringRes int resId) {
         setSwitchTextOff(getContext().getString(resId));
     }
 

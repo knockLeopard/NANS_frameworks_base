@@ -14,11 +14,6 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "OpenGLRenderer"
-#define ATRACE_TAG ATRACE_TAG_VIEW
-
-#include <SkCanvas.h>
-
 #include <utils/Trace.h>
 #include <ui/Rect.h>
 #include <ui/Region.h>
@@ -28,6 +23,7 @@
 #include "DeferredDisplayList.h"
 #include "DisplayListOp.h"
 #include "OpenGLRenderer.h"
+#include "Properties.h"
 #include "utils/MathUtils.h"
 
 #if DEBUG_DEFER
@@ -46,13 +42,19 @@ namespace uirenderer {
 #define DEBUG_COLOR_MERGEDBATCH      0x5f7f7fff
 #define DEBUG_COLOR_MERGEDBATCH_SOLO 0x5f7fff7f
 
+static bool avoidOverdraw() {
+    // Don't avoid overdraw when visualizing it, since that makes it harder to
+    // debug where it's coming from, and when the problem occurs.
+    return !Properties::debugOverdraw;
+};
+
 /////////////////////////////////////////////////////////////////////////////////
 // Operation Batches
 /////////////////////////////////////////////////////////////////////////////////
 
 class Batch {
 public:
-    virtual status_t replay(OpenGLRenderer& renderer, Rect& dirty, int index) = 0;
+    virtual void replay(OpenGLRenderer& renderer, Rect& dirty, int index) = 0;
     virtual ~Batch() {}
     virtual bool purelyDrawBatch() { return false; }
     virtual bool coversBounds(const Rect& bounds) { return false; }
@@ -71,7 +73,7 @@ public:
         // NOTE: ignore empty bounds special case, since we don't merge across those ops
         mBounds.unionWith(state->mBounds);
         mAllOpsOpaque &= opaqueOverBounds;
-        mOps.add(OpStatePair(op, state));
+        mOps.push_back(OpStatePair(op, state));
     }
 
     bool intersects(const Rect& rect) {
@@ -91,12 +93,10 @@ public:
         return false;
     }
 
-    virtual status_t replay(OpenGLRenderer& renderer, Rect& dirty, int index) {
+    virtual void replay(OpenGLRenderer& renderer, Rect& dirty, int index) override {
         DEFER_LOGD("%d  replaying DrawBatch %p, with %d ops (batch id %x, merge id %p)",
                 index, this, mOps.size(), getBatchId(), getMergeId());
 
-        status_t status = DrawGlInfo::kStatusDone;
-        DisplayListLogBuffer& logBuffer = DisplayListLogBuffer::getInstance();
         for (unsigned int i = 0; i < mOps.size(); i++) {
             DrawOp* op = mOps[i].op;
             const DeferredDisplayState* state = mOps[i].state;
@@ -105,8 +105,7 @@ public:
 #if DEBUG_DISPLAY_LIST_OPS_AS_EVENTS
             renderer.eventMark(op->name());
 #endif
-            logBuffer.writeCommand(0, op->name());
-            status |= op->applyDraw(renderer, dirty);
+            op->applyDraw(renderer, dirty);
 
 #if DEBUG_MERGE_BEHAVIOR
             const Rect& bounds = state->mBounds;
@@ -118,12 +117,11 @@ public:
                     batchColor);
 #endif
         }
-        return status;
     }
 
-    virtual bool purelyDrawBatch() { return true; }
+    virtual bool purelyDrawBatch() override { return true; }
 
-    virtual bool coversBounds(const Rect& bounds) {
+    virtual bool coversBounds(const Rect& bounds) override {
         if (CC_LIKELY(!mAllOpsOpaque || !mBounds.contains(bounds) || count() == 1)) return false;
 
         Region uncovered(android::Rect(bounds.left, bounds.top, bounds.right, bounds.bottom));
@@ -139,7 +137,7 @@ public:
     inline int count() const { return mOps.size(); }
 
 protected:
-    Vector<OpStatePair> mOps;
+    std::vector<OpStatePair> mOps;
     Rect mBounds; // union of bounds of contained ops
 private:
     bool mAllOpsOpaque;
@@ -198,6 +196,7 @@ public:
         // Identical round rect clip state means both ops will clip in the same way, or not at all.
         // As the state objects are const, we can compare their pointers to determine mergeability
         if (lhs->mRoundRectClipState != rhs->mRoundRectClipState) return false;
+        if (lhs->mProjectionPathMask != rhs->mProjectionPathMask) return false;
 
         /* Clipping compatibility check
          *
@@ -223,7 +222,10 @@ public:
         // if paints are equal, then modifiers + paint attribs don't need to be compared
         if (op->mPaint == mOps[0].op->mPaint) return true;
 
-        if (op->getPaintAlpha() != mOps[0].op->getPaintAlpha()) return false;
+        if (PaintUtils::getAlphaDirect(op->mPaint)
+                != PaintUtils::getAlphaDirect(mOps[0].op->mPaint)) {
+            return false;
+        }
 
         if (op->mPaint && mOps[0].op->mPaint &&
             op->mPaint->getColorFilter() != mOps[0].op->mPaint->getColorFilter()) {
@@ -235,30 +237,11 @@ public:
             return false;
         }
 
-        /* Draw Modifiers compatibility check
-         *
-         * Shadows are ignored, as only text uses them, and in that case they are drawn
-         * per-DrawTextOp, before the unified text draw. Because of this, it's always safe to merge
-         * text UNLESS a later draw's shadow should overlays a previous draw's text. This is covered
-         * above with the intersection check.
-         *
-         * OverrideLayerAlpha is also ignored, as it's only used for drawing layers, which are never
-         * merged.
-         *
-         * These ignore cases prevent us from simply memcmp'ing the drawModifiers
-         */
-        const DrawModifiers& lhsMod = lhs->mDrawModifiers;
-        const DrawModifiers& rhsMod = rhs->mDrawModifiers;
-
-        // Draw filter testing expects bit fields to be clear if filter not set.
-        if (lhsMod.mHasDrawFilter != rhsMod.mHasDrawFilter) return false;
-        if (lhsMod.mPaintFilterClearBits != rhsMod.mPaintFilterClearBits) return false;
-        if (lhsMod.mPaintFilterSetBits != rhsMod.mPaintFilterSetBits) return false;
-
         return true;
     }
 
-    virtual void add(DrawOp* op, const DeferredDisplayState* state, bool opaqueOverBounds) {
+    virtual void add(DrawOp* op, const DeferredDisplayState* state,
+            bool opaqueOverBounds) override {
         DrawBatch::add(op, state, opaqueOverBounds);
 
         const int newClipSideFlags = state->mClipSideFlags;
@@ -269,33 +252,29 @@ public:
         if (newClipSideFlags & kClipSide_Bottom) mClipRect.bottom = state->mClip.bottom;
     }
 
-    virtual status_t replay(OpenGLRenderer& renderer, Rect& dirty, int index) {
+    virtual void replay(OpenGLRenderer& renderer, Rect& dirty, int index) override {
         DEFER_LOGD("%d  replaying MergingDrawBatch %p, with %d ops,"
                 " clip flags %x (batch id %x, merge id %p)",
                 index, this, mOps.size(), mClipSideFlags, getBatchId(), getMergeId());
         if (mOps.size() == 1) {
-            return DrawBatch::replay(renderer, dirty, -1);
+            DrawBatch::replay(renderer, dirty, -1);
+            return;
         }
 
         // clipping in the merged case is done ahead of time since all ops share the clip (if any)
-        renderer.setupMergedMultiDraw(mClipSideFlags ? &mClipRect : NULL);
+        renderer.setupMergedMultiDraw(mClipSideFlags ? &mClipRect : nullptr);
 
         DrawOp* op = mOps[0].op;
-        DisplayListLogBuffer& buffer = DisplayListLogBuffer::getInstance();
-        buffer.writeCommand(0, "multiDraw");
-        buffer.writeCommand(1, op->name());
-
 #if DEBUG_DISPLAY_LIST_OPS_AS_EVENTS
         renderer.eventMark("multiDraw");
         renderer.eventMark(op->name());
 #endif
-        status_t status = op->multiDraw(renderer, dirty, mOps, mBounds);
+        op->multiDraw(renderer, dirty, mOps, mBounds);
 
 #if DEBUG_MERGE_BEHAVIOR
         renderer.drawScreenSpaceColorRect(mBounds.left, mBounds.top, mBounds.right, mBounds.bottom,
                 DEBUG_COLOR_MERGEDBATCH);
 #endif
-        return status;
     }
 
 private:
@@ -313,7 +292,7 @@ public:
     // creates a single operation batch
     StateOpBatch(const StateOp* op, const DeferredDisplayState* state) : mOp(op), mState(state) {}
 
-    virtual status_t replay(OpenGLRenderer& renderer, Rect& dirty, int index) {
+    virtual void replay(OpenGLRenderer& renderer, Rect& dirty, int index) override {
         DEFER_LOGD("replaying state op batch %p", this);
         renderer.restoreDisplayState(*mState);
 
@@ -322,7 +301,6 @@ public:
         // renderer.restoreToCount directly
         int saveCount = -1;
         mOp->applyState(renderer, saveCount);
-        return DrawGlInfo::kStatusDone;
     }
 
 private:
@@ -333,19 +311,17 @@ private:
 class RestoreToCountBatch : public Batch {
 public:
     RestoreToCountBatch(const StateOp* op, const DeferredDisplayState* state, int restoreCount) :
-            mOp(op), mState(state), mRestoreCount(restoreCount) {}
+            mState(state), mRestoreCount(restoreCount) {}
 
-    virtual status_t replay(OpenGLRenderer& renderer, Rect& dirty, int index) {
+    virtual void replay(OpenGLRenderer& renderer, Rect& dirty, int index) override {
         DEFER_LOGD("batch %p restoring to count %d", this, mRestoreCount);
 
         renderer.restoreDisplayState(*mState);
         renderer.restoreToCount(mRestoreCount);
-        return DrawGlInfo::kStatusDone;
     }
 
 private:
     // we use the state storage for the RestoreToCountOp, but don't replay the op itself
-    const StateOp* mOp;
     const DeferredDisplayState* mState;
 
     /*
@@ -359,9 +335,8 @@ private:
 
 #if DEBUG_MERGE_BEHAVIOR
 class BarrierDebugBatch : public Batch {
-    virtual status_t replay(OpenGLRenderer& renderer, Rect& dirty, int index) {
+    virtual void replay(OpenGLRenderer& renderer, Rect& dirty, int index) {
         renderer.drawScreenSpaceColorRect(0, 0, 10000, 10000, DEBUG_COLOR_BARRIER);
-        return DrawGlInfo::kStatusDrew;
     }
 };
 #endif
@@ -372,7 +347,7 @@ class BarrierDebugBatch : public Batch {
 
 void DeferredDisplayList::resetBatchingState() {
     for (int i = 0; i < kOpBatch_Count; i++) {
-        mBatchLookup[i] = NULL;
+        mBatchLookup[i] = nullptr;
         mMergingBatches[i].clear();
     }
 #if DEBUG_MERGE_BEHAVIOR
@@ -442,7 +417,7 @@ void DeferredDisplayList::addClip(OpenGLRenderer& renderer, ClipOp* op) {
  * beginning of the frame. This would avoid targetting and removing an FBO in the middle of a frame.
  *
  * saveLayer operations should be pulled to the beginning of the frame if the canvas doesn't have a
- * complex clip, and if the flags (kClip_SaveFlag & kClipToLayer_SaveFlag) are set.
+ * complex clip, and if the flags (SaveFlags::Clip & SaveFlags::ClipToLayer) are set.
  */
 void DeferredDisplayList::addSaveLayer(OpenGLRenderer& renderer,
         SaveLayerOp* op, int newSaveCount) {
@@ -450,7 +425,7 @@ void DeferredDisplayList::addSaveLayer(OpenGLRenderer& renderer,
             this, op, op->getFlags(), newSaveCount);
 
     storeStateOpBarrier(renderer, op);
-    mSaveStack.push(newSaveCount);
+    mSaveStack.push_back(newSaveCount);
 }
 
 /**
@@ -461,11 +436,11 @@ void DeferredDisplayList::addSave(OpenGLRenderer& renderer, SaveOp* op, int newS
     int saveFlags = op->getFlags();
     DEFER_LOGD("%p adding saveOp %p, flags %x, new count %d", this, op, saveFlags, newSaveCount);
 
-    if (recordingComplexClip() && (saveFlags & SkCanvas::kClip_SaveFlag)) {
+    if (recordingComplexClip() && (saveFlags & SaveFlags::Clip)) {
         // store and replay the save operation, as it may be needed to correctly playback the clip
         DEFER_LOGD("    adding save barrier with new save count %d", newSaveCount);
         storeStateOpBarrier(renderer, op);
-        mSaveStack.push(newSaveCount);
+        mSaveStack.push_back(newSaveCount);
     }
 }
 
@@ -488,11 +463,11 @@ void DeferredDisplayList::addRestoreToCount(OpenGLRenderer& renderer, StateOp* o
         resetBatchingState();
     }
 
-    if (mSaveStack.isEmpty() || newSaveCount > mSaveStack.top()) {
+    if (mSaveStack.empty() || newSaveCount > mSaveStack.back()) {
         return;
     }
 
-    while (!mSaveStack.isEmpty() && mSaveStack.top() >= newSaveCount) mSaveStack.pop();
+    while (!mSaveStack.empty() && mSaveStack.back() >= newSaveCount) mSaveStack.pop_back();
 
     storeRestoreToCountBarrier(renderer, op, mSaveStack.size() + FLUSH_SAVE_STACK_DEPTH);
 }
@@ -523,9 +498,11 @@ void DeferredDisplayList::addDrawOp(OpenGLRenderer& renderer, DrawOp* op) {
     // complex clip has a complex set of expectations on the renderer state - for now, avoid taking
     // the merge path in those cases
     deferInfo.mergeable &= !recordingComplexClip();
-    deferInfo.opaqueOverBounds &= !recordingComplexClip() && mSaveStack.isEmpty();
+    deferInfo.opaqueOverBounds &= !recordingComplexClip()
+            && mSaveStack.empty()
+            && !state->mRoundRectClipState;
 
-    if (CC_LIKELY(mAvoidOverdraw) && mBatches.size() &&
+    if (CC_LIKELY(avoidOverdraw()) && mBatches.size() &&
             state->mClipSideFlags != kClipSide_ConservativeFull &&
             deferInfo.opaqueOverBounds && state->mBounds.contains(mBounds)) {
         // avoid overdraw by resetting drawing state + discarding drawing ops
@@ -533,26 +510,26 @@ void DeferredDisplayList::addDrawOp(OpenGLRenderer& renderer, DrawOp* op) {
         resetBatchingState();
     }
 
-    if (CC_UNLIKELY(renderer.getCaches().drawReorderDisabled)) {
+    if (CC_UNLIKELY(Properties::drawReorderDisabled)) {
         // TODO: elegant way to reuse batches?
         DrawBatch* b = new DrawBatch(deferInfo);
         b->add(op, state, deferInfo.opaqueOverBounds);
-        mBatches.add(b);
+        mBatches.push_back(b);
         return;
     }
 
     // find the latest batch of the new op's type, and try to merge the new op into it
-    DrawBatch* targetBatch = NULL;
+    DrawBatch* targetBatch = nullptr;
 
     // insertion point of a new batch, will hopefully be immediately after similar batch
     // (eventually, should be similar shader)
     int insertBatchIndex = mBatches.size();
-    if (!mBatches.isEmpty()) {
+    if (!mBatches.empty()) {
         if (state->mBounds.isEmpty()) {
-            // don't know the bounds for op, so add to last batch and start from scratch on next op
+            // don't know the bounds for op, so create new batch and start from scratch on next op
             DrawBatch* b = new DrawBatch(deferInfo);
             b->add(op, state, deferInfo.opaqueOverBounds);
-            mBatches.add(b);
+            mBatches.push_back(b);
             resetBatchingState();
 #if DEBUG_DEFER
             DEFER_LOGD("Warning: Encountered op with empty bounds, resetting batches");
@@ -563,9 +540,13 @@ void DeferredDisplayList::addDrawOp(OpenGLRenderer& renderer, DrawOp* op) {
 
         if (deferInfo.mergeable) {
             // Try to merge with any existing batch with same mergeId.
-            if (mMergingBatches[deferInfo.batchId].get(deferInfo.mergeId, targetBatch)) {
+            std::unordered_map<mergeid_t, DrawBatch*>& mergingBatch
+                    = mMergingBatches[deferInfo.batchId];
+            auto getResult = mergingBatch.find(deferInfo.mergeId);
+            if (getResult != mergingBatch.end()) {
+                targetBatch = getResult->second;
                 if (!((MergingDrawBatch*) targetBatch)->canMergeWith(op, state)) {
-                    targetBatch = NULL;
+                    targetBatch = nullptr;
                 }
             }
         } else {
@@ -591,7 +572,7 @@ void DeferredDisplayList::addDrawOp(OpenGLRenderer& renderer, DrawOp* op) {
                     // NOTE: it may be possible to optimize for special cases where two operations
                     // of the same batch/paint could swap order, such as with a non-mergeable
                     // (clipped) and a mergeable text operation
-                    targetBatch = NULL;
+                    targetBatch = nullptr;
 #if DEBUG_DEFER
                     DEFER_LOGD("op couldn't join batch %p, was intersected by batch %d",
                             targetBatch, i);
@@ -607,7 +588,8 @@ void DeferredDisplayList::addDrawOp(OpenGLRenderer& renderer, DrawOp* op) {
         if (deferInfo.mergeable) {
             targetBatch = new MergingDrawBatch(deferInfo,
                     renderer.getViewportWidth(), renderer.getViewportHeight());
-            mMergingBatches[deferInfo.batchId].put(deferInfo.mergeId, targetBatch);
+            mMergingBatches[deferInfo.batchId].insert(
+                    std::make_pair(deferInfo.mergeId, targetBatch));
         } else {
             targetBatch = new DrawBatch(deferInfo);
             mBatchLookup[deferInfo.batchId] = targetBatch;
@@ -616,7 +598,7 @@ void DeferredDisplayList::addDrawOp(OpenGLRenderer& renderer, DrawOp* op) {
         DEFER_LOGD("creating %singBatch %p, bid %x, at %d",
                 deferInfo.mergeable ? "Merg" : "Draw",
                 targetBatch, deferInfo.batchId, insertBatchIndex);
-        mBatches.insertAt(targetBatch, insertBatchIndex);
+        mBatches.insert(mBatches.begin() + insertBatchIndex, targetBatch);
     }
 
     targetBatch->add(op, state, deferInfo.opaqueOverBounds);
@@ -627,7 +609,7 @@ void DeferredDisplayList::storeStateOpBarrier(OpenGLRenderer& renderer, StateOp*
 
     DeferredDisplayState* state = createState();
     renderer.storeDisplayState(*state, getStateOpDeferFlags());
-    mBatches.add(new StateOpBatch(op, state));
+    mBatches.push_back(new StateOpBatch(op, state));
     resetBatchingState();
 }
 
@@ -637,10 +619,10 @@ void DeferredDisplayList::storeRestoreToCountBarrier(OpenGLRenderer& renderer, S
             this, newSaveCount, mBatches.size());
 
     // store displayState for the restore operation, as it may be associated with a saveLayer that
-    // doesn't have kClip_SaveFlag set
+    // doesn't have SaveFlags::Clip set
     DeferredDisplayState* state = createState();
     renderer.storeDisplayState(*state, getStateOpDeferFlags());
-    mBatches.add(new RestoreToCountBatch(op, state, newSaveCount));
+    mBatches.push_back(new RestoreToCountBatch(op, state, newSaveCount));
     resetBatchingState();
 }
 
@@ -648,36 +630,31 @@ void DeferredDisplayList::storeRestoreToCountBarrier(OpenGLRenderer& renderer, S
 // Replay / flush
 /////////////////////////////////////////////////////////////////////////////////
 
-static status_t replayBatchList(const Vector<Batch*>& batchList,
+static void replayBatchList(const std::vector<Batch*>& batchList,
         OpenGLRenderer& renderer, Rect& dirty) {
-    status_t status = DrawGlInfo::kStatusDone;
 
     for (unsigned int i = 0; i < batchList.size(); i++) {
         if (batchList[i]) {
-            status |= batchList[i]->replay(renderer, dirty, i);
+            batchList[i]->replay(renderer, dirty, i);
         }
     }
     DEFER_LOGD("--flushed, drew %d batches", batchList.size());
-    return status;
 }
 
-status_t DeferredDisplayList::flush(OpenGLRenderer& renderer, Rect& dirty) {
+void DeferredDisplayList::flush(OpenGLRenderer& renderer, Rect& dirty) {
     ATRACE_NAME("flush drawing commands");
-    Caches::getInstance().fontRenderer->endPrecaching();
+    Caches::getInstance().fontRenderer.endPrecaching();
 
-    status_t status = DrawGlInfo::kStatusDone;
-
-    if (isEmpty()) return status; // nothing to flush
+    if (isEmpty()) return; // nothing to flush
     renderer.restoreToCount(1);
 
     DEFER_LOGD("--flushing");
     renderer.eventMark("Flush");
 
-    // save and restore (with draw modifiers) so that reordering doesn't affect final state
-    DrawModifiers restoreDrawModifiers = renderer.getDrawModifiers();
-    renderer.save(SkCanvas::kMatrix_SaveFlag | SkCanvas::kClip_SaveFlag);
+    // save and restore so that reordering doesn't affect final state
+    renderer.save(SaveFlags::MatrixClip);
 
-    if (CC_LIKELY(mAvoidOverdraw)) {
+    if (CC_LIKELY(avoidOverdraw())) {
         for (unsigned int i = 1; i < mBatches.size(); i++) {
             if (mBatches[i] && mBatches[i]->coversBounds(mBounds)) {
                 discardDrawingBatches(i - 1);
@@ -686,23 +663,20 @@ status_t DeferredDisplayList::flush(OpenGLRenderer& renderer, Rect& dirty) {
     }
     // NOTE: depth of the save stack at this point, before playback, should be reflected in
     // FLUSH_SAVE_STACK_DEPTH, so that save/restores match up correctly
-    status |= replayBatchList(mBatches, renderer, dirty);
+    replayBatchList(mBatches, renderer, dirty);
 
     renderer.restoreToCount(1);
-    renderer.setDrawModifiers(restoreDrawModifiers);
 
     DEFER_LOGD("--flush complete, returning %x", status);
     clear();
-    return status;
 }
 
 void DeferredDisplayList::discardDrawingBatches(const unsigned int maxIndex) {
     for (unsigned int i = mEarliestUnclearedIndex; i <= maxIndex; i++) {
         // leave deferred state ops alone for simplicity (empty save restore pairs may now exist)
         if (mBatches[i] && mBatches[i]->purelyDrawBatch()) {
-            DrawBatch* b = (DrawBatch*) mBatches[i];
             delete mBatches[i];
-            mBatches.replaceAt(NULL, i);
+            mBatches[i] = nullptr;
         }
     }
     mEarliestUnclearedIndex = maxIndex + 1;

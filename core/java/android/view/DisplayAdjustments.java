@@ -17,33 +17,27 @@
 package android.view;
 
 import android.content.res.CompatibilityInfo;
-import android.os.IBinder;
+import android.content.res.Configuration;
 
 import java.util.Objects;
 
 /** @hide */
 public class DisplayAdjustments {
-    public static final boolean DEVELOPMENT_RESOURCES_DEPEND_ON_ACTIVITY_TOKEN = false;
-
     public static final DisplayAdjustments DEFAULT_DISPLAY_ADJUSTMENTS = new DisplayAdjustments();
 
     private volatile CompatibilityInfo mCompatInfo = CompatibilityInfo.DEFAULT_COMPATIBILITY_INFO;
-    private volatile IBinder mActivityToken;
+    private Configuration mConfiguration = Configuration.EMPTY;
 
     public DisplayAdjustments() {
     }
 
-    public DisplayAdjustments(IBinder token) {
-        mActivityToken = token;
+    public DisplayAdjustments(Configuration configuration) {
+        mConfiguration = configuration;
     }
 
     public DisplayAdjustments(DisplayAdjustments daj) {
-        this (daj.getCompatibilityInfo(), daj.getActivityToken());
-    }
-
-    public DisplayAdjustments(CompatibilityInfo compatInfo, IBinder token) {
-        setCompatibilityInfo(compatInfo);
-        mActivityToken = token;
+        setCompatibilityInfo(daj.mCompatInfo);
+        mConfiguration = daj.mConfiguration;
     }
 
     public void setCompatibilityInfo(CompatibilityInfo compatInfo) {
@@ -63,25 +57,23 @@ public class DisplayAdjustments {
         return mCompatInfo;
     }
 
-    public void setActivityToken(IBinder token) {
+    public void setConfiguration(Configuration configuration) {
         if (this == DEFAULT_DISPLAY_ADJUSTMENTS) {
             throw new IllegalArgumentException(
-                    "setActivityToken: Cannot modify DEFAULT_DISPLAY_ADJUSTMENTS");
+                    "setConfiguration: Cannot modify DEFAULT_DISPLAY_ADJUSTMENTS");
         }
-        mActivityToken = token;
+        mConfiguration = configuration != null ? configuration : Configuration.EMPTY;
     }
 
-    public IBinder getActivityToken() {
-        return mActivityToken;
+    public Configuration getConfiguration() {
+        return mConfiguration;
     }
 
     @Override
     public int hashCode() {
         int hash = 17;
-        hash = hash * 31 + mCompatInfo.hashCode();
-        if (DEVELOPMENT_RESOURCES_DEPEND_ON_ACTIVITY_TOKEN) {
-            hash = hash * 31 + (mActivityToken == null ? 0 : mActivityToken.hashCode());
-        }
+        hash = hash * 31 + Objects.hashCode(mCompatInfo);
+        hash = hash * 31 + Objects.hashCode(mConfiguration);
         return hash;
     }
 
@@ -92,6 +84,6 @@ public class DisplayAdjustments {
         }
         DisplayAdjustments daj = (DisplayAdjustments)o;
         return Objects.equals(daj.mCompatInfo, mCompatInfo) &&
-                Objects.equals(daj.mActivityToken, mActivityToken);
+                Objects.equals(daj.mConfiguration, mConfiguration);
     }
 }

@@ -15,32 +15,9 @@
 # Warning: this is actually a product definition, to be inherited from
 
 PRODUCT_COPY_FILES := \
-    frameworks/base/data/fonts/system_fonts.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/system_fonts.xml \
-    frameworks/base/data/fonts/fallback_fonts.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/fallback_fonts.xml \
     frameworks/base/data/fonts/fonts.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/fonts.xml
 
 PRODUCT_PACKAGES := \
     DroidSansFallback.ttf \
-    Roboto-Regular.ttf \
-    Roboto-Bold.ttf \
-    Roboto-Italic.ttf \
-    Roboto-BoldItalic.ttf \
-    Roboto-Black.ttf \
-    Roboto-BlackItalic.ttf \
-    Roboto-Light.ttf \
-    Roboto-LightItalic.ttf \
-    Roboto-Medium.ttf \
-    Roboto-MediumItalic.ttf \
-    Roboto-Thin.ttf \
-    Roboto-ThinItalic.ttf \
-    RobotoCondensed-Regular.ttf \
-    RobotoCondensed-Bold.ttf \
-    RobotoCondensed-Italic.ttf \
-    RobotoCondensed-BoldItalic.ttf \
-    RobotoCondensed-Light.ttf \
-    RobotoCondensed-LightItalic.ttf \
     DroidSansMono.ttf \
-    Clockopia.ttf \
     AndroidClock.ttf \
-    AndroidClock_Highlight.ttf \
-    AndroidClock_Solid.ttf \

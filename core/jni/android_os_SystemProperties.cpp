@@ -21,7 +21,7 @@
 #include "utils/misc.h"
 #include <utils/Log.h>
 #include "jni.h"
-#include "android_runtime/AndroidRuntime.h"
+#include "core_jni_helpers.h"
 #include <nativehelper/JNIHelp.h>
 
 namespace android
@@ -220,7 +220,7 @@ static void SystemProperties_add_change_callback(JNIEnv *env, jobject clazz)
     }
 }
 
-static JNINativeMethod method_table[] = {
+static const JNINativeMethod method_table[] = {
     { "native_get", "(Ljava/lang/String;)Ljava/lang/String;",
       (void*) SystemProperties_getS },
     { "native_get", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
@@ -239,9 +239,8 @@ static JNINativeMethod method_table[] = {
 
 int register_android_os_SystemProperties(JNIEnv *env)
 {
-    return AndroidRuntime::registerNativeMethods(
-        env, "android/os/SystemProperties",
-        method_table, NELEM(method_table));
+    return RegisterMethodsOrDie(env, "android/os/SystemProperties", method_table,
+                                NELEM(method_table));
 }
 
 };

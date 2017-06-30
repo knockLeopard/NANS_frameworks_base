@@ -17,24 +17,22 @@
 #ifndef ANDROID_HWUI_ASSET_ATLAS_H
 #define ANDROID_HWUI_ASSET_ATLAS_H
 
-#include <GLES2/gl2.h>
-
-#include <ui/GraphicBuffer.h>
-
-#include <utils/KeyedVector.h>
-
-#include <cutils/compiler.h>
-
-#include <SkBitmap.h>
-
-#include "Image.h"
 #include "Texture.h"
 #include "UvMapper.h"
+
+#include <cutils/compiler.h>
+#include <GLES2/gl2.h>
+#include <ui/GraphicBuffer.h>
+#include <SkBitmap.h>
+
+#include <memory>
+#include <unordered_map>
 
 namespace android {
 namespace uirenderer {
 
 class Caches;
+class Image;
 
 /**
  * An asset atlas holds a collection of framework bitmaps in a single OpenGL
@@ -45,27 +43,11 @@ class Caches;
 class AssetAtlas {
 public:
     /**
-     * Entry representing the position and rotation of a
-     * bitmap inside the atlas.
+     * Entry representing the texture and uvMapper of a PixelRef in the
+     * atlas
      */
-    struct Entry {
-        /**
-         * The bitmap that generated this atlas entry.
-         */
-        SkBitmap* bitmap;
-
-        /**
-         * Location of the bitmap inside the atlas, in pixels.
-         */
-        int x;
-        int y;
-
-        /**
-         * If set, the bitmap is rotated 90 degrees (clockwise)
-         * inside the atlas.
-         */
-        bool rotated;
-
+    class Entry {
+    public:
         /*
          * A "virtual texture" object that represents the texture
          * this entry belongs to. This texture should never be
@@ -80,11 +62,6 @@ public:
         const UvMapper uvMapper;
 
         /**
-         * Atlas this entry belongs to.
-         */
-        const AssetAtlas& atlas;
-
-        /**
          * Unique identifier used to merge bitmaps and 9-patches stored
          * in the atlas.
          */
@@ -92,21 +69,33 @@ public:
             return texture->blend ? &atlas.mBlendKey : &atlas.mOpaqueKey;
         }
 
-    private:
-        Entry(SkBitmap* bitmap, int x, int y, bool rotated,
-                Texture* texture, const UvMapper& mapper, const AssetAtlas& atlas):
-                bitmap(bitmap), x(x), y(y), rotated(rotated),
-                texture(texture), uvMapper(mapper), atlas(atlas) {
-        }
-
         ~Entry() {
             delete texture;
+        }
+
+    private:
+        /**
+         * The pixel ref that generated this atlas entry.
+         */
+        SkPixelRef* pixelRef;
+
+        /**
+         * Atlas this entry belongs to.
+         */
+        const AssetAtlas& atlas;
+
+        Entry(SkPixelRef* pixelRef, Texture* texture, const UvMapper& mapper,
+                    const AssetAtlas& atlas)
+                : texture(texture)
+                , uvMapper(mapper)
+                , pixelRef(pixelRef)
+                , atlas(atlas) {
         }
 
         friend class AssetAtlas;
     };
 
-    AssetAtlas(): mTexture(NULL), mImage(NULL),
+    AssetAtlas(): mTexture(nullptr), mImage(nullptr),
             mBlendKey(true), mOpaqueKey(false) { }
     ~AssetAtlas() { terminate(); }
 
@@ -114,8 +103,7 @@ public:
      * Initializes the atlas with the specified buffer and
      * map. The buffer is a gralloc'd texture that will be
      * used as an EGLImage. The map is a list of SkBitmap*
-     * and their (x, y) positions as well as their rotation
-     * flags.
+     * and their (x, y) positions
      *
      * This method returns immediately if the atlas is already
      * initialized. To re-initialize the atlas, you must
@@ -137,7 +125,7 @@ public:
      * Can return 0 if the atlas is not initialized.
      */
     uint32_t getWidth() const {
-        return mTexture ? mTexture->width : 0;
+        return mTexture ? mTexture->width() : 0;
     }
 
     /**
@@ -145,7 +133,7 @@ public:
      * Can return 0 if the atlas is not initialized.
      */
     uint32_t getHeight() const {
-        return mTexture ? mTexture->height : 0;
+        return mTexture ? mTexture->height() : 0;
     }
 
     /**
@@ -153,24 +141,23 @@ public:
      * Can return 0 if the atlas is not initialized.
      */
     GLuint getTexture() const {
-        return mTexture ? mTexture->id : 0;
+        return mTexture ? mTexture->id() : 0;
     }
 
     /**
      * Returns the entry in the atlas associated with the specified
-     * bitmap. If the bitmap is not in the atlas, return NULL.
+     * pixelRef. If the pixelRef is not in the atlas, return NULL.
      */
-    Entry* getEntry(const SkBitmap* bitmap) const;
+    Entry* getEntry(const SkPixelRef* pixelRef) const;
 
     /**
      * Returns the texture for the atlas entry associated with the
-     * specified bitmap. If the bitmap is not in the atlas, return NULL.
+     * specified pixelRef. If the pixelRef is not in the atlas, return NULL.
      */
-    Texture* getEntryTexture(const SkBitmap* bitmap) const;
+    Texture* getEntryTexture(const SkPixelRef* pixelRef) const;
 
 private:
     void createEntries(Caches& caches, int64_t* map, int count);
-    void updateTextureId();
 
     Texture* mTexture;
     Image* mImage;
@@ -178,7 +165,7 @@ private:
     const bool mBlendKey;
     const bool mOpaqueKey;
 
-    KeyedVector<const SkBitmap*, Entry*> mEntries;
+    std::unordered_map<const SkPixelRef*, std::unique_ptr<Entry>> mEntries;
 }; // class AssetAtlas
 
 }; // namespace uirenderer

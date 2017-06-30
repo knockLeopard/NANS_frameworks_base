@@ -17,8 +17,15 @@
 package com.android.systemui.qs.tiles;
 
 import android.app.ActivityManager;
-import android.os.SystemClock;
+import android.content.Intent;
+import android.graphics.drawable.Drawable;
+import android.provider.MediaStore;
+import android.text.SpannableStringBuilder;
+import android.text.style.ForegroundColorSpan;
+import android.widget.Switch;
 
+import com.android.internal.logging.MetricsLogger;
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 import com.android.systemui.R;
 import com.android.systemui.qs.QSTile;
 import com.android.systemui.statusbar.policy.FlashlightController;
@@ -27,16 +34,13 @@ import com.android.systemui.statusbar.policy.FlashlightController;
 public class FlashlightTile extends QSTile<QSTile.BooleanState> implements
         FlashlightController.FlashlightListener {
 
-    /** Grace period for which we consider the flashlight
-     * still available because it was recently on. */
-    private static final long RECENTLY_ON_DURATION_MILLIS = 500;
-
     private final AnimationIcon mEnable
-            = new AnimationIcon(R.drawable.ic_signal_flashlight_enable_animation);
+            = new AnimationIcon(R.drawable.ic_signal_flashlight_enable_animation,
+            R.drawable.ic_signal_flashlight_disable);
     private final AnimationIcon mDisable
-            = new AnimationIcon(R.drawable.ic_signal_flashlight_disable_animation);
+            = new AnimationIcon(R.drawable.ic_signal_flashlight_disable_animation,
+            R.drawable.ic_signal_flashlight_enable);
     private final FlashlightController mFlashlightController;
-    private long mWasLastOn;
 
     public FlashlightTile(Host host) {
         super(host);
@@ -51,7 +55,7 @@ public class FlashlightTile extends QSTile<QSTile.BooleanState> implements
     }
 
     @Override
-    protected BooleanState newTileState() {
+    public BooleanState newTileState() {
         return new BooleanState();
     }
 
@@ -64,45 +68,71 @@ public class FlashlightTile extends QSTile<QSTile.BooleanState> implements
     }
 
     @Override
+    public Intent getLongClickIntent() {
+        return new Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
+    }
+
+    @Override
+    public boolean isAvailable() {
+        return mFlashlightController.hasFlashlight();
+    }
+
+    @Override
     protected void handleClick() {
         if (ActivityManager.isUserAMonkey()) {
             return;
         }
+        MetricsLogger.action(mContext, getMetricsCategory(), !mState.value);
         boolean newState = !mState.value;
+        refreshState(newState);
         mFlashlightController.setFlashlight(newState);
-        refreshState(newState ? UserBoolean.USER_TRUE : UserBoolean.USER_FALSE);
+    }
+
+    @Override
+    public CharSequence getTileLabel() {
+        return mContext.getString(R.string.quick_settings_flashlight_label);
+    }
+
+    @Override
+    protected void handleLongClick() {
+        handleClick();
     }
 
     @Override
     protected void handleUpdateState(BooleanState state, Object arg) {
-        if (state.value) {
-            mWasLastOn = SystemClock.uptimeMillis();
-        }
-
-        if (arg instanceof UserBoolean) {
-            state.value = ((UserBoolean) arg).value;
-        }
-
-        if (!state.value && mWasLastOn != 0) {
-            if (SystemClock.uptimeMillis() > mWasLastOn + RECENTLY_ON_DURATION_MILLIS) {
-                mWasLastOn = 0;
-            } else {
-                mHandler.removeCallbacks(mRecentlyOnTimeout);
-                mHandler.postAtTime(mRecentlyOnTimeout, mWasLastOn + RECENTLY_ON_DURATION_MILLIS);
-            }
-        }
-
-        // Always show the tile when the flashlight is or was recently on. This is needed because
-        // the camera is not available while it is being used for the flashlight.
-        state.visible = mWasLastOn != 0 || mFlashlightController.isAvailable();
         state.label = mHost.getContext().getString(R.string.quick_settings_flashlight_label);
+        if (!mFlashlightController.isAvailable()) {
+            Drawable icon = mHost.getContext().getDrawable(R.drawable.ic_signal_flashlight_disable)
+                    .mutate();
+            final int disabledColor = mHost.getContext().getColor(R.color.qs_tile_tint_unavailable);
+            icon.setTint(disabledColor);
+            state.icon = new DrawableIcon(icon);
+            state.label = new SpannableStringBuilder().append(state.label,
+                    new ForegroundColorSpan(disabledColor),
+                    SpannableStringBuilder.SPAN_INCLUSIVE_INCLUSIVE);
+            state.contentDescription = mContext.getString(
+                    R.string.accessibility_quick_settings_flashlight_unavailable);
+            return;
+        }
+        if (arg instanceof Boolean) {
+            boolean value = (Boolean) arg;
+            if (value == state.value) {
+                return;
+            }
+            state.value = value;
+        } else {
+            state.value = mFlashlightController.isEnabled();
+        }
         final AnimationIcon icon = state.value ? mEnable : mDisable;
-        icon.setAllowAnimation(arg instanceof UserBoolean && ((UserBoolean) arg).userInitiated);
         state.icon = icon;
-        int onOrOffId = state.value
-                ? R.string.accessibility_quick_settings_flashlight_on
-                : R.string.accessibility_quick_settings_flashlight_off;
-        state.contentDescription = mContext.getString(onOrOffId);
+        state.contentDescription = mContext.getString(R.string.quick_settings_flashlight_label);
+        state.minimalAccessibilityClassName = state.expandedAccessibilityClassName
+                = Switch.class.getName();
+    }
+
+    @Override
+    public int getMetricsCategory() {
+        return MetricsEvent.QS_FLASHLIGHT;
     }
 
     @Override
@@ -115,24 +145,17 @@ public class FlashlightTile extends QSTile<QSTile.BooleanState> implements
     }
 
     @Override
-    public void onFlashlightOff() {
-        refreshState(UserBoolean.BACKGROUND_FALSE);
+    public void onFlashlightChanged(boolean enabled) {
+        refreshState(enabled);
     }
 
     @Override
     public void onFlashlightError() {
-        refreshState(UserBoolean.BACKGROUND_FALSE);
+        refreshState(false);
     }
 
     @Override
     public void onFlashlightAvailabilityChanged(boolean available) {
         refreshState();
     }
-
-    private Runnable mRecentlyOnTimeout = new Runnable() {
-        @Override
-        public void run() {
-            refreshState();
-        }
-    };
 }

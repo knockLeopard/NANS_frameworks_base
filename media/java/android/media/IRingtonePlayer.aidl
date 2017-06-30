@@ -18,6 +18,7 @@ package android.media;
 
 import android.media.AudioAttributes;
 import android.net.Uri;
+import android.os.ParcelFileDescriptor;
 import android.os.UserHandle;
 
 /**
@@ -25,11 +26,17 @@ import android.os.UserHandle;
  */
 interface IRingtonePlayer {
     /** Used for Ringtone.java playback */
-    void play(IBinder token, in Uri uri, in AudioAttributes aa);
+    void play(IBinder token, in Uri uri, in AudioAttributes aa, float volume, boolean looping);
     void stop(IBinder token);
     boolean isPlaying(IBinder token);
+    void setPlaybackProperties(IBinder token, float volume, boolean looping);
 
     /** Used for Notification sound playback. */
     void playAsync(in Uri uri, in UserHandle user, boolean looping, in AudioAttributes aa);
     void stopAsync();
+
+    /** Return the title of the media. */
+    String getTitle(in Uri uri);
+
+    ParcelFileDescriptor openRingtone(in Uri uri);
 }

@@ -21,9 +21,6 @@ import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.provider.Settings.SettingNotFoundException;
-import android.util.Log;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -45,6 +42,7 @@ final class CoreSettingsObserver extends ContentObserver {
             String, Class<?>>();
     static {
         sSecureSettingToTypeMap.put(Settings.Secure.LONG_PRESS_TIMEOUT, int.class);
+        sSecureSettingToTypeMap.put(Settings.Secure.MULTI_PRESS_TIMEOUT, int.class);
         // add other secure settings here...
 
         sSystemSettingToTypeMap.put(Settings.System.TIME_12_24, String.class);

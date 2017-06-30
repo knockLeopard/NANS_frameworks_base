@@ -504,8 +504,8 @@ public final class MediaController {
     }
 
     /**
-     * Callback for receiving updates on from the session. A Callback can be
-     * registered using {@link #registerCallback}
+     * Callback for receiving updates from the session. A Callback can be
+     * registered using {@link #registerCallback}.
      */
     public static abstract class Callback {
         /**
@@ -592,6 +592,95 @@ public final class MediaController {
         }
 
         /**
+         * Request that the player prepare its playback. In other words, other sessions can continue
+         * to play during the preparation of this session. This method can be used to speed up the
+         * start of the playback. Once the preparation is done, the session will change its playback
+         * state to {@link PlaybackState#STATE_PAUSED}. Afterwards, {@link #play} can be called to
+         * start playback.
+         */
+        public void prepare() {
+            try {
+                mSessionBinder.prepare();
+            } catch (RemoteException e) {
+                Log.wtf(TAG, "Error calling prepare.", e);
+            }
+        }
+
+        /**
+         * Request that the player prepare playback for a specific media id. In other words, other
+         * sessions can continue to play during the preparation of this session. This method can be
+         * used to speed up the start of the playback. Once the preparation is done, the session
+         * will change its playback state to {@link PlaybackState#STATE_PAUSED}. Afterwards,
+         * {@link #play} can be called to start playback. If the preparation is not needed,
+         * {@link #playFromMediaId} can be directly called without this method.
+         *
+         * @param mediaId The id of the requested media.
+         * @param extras Optional extras that can include extra information about the media item
+         *               to be prepared.
+         */
+        public void prepareFromMediaId(String mediaId, Bundle extras) {
+            if (TextUtils.isEmpty(mediaId)) {
+                throw new IllegalArgumentException(
+                        "You must specify a non-empty String for prepareFromMediaId.");
+            }
+            try {
+                mSessionBinder.prepareFromMediaId(mediaId, extras);
+            } catch (RemoteException e) {
+                Log.wtf(TAG, "Error calling prepare(" + mediaId + ").", e);
+            }
+        }
+
+        /**
+         * Request that the player prepare playback for a specific search query. An empty or null
+         * query should be treated as a request to prepare any music. In other words, other sessions
+         * can continue to play during the preparation of this session. This method can be used to
+         * speed up the start of the playback. Once the preparation is done, the session will
+         * change its playback state to {@link PlaybackState#STATE_PAUSED}. Afterwards,
+         * {@link #play} can be called to start playback. If the preparation is not needed,
+         * {@link #playFromSearch} can be directly called without this method.
+         *
+         * @param query The search query.
+         * @param extras Optional extras that can include extra information
+         *               about the query.
+         */
+        public void prepareFromSearch(String query, Bundle extras) {
+            if (query == null) {
+                // This is to remain compatible with
+                // INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH
+                query = "";
+            }
+            try {
+                mSessionBinder.prepareFromSearch(query, extras);
+            } catch (RemoteException e) {
+                Log.wtf(TAG, "Error calling prepare(" + query + ").", e);
+            }
+        }
+
+        /**
+         * Request that the player prepare playback for a specific {@link Uri}. In other words,
+         * other sessions can continue to play during the preparation of this session. This method
+         * can be used to speed up the start of the playback. Once the preparation is done, the
+         * session will change its playback state to {@link PlaybackState#STATE_PAUSED}. Afterwards,
+         * {@link #play} can be called to start playback. If the preparation is not needed,
+         * {@link #playFromUri} can be directly called without this method.
+         *
+         * @param uri The URI of the requested media.
+         * @param extras Optional extras that can include extra information about the media item
+         *               to be prepared.
+         */
+        public void prepareFromUri(Uri uri, Bundle extras) {
+            if (uri == null || Uri.EMPTY.equals(uri)) {
+                throw new IllegalArgumentException(
+                        "You must specify a non-empty Uri for prepareFromUri.");
+            }
+            try {
+                mSessionBinder.prepareFromUri(uri, extras);
+            } catch (RemoteException e) {
+                Log.wtf(TAG, "Error calling prepare(" + uri + ").", e);
+            }
+        }
+
+        /**
          * Request that the player start its playback at its current position.
          */
         public void play() {
@@ -603,9 +692,9 @@ public final class MediaController {
         }
 
         /**
-         * Request that the player start playback for a specific {@link Uri}.
+         * Request that the player start playback for a specific media id.
          *
-         * @param mediaId The uri of the requested media.
+         * @param mediaId The id of the requested media.
          * @param extras Optional extras that can include extra information about the media item
          *               to be played.
          */
@@ -628,7 +717,7 @@ public final class MediaController {
          *
          * @param query The search query.
          * @param extras Optional extras that can include extra information
-         *            about the query.
+         *               about the query.
          */
         public void playFromSearch(String query, Bundle extras) {
             if (query == null) {
@@ -640,6 +729,25 @@ public final class MediaController {
                 mSessionBinder.playFromSearch(query, extras);
             } catch (RemoteException e) {
                 Log.wtf(TAG, "Error calling play(" + query + ").", e);
+            }
+        }
+
+        /**
+         * Request that the player start playback for a specific {@link Uri}.
+         *
+         * @param uri The URI of the requested media.
+         * @param extras Optional extras that can include extra information about the media item
+         *               to be played.
+         */
+        public void playFromUri(Uri uri, Bundle extras) {
+            if (uri == null || Uri.EMPTY.equals(uri)) {
+                throw new IllegalArgumentException(
+                        "You must specify a non-empty Uri for playFromUri.");
+            }
+            try {
+                mSessionBinder.playFromUri(uri, extras);
+            } catch (RemoteException e) {
+                Log.wtf(TAG, "Error calling play(" + uri + ").", e);
             }
         }
 
@@ -999,7 +1107,9 @@ public final class MediaController {
         }
 
         public void post(int what, Object obj, Bundle data) {
-            obtainMessage(what, obj).sendToTarget();
+            Message msg = obtainMessage(what, obj);
+            msg.setData(data);
+            msg.sendToTarget();
         }
     }
 

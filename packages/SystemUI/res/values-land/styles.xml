@@ -19,9 +19,20 @@
         <item name="android:layout_width">360dp</item>
     </style>
 
-    <style name="SearchPanelScrim">
-        <item name="android:layout_width">@dimen/search_panel_scrim_height</item>
+    <style name="DockedDividerBackground">
+        <item name="android:layout_width">10dp</item>
         <item name="android:layout_height">match_parent</item>
-        <item name="android:layout_gravity">right</item>
+        <item name="android:layout_gravity">center_horizontal</item>
+    </style>
+
+    <style name="DockedDividerHandle">
+        <item name="android:layout_gravity">center_vertical</item>
+        <item name="android:layout_width">48dp</item>
+        <item name="android:layout_height">96dp</item>
+    </style>
+
+    <style name="DockedDividerMinimizedShadow">
+        <item name="android:layout_width">8dp</item>
+        <item name="android:layout_height">match_parent</item>
     </style>
 </resources>

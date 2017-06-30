@@ -47,17 +47,7 @@ public class ActivityManagerPermissionTests extends TestCase {
         } catch (RemoteException e) {
             fail("Unexpected remote exception");
         }
-        
-        try {
-            mAm.moveTaskToBack(-1);
-            fail("IActivityManager.moveTaskToBack did not throw SecurityException as"
-                    + " expected");
-        } catch (SecurityException e) {
-            // expected
-        } catch (RemoteException e) {
-            fail("Unexpected remote exception");
-        }
-        
+
         try {
             mAm.moveTaskBackwards(-1);
             fail("IActivityManager.moveTaskToFront did not throw SecurityException as"
@@ -150,7 +140,7 @@ public class ActivityManagerPermissionTests extends TestCase {
     @SmallTest
     public void testSET_ACTIVITY_WATCHER() {
         try {
-            mAm.setActivityController(null);
+            mAm.setActivityController(null, false);
             fail("IActivityManager.setActivityController did not throw SecurityException as"
                     + " expected");
         } catch (SecurityException e) {

@@ -16,7 +16,6 @@
 
 package android.ddm;
 
-import android.opengl.GLUtils;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewDebug;
@@ -41,9 +40,6 @@ import java.nio.ByteBuffer;
  * Support for these features are advertised via {@link DdmHandleHello}.
  */
 public class DdmHandleViewDebug extends ChunkHandler {
-    /** Enable/Disable tracing of OpenGL calls. */
-    public static final int CHUNK_VUGL = type("VUGL");
-
     /** List {@link ViewRootImpl}'s of this process. */
     private static final int CHUNK_VULW = type("VULW");
 
@@ -97,7 +93,6 @@ public class DdmHandleViewDebug extends ChunkHandler {
     private DdmHandleViewDebug() {}
 
     public static void register() {
-        DdmServer.registerHandler(CHUNK_VUGL, sInstance);
         DdmServer.registerHandler(CHUNK_VULW, sInstance);
         DdmServer.registerHandler(CHUNK_VURT, sInstance);
         DdmServer.registerHandler(CHUNK_VUOP, sInstance);
@@ -115,9 +110,7 @@ public class DdmHandleViewDebug extends ChunkHandler {
     public Chunk handleChunk(Chunk request) {
         int type = request.type;
 
-        if (type == CHUNK_VUGL) {
-            return handleOpenGlTrace(request);
-        } else if (type == CHUNK_VULW) {
+        if (type == CHUNK_VULW) {
             return listWindows();
         }
 
@@ -163,12 +156,6 @@ public class DdmHandleViewDebug extends ChunkHandler {
         } else {
             throw new RuntimeException("Unknown packet " + ChunkHandler.name(type));
         }
-    }
-
-    private Chunk handleOpenGlTrace(Chunk request) {
-        ByteBuffer in = wrapChunk(request);
-        GLUtils.setTracingLevel(in.getInt());
-        return null;    // empty response
     }
 
     /** Returns the list of windows owned by this client. */
@@ -229,14 +216,24 @@ public class DdmHandleViewDebug extends ChunkHandler {
     private Chunk dumpHierarchy(View rootView, ByteBuffer in) {
         boolean skipChildren = in.getInt() > 0;
         boolean includeProperties = in.getInt() > 0;
+        boolean v2 = in.hasRemaining() && in.getInt() > 0;
 
-        ByteArrayOutputStream b = new ByteArrayOutputStream(1024);
+        long start = System.currentTimeMillis();
+
+        ByteArrayOutputStream b = new ByteArrayOutputStream(2*1024*1024);
         try {
-            ViewDebug.dump(rootView, skipChildren, includeProperties, b);
-        } catch (IOException e) {
+            if (v2) {
+                ViewDebug.dumpv2(rootView, b);
+            } else {
+                ViewDebug.dump(rootView, skipChildren, includeProperties, b);
+            }
+        } catch (IOException | InterruptedException e) {
             return createFailChunk(1, "Unexpected error while obtaining view hierarchy: "
                     + e.getMessage());
         }
+
+        long end = System.currentTimeMillis();
+        Log.d(TAG, "Time to obtain view hierarchy (ms): " + (end - start));
 
         byte[] data = b.toByteArray();
         return new Chunk(CHUNK_VURT, data, 0, data.length);

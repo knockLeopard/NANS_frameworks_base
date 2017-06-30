@@ -23,7 +23,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <android_runtime/AndroidRuntime.h>
+#include "core_jni_helpers.h"
 #include <jni.h>
 #include <ScopedUtfChars.h>
 #include <utils/misc.h>
@@ -185,15 +185,14 @@ static jlong getUidStat(JNIEnv* env, jclass clazz, jint uid, jint type) {
     }
 }
 
-static JNINativeMethod gMethods[] = {
+static const JNINativeMethod gMethods[] = {
     {"nativeGetTotalStat", "(I)J", (void*) getTotalStat},
     {"nativeGetIfaceStat", "(Ljava/lang/String;I)J", (void*) getIfaceStat},
     {"nativeGetUidStat", "(II)J", (void*) getUidStat},
 };
 
 int register_android_net_TrafficStats(JNIEnv* env) {
-    return AndroidRuntime::registerNativeMethods(env, "android/net/TrafficStats",
-            gMethods, NELEM(gMethods));
+    return RegisterMethodsOrDie(env, "android/net/TrafficStats", gMethods, NELEM(gMethods));
 }
 
 }

@@ -16,6 +16,9 @@
 
 package android.hardware.camera2;
 
+import android.annotation.IntRange;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.ImageFormat;
@@ -24,6 +27,7 @@ import android.location.Location;
 import android.media.ExifInterface;
 import android.media.Image;
 import android.os.SystemClock;
+import android.util.Log;
 import android.util.Size;
 
 import java.io.IOException;
@@ -80,26 +84,49 @@ public final class DngCreator implements AutoCloseable {
      *          {@link android.hardware.camera2.CameraCharacteristics}.
      * @param metadata a metadata object to generate tags from.
      */
-    public DngCreator(CameraCharacteristics characteristics, CaptureResult metadata) {
+    public DngCreator(@NonNull CameraCharacteristics characteristics,
+            @NonNull CaptureResult metadata) {
         if (characteristics == null || metadata == null) {
             throw new IllegalArgumentException("Null argument to DngCreator constructor");
         }
 
-        // Find current time
+        // Find current time in milliseconds since 1970
         long currentTime = System.currentTimeMillis();
+        // Assume that sensor timestamp has that timebase to start
+        long timeOffset = 0;
 
-        // Find boot time
-        long bootTimeMillis = currentTime - SystemClock.elapsedRealtime();
+        int timestampSource = characteristics.get(
+                CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE);
+
+        if (timestampSource == CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME) {
+            // This means the same timebase as SystemClock.elapsedRealtime(),
+            // which is CLOCK_BOOTTIME
+            timeOffset = currentTime - SystemClock.elapsedRealtime();
+        } else if (timestampSource == CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_UNKNOWN) {
+            // This means the same timebase as System.currentTimeMillis(),
+            // which is CLOCK_MONOTONIC
+            timeOffset = currentTime - SystemClock.uptimeMillis();
+        } else {
+            // Unexpected time source - treat as CLOCK_MONOTONIC
+            Log.w(TAG, "Sensor timestamp source is unexpected: " + timestampSource);
+            timeOffset = currentTime - SystemClock.uptimeMillis();
+        }
 
         // Find capture time (nanos since boot)
         Long timestamp = metadata.get(CaptureResult.SENSOR_TIMESTAMP);
         long captureTime = currentTime;
         if (timestamp != null) {
-            captureTime = timestamp / 1000000 + bootTimeMillis;
+            captureTime = timestamp / 1000000 + timeOffset;
         }
 
+        // Create this fresh each time since the time zone may change while a long-running application
+        // is active.
+        final DateFormat dateTimeStampFormat =
+            new SimpleDateFormat(TIFF_DATETIME_FORMAT);
+        dateTimeStampFormat.setTimeZone(TimeZone.getDefault());
+
         // Format for metadata
-        String formattedCaptureTime = sDateTimeStampFormat.format(captureTime);
+        String formattedCaptureTime = dateTimeStampFormat.format(captureTime);
 
         nativeInit(characteristics.getNativeCopy(), metadata.getNativeCopy(),
                 formattedCaptureTime);
@@ -126,11 +153,17 @@ public final class DngCreator implements AutoCloseable {
      *                    </ul>
      * @return this {@link #DngCreator} object.
      */
+    @NonNull
     public DngCreator setOrientation(int orientation) {
         if (orientation < ExifInterface.ORIENTATION_UNDEFINED ||
                 orientation > ExifInterface.ORIENTATION_ROTATE_270) {
             throw new IllegalArgumentException("Orientation " + orientation +
                     " is not a valid EXIF orientation value");
+        }
+        // ExifInterface and TIFF/EP spec differ on definition of
+        // "Unknown" orientation; other values map directly
+        if (orientation == ExifInterface.ORIENTATION_UNDEFINED) {
+            orientation = TAG_ORIENTATION_UNKNOWN;
         }
         nativeSetOrientation(orientation);
         return this;
@@ -150,7 +183,8 @@ public final class DngCreator implements AutoCloseable {
      * @throws java.lang.IllegalArgumentException if the given thumbnail image has a dimension
      *      larger than {@link #MAX_THUMBNAIL_DIMENSION}.
      */
-    public DngCreator setThumbnail(Bitmap pixels) {
+    @NonNull
+    public DngCreator setThumbnail(@NonNull Bitmap pixels) {
         if (pixels == null) {
             throw new IllegalArgumentException("Null argument to setThumbnail");
         }
@@ -185,7 +219,8 @@ public final class DngCreator implements AutoCloseable {
      * @throws java.lang.IllegalArgumentException if the given thumbnail image has a dimension
      *      larger than {@link #MAX_THUMBNAIL_DIMENSION}.
      */
-    public DngCreator setThumbnail(Image pixels) {
+    @NonNull
+    public DngCreator setThumbnail(@NonNull Image pixels) {
         if (pixels == null) {
             throw new IllegalArgumentException("Null argument to setThumbnail");
         }
@@ -226,7 +261,8 @@ public final class DngCreator implements AutoCloseable {
      * @throws java.lang.IllegalArgumentException if the given location object doesn't
      *          contain enough information to set location metadata.
      */
-    public DngCreator setLocation(Location location) {
+    @NonNull
+    public DngCreator setLocation(@NonNull Location location) {
         if (location == null) {
             throw new IllegalArgumentException("Null location passed to setLocation");
         }
@@ -258,7 +294,8 @@ public final class DngCreator implements AutoCloseable {
      * @param description the user description string.
      * @return this {@link #DngCreator} object.
      */
-    public DngCreator setDescription(String description) {
+    @NonNull
+    public DngCreator setDescription(@NonNull String description) {
         if (description == null) {
             throw new IllegalArgumentException("Null description passed to setDescription.");
         }
@@ -275,6 +312,8 @@ public final class DngCreator implements AutoCloseable {
      * {@code offset + 2 * width * height)} bytes.  The width and height of
      * the input are taken from the width and height set in the {@link DngCreator} metadata tags,
      * and will typically be equal to the width and height of
+     * {@link CameraCharacteristics#SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE}.  Prior to
+     * API level 23, this was always the same as
      * {@link CameraCharacteristics#SENSOR_INFO_ACTIVE_ARRAY_SIZE}.
      * The pixel layout in the input is determined from the reported color filter arrangement (CFA)
      * set in {@link CameraCharacteristics#SENSOR_INFO_COLOR_FILTER_ARRANGEMENT}.  If insufficient
@@ -293,8 +332,8 @@ public final class DngCreator implements AutoCloseable {
      *          set to write a well-formatted DNG file.
      * @throws java.lang.IllegalArgumentException if the size passed in does not match the
      */
-    public void writeInputStream(OutputStream dngOutput, Size size, InputStream pixels, long offset)
-            throws IOException {
+    public void writeInputStream(@NonNull OutputStream dngOutput, @NonNull Size size,
+            @NonNull InputStream pixels, @IntRange(from=0) long offset) throws IOException {
         if (dngOutput == null) {
             throw new IllegalArgumentException("Null dngOutput passed to writeInputStream");
         } else if (size == null) {
@@ -323,6 +362,8 @@ public final class DngCreator implements AutoCloseable {
      * {@code offset + 2 * width * height)} bytes.  The width and height of
      * the input are taken from the width and height set in the {@link DngCreator} metadata tags,
      * and will typically be equal to the width and height of
+     * {@link CameraCharacteristics#SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE}.  Prior to
+     * API level 23, this was always the same as
      * {@link CameraCharacteristics#SENSOR_INFO_ACTIVE_ARRAY_SIZE}.
      * The pixel layout in the input is determined from the reported color filter arrangement (CFA)
      * set in {@link CameraCharacteristics#SENSOR_INFO_COLOR_FILTER_ARRANGEMENT}.  If insufficient
@@ -345,7 +386,8 @@ public final class DngCreator implements AutoCloseable {
      * @throws java.lang.IllegalStateException if not enough metadata information has been
      *          set to write a well-formatted DNG file.
      */
-    public void writeByteBuffer(OutputStream dngOutput, Size size, ByteBuffer pixels, long offset)
+    public void writeByteBuffer(@NonNull OutputStream dngOutput, @NonNull Size size,
+            @NonNull ByteBuffer pixels, @IntRange(from=0) long offset)
             throws IOException {
         if (dngOutput == null) {
             throw new IllegalArgumentException("Null dngOutput passed to writeByteBuffer");
@@ -381,7 +423,8 @@ public final class DngCreator implements AutoCloseable {
      * @throws java.lang.IllegalStateException if not enough metadata information has been
      *          set to write a well-formatted DNG file.
      */
-    public void writeImage(OutputStream dngOutput, Image pixels) throws IOException {
+    public void writeImage(@NonNull OutputStream dngOutput, @NonNull Image pixels)
+            throws IOException {
         if (dngOutput == null) {
             throw new IllegalArgumentException("Null dngOutput to writeImage");
         } else if (pixels == null) {
@@ -428,20 +471,20 @@ public final class DngCreator implements AutoCloseable {
     private static final String GPS_LONG_REF_WEST = "W";
 
     private static final String GPS_DATE_FORMAT_STR = "yyyy:MM:dd";
-    private static final String TIFF_DATETIME_FORMAT = "yyyy:MM:dd kk:mm:ss";
+    private static final String TIFF_DATETIME_FORMAT = "yyyy:MM:dd HH:mm:ss";
     private static final DateFormat sExifGPSDateStamp = new SimpleDateFormat(GPS_DATE_FORMAT_STR);
-    private static final DateFormat sDateTimeStampFormat =
-            new SimpleDateFormat(TIFF_DATETIME_FORMAT);
     private final Calendar mGPSTimeStampCalendar = Calendar
             .getInstance(TimeZone.getTimeZone("UTC"));
 
     static {
-        sDateTimeStampFormat.setTimeZone(TimeZone.getDefault());
         sExifGPSDateStamp.setTimeZone(TimeZone.getTimeZone("UTC"));
     }
 
     private static final int DEFAULT_PIXEL_STRIDE = 2; // bytes per sample
     private static final int BYTES_PER_RGB_PIX = 3; // byts per pixel
+
+    // TIFF tag values needed to map between public API and TIFF spec
+    private static final int TAG_ORIENTATION_UNKNOWN = 9;
 
     /**
      * Offset, rowStride, and pixelStride are given in bytes.  Height and width are given in pixels.
@@ -453,7 +496,7 @@ public final class DngCreator implements AutoCloseable {
                     height + ") passed to write");
         }
         long capacity = pixels.capacity();
-        long totalSize = rowStride * height + offset;
+        long totalSize = ((long) rowStride) * height + offset;
         if (capacity < totalSize) {
             throw new IllegalArgumentException("Image size " + capacity +
                     " is too small (must be larger than " + totalSize + ")");

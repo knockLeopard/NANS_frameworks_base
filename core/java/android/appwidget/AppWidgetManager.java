@@ -20,6 +20,7 @@ import android.annotation.Nullable;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ParceledListSlice;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Process;
@@ -471,9 +472,8 @@ public class AppWidgetManager {
         }
         try {
             mService.updateAppWidgetIds(mPackageName, appWidgetIds, views);
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -494,9 +494,8 @@ public class AppWidgetManager {
         }
         try {
             mService.updateAppWidgetOptions(mPackageName, appWidgetId, options);
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -517,9 +516,8 @@ public class AppWidgetManager {
         }
         try {
             return mService.getAppWidgetOptions(mPackageName, appWidgetId);
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -580,7 +578,7 @@ public class AppWidgetManager {
         try {
             mService.partiallyUpdateAppWidgetIds(mPackageName, appWidgetIds, views);
         } catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -634,9 +632,8 @@ public class AppWidgetManager {
         }
         try {
             mService.updateAppWidgetProvider(provider, views);
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -653,9 +650,8 @@ public class AppWidgetManager {
         }
         try {
             mService.notifyAppWidgetViewDataChanged(mPackageName, appWidgetIds, viewId);
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -753,19 +749,18 @@ public class AppWidgetManager {
         }
 
         try {
-            List<AppWidgetProviderInfo> providers = mService.getInstalledProvidersForProfile(
+            ParceledListSlice<AppWidgetProviderInfo> providers = mService.getInstalledProvidersForProfile(
                     categoryFilter, profile.getIdentifier());
             if (providers == null) {
                 return Collections.emptyList();
             }
-            for (AppWidgetProviderInfo info : providers) {
+            for (AppWidgetProviderInfo info : providers.getList()) {
                 // Converting complex to dp.
                 convertSizesToPixels(info);
             }
-            return providers;
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+            return providers.getList();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -786,9 +781,8 @@ public class AppWidgetManager {
                 convertSizesToPixels(info);
             }
             return info;
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -917,9 +911,8 @@ public class AppWidgetManager {
         }
         try {
             return mService.hasBindAppWidgetPermission(packageName, userId);
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -938,9 +931,8 @@ public class AppWidgetManager {
         }
         try {
             return mService.hasBindAppWidgetPermission(packageName, UserHandle.myUserId());
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -978,9 +970,8 @@ public class AppWidgetManager {
         }
         try {
             mService.setBindAppWidgetPermission(packageName, userId, permission);
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -1004,9 +995,8 @@ public class AppWidgetManager {
         }
         try {
             mService.bindRemoteViewsService(packageName, appWidgetId, intent, connection);
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -1028,9 +1018,8 @@ public class AppWidgetManager {
         }
         try {
             mService.unbindRemoteViewsService(packageName, appWidgetId, intent);
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -1047,9 +1036,22 @@ public class AppWidgetManager {
         }
         try {
             return mService.getAppWidgetIds(provider);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+    }
+
+    /**
+     * @hide
+     */
+    public boolean isBoundWidgetPackage(String packageName, int userId) {
+        if (mService == null) {
+            return false;
+        }
+        try {
+            return mService.isBoundWidgetPackage(packageName, userId);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -1061,9 +1063,8 @@ public class AppWidgetManager {
         try {
             return mService.bindAppWidgetId(mPackageName, appWidgetId,
                     profileId, provider, options);
-        }
-        catch (RemoteException e) {
-            throw new RuntimeException("system server dead?", e);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 

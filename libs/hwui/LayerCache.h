@@ -19,7 +19,8 @@
 
 #include "Debug.h"
 #include "Layer.h"
-#include "utils/SortedList.h"
+
+#include <set>
 
 namespace android {
 namespace uirenderer {
@@ -30,7 +31,6 @@ class RenderState;
 // Defines
 ///////////////////////////////////////////////////////////////////////////////
 
-// Debug
 #if DEBUG_LAYERS
     #define LAYER_LOGD(...) ALOGD(__VA_ARGS__)
 #else
@@ -97,10 +97,10 @@ public:
 private:
     struct LayerEntry {
         LayerEntry():
-            mLayer(NULL), mWidth(0), mHeight(0) {
+            mLayer(nullptr), mWidth(0), mHeight(0) {
         }
 
-        LayerEntry(const uint32_t layerWidth, const uint32_t layerHeight): mLayer(NULL) {
+        LayerEntry(const uint32_t layerWidth, const uint32_t layerHeight): mLayer(nullptr) {
             mWidth = Layer::computeIdealWidth(layerWidth);
             mHeight = Layer::computeIdealHeight(layerHeight);
         }
@@ -119,12 +119,8 @@ private:
             return compare(*this, other) != 0;
         }
 
-        friend inline int strictly_order_type(const LayerEntry& lhs, const LayerEntry& rhs) {
-            return LayerEntry::compare(lhs, rhs) < 0;
-        }
-
-        friend inline int compare_type(const LayerEntry& lhs, const LayerEntry& rhs) {
-            return LayerEntry::compare(lhs, rhs);
+        bool operator<(const LayerEntry& other) const {
+            return LayerEntry::compare(*this, other) < 0;
         }
 
         Layer* mLayer;
@@ -134,7 +130,7 @@ private:
 
     void deleteLayer(Layer* layer);
 
-    SortedList<LayerEntry> mCache;
+    std::multiset<LayerEntry> mCache;
 
     uint32_t mSize;
     uint32_t mMaxSize;

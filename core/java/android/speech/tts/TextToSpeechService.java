@@ -15,10 +15,11 @@
  */
 package android.speech.tts;
 
+import android.annotation.NonNull;
 import android.app.Service;
 import android.content.Intent;
 import android.media.AudioAttributes;
-import android.media.AudioSystem;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.Bundle;
@@ -39,11 +40,10 @@ import android.util.Log;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.MissingResourceException;
 import java.util.Set;
 
@@ -112,7 +112,7 @@ public abstract class TextToSpeechService extends Service {
     // A thread and it's associated handler for playing back any audio
     // associated with this TTS engine. Will handle all requests except synthesis
     // to file requests, which occur on the synthesis thread.
-    private AudioPlaybackHandler mAudioPlaybackHandler;
+    @NonNull private AudioPlaybackHandler mAudioPlaybackHandler;
     private TtsEngines mEngineHelper;
 
     private CallbackMap mCallbacks;
@@ -249,7 +249,7 @@ public abstract class TextToSpeechService extends Service {
      * @return A list of features supported for the given language.
      */
     protected Set<String> onGetFeaturesForLanguage(String lang, String country, String variant) {
-        return null;
+        return new HashSet<String>();
     }
 
     private int getExpectedLanguageAvailableStatus(Locale locale) {
@@ -295,7 +295,9 @@ public abstract class TextToSpeechService extends Service {
             }
             Set<String> features = onGetFeaturesForLanguage(locale.getISO3Language(),
                     locale.getISO3Country(), locale.getVariant());
-            voices.add(new Voice(locale.toLanguageTag(), locale, Voice.QUALITY_NORMAL,
+            String voiceName = onGetDefaultVoiceNameFor(locale.getISO3Language(),
+                    locale.getISO3Country(), locale.getVariant());
+            voices.add(new Voice(voiceName, locale, Voice.QUALITY_NORMAL,
                     Voice.LATENCY_NORMAL, false, features));
         }
         return voices;
@@ -455,8 +457,44 @@ public abstract class TextToSpeechService extends Service {
     private class SynthHandler extends Handler {
         private SpeechItem mCurrentSpeechItem = null;
 
+        // When a message with QUEUE_FLUSH arrives we add the caller identity to the List and when a
+        // message with QUEUE_DESTROY arrives we increment mFlushAll. Then a message is added to the
+        // handler queue that removes the caller identify from the list and decrements the mFlushAll
+        // counter. This is so that when a message is processed and the caller identity is in the
+        // list or mFlushAll is not zero, we know that the message should be flushed.
+        // It's important that mFlushedObjects is a List and not a Set, and that mFlushAll is an
+        // int and not a bool. This is because when multiple messages arrive with QUEUE_FLUSH or
+        // QUEUE_DESTROY, we want to keep flushing messages until we arrive at the last QUEUE_FLUSH
+        // or QUEUE_DESTROY message.
+        private List<Object> mFlushedObjects = new ArrayList<>();
+        private int mFlushAll = 0;
+
         public SynthHandler(Looper looper) {
             super(looper);
+        }
+
+        private void startFlushingSpeechItems(Object callerIdentity) {
+            synchronized (mFlushedObjects) {
+                if (callerIdentity == null) {
+                    mFlushAll += 1;
+                } else {
+                    mFlushedObjects.add(callerIdentity);
+                }
+            }
+        }
+        private void endFlushingSpeechItems(Object callerIdentity) {
+            synchronized (mFlushedObjects) {
+                if (callerIdentity == null) {
+                    mFlushAll -= 1;
+                } else {
+                    mFlushedObjects.remove(callerIdentity);
+                }
+            }
+        }
+        private boolean isFlushed(SpeechItem speechItem) {
+            synchronized (mFlushedObjects) {
+                return mFlushAll > 0 || mFlushedObjects.contains(speechItem.getCallerIdentity());
+            }
         }
 
         private synchronized SpeechItem getCurrentSpeechItem() {
@@ -522,9 +560,13 @@ public abstract class TextToSpeechService extends Service {
             Runnable runnable = new Runnable() {
                 @Override
                 public void run() {
-                    setCurrentSpeechItem(speechItem);
-                    speechItem.play();
-                    setCurrentSpeechItem(null);
+                    if (isFlushed(speechItem)) {
+                        speechItem.stop();
+                    } else {
+                        setCurrentSpeechItem(speechItem);
+                        speechItem.play();
+                        setCurrentSpeechItem(null);
+                    }
                 }
             };
             Message msg = Message.obtain(this, runnable);
@@ -552,12 +594,14 @@ public abstract class TextToSpeechService extends Service {
          *
          * Called on a service binder thread.
          */
-        public int stopForApp(Object callerIdentity) {
+        public int stopForApp(final Object callerIdentity) {
             if (callerIdentity == null) {
                 return TextToSpeech.ERROR;
             }
 
-            removeCallbacksAndMessages(callerIdentity);
+            // Flush pending messages from callerIdentity
+            startFlushingSpeechItems(callerIdentity);
+
             // This stops writing data to the file / or publishing
             // items to the audio playback handler.
             //
@@ -573,19 +617,38 @@ public abstract class TextToSpeechService extends Service {
             // Remove any enqueued audio too.
             mAudioPlaybackHandler.stopForApp(callerIdentity);
 
+            // Stop flushing pending messages
+            Runnable runnable = new Runnable() {
+                @Override
+                public void run() {
+                    endFlushingSpeechItems(callerIdentity);
+                }
+            };
+            sendMessage(Message.obtain(this, runnable));
             return TextToSpeech.SUCCESS;
         }
 
         public int stopAll() {
+            // Order to flush pending messages
+            startFlushingSpeechItems(null);
+
             // Stop the current speech item unconditionally .
             SpeechItem current = setCurrentSpeechItem(null);
             if (current != null) {
                 current.stop();
             }
-            // Remove all other items from the queue.
-            removeCallbacksAndMessages(null);
             // Remove all pending playback as well.
             mAudioPlaybackHandler.stop();
+
+            // Message to stop flushing pending messages
+            Runnable runnable = new Runnable() {
+                @Override
+                public void run() {
+                    endFlushingSpeechItems(null);
+                }
+            };
+            sendMessage(Message.obtain(this, runnable));
+
 
             return TextToSpeech.SUCCESS;
         }
@@ -596,6 +659,8 @@ public abstract class TextToSpeechService extends Service {
         public void dispatchOnSuccess();
         public void dispatchOnStart();
         public void dispatchOnError(int errorCode);
+        public void dispatchOnBeginSynthesis(int sampleRateInHz, int audioFormat, int channelCount);
+        public void dispatchOnAudioAvailable(byte[] audio);
     }
 
     /** Set of parameters affecting audio output. */
@@ -603,7 +668,7 @@ public abstract class TextToSpeechService extends Service {
         /**
          * Audio session identifier. May be used to associate audio playback with one of the
          * {@link android.media.audiofx.AudioEffect} objects. If not specified by client,
-         * it should be equal to {@link AudioSystem#AUDIO_SESSION_ALLOCATE}.
+         * it should be equal to {@link AudioManager#AUDIO_SESSION_ID_GENERATE}.
          */
         public final int mSessionId;
 
@@ -628,7 +693,7 @@ public abstract class TextToSpeechService extends Service {
 
         /** Create AudioOutputParams with default values */
         AudioOutputParams() {
-            mSessionId = AudioSystem.AUDIO_SESSION_ALLOCATE;
+            mSessionId = AudioManager.AUDIO_SESSION_ID_GENERATE;
             mVolume = Engine.DEFAULT_VOLUME;
             mPan = Engine.DEFAULT_PAN;
             mAudioAttributes = null;
@@ -666,7 +731,7 @@ public abstract class TextToSpeechService extends Service {
             return new AudioOutputParams(
                     paramsBundle.getInt(
                             Engine.KEY_PARAM_SESSION_ID,
-                            AudioSystem.AUDIO_SESSION_ALLOCATE),
+                            AudioManager.AUDIO_SESSION_ID_GENERATE),
                     paramsBundle.getFloat(
                             Engine.KEY_PARAM_VOLUME,
                             Engine.DEFAULT_VOLUME),
@@ -697,7 +762,6 @@ public abstract class TextToSpeechService extends Service {
         public Object getCallerIdentity() {
             return mCallerIdentity;
         }
-
 
         public int getCallerUid() {
             return mCallerUid;
@@ -752,6 +816,10 @@ public abstract class TextToSpeechService extends Service {
         protected synchronized boolean isStopped() {
              return mStopped;
         }
+
+        protected synchronized boolean isStarted() {
+            return mStarted;
+       }
     }
 
     /**
@@ -777,7 +845,7 @@ public abstract class TextToSpeechService extends Service {
         public void dispatchOnStop() {
             final String utteranceId = getUtteranceId();
             if (utteranceId != null) {
-                mCallbacks.dispatchOnStop(getCallerIdentity(), utteranceId);
+                mCallbacks.dispatchOnStop(getCallerIdentity(), utteranceId, isStarted());
             }
         }
 
@@ -794,6 +862,22 @@ public abstract class TextToSpeechService extends Service {
             final String utteranceId = getUtteranceId();
             if (utteranceId != null) {
                 mCallbacks.dispatchOnError(getCallerIdentity(), utteranceId, errorCode);
+            }
+        }
+
+        @Override
+        public void dispatchOnBeginSynthesis(int sampleRateInHz, int audioFormat, int channelCount) {
+            final String utteranceId = getUtteranceId();
+            if (utteranceId != null) {
+                mCallbacks.dispatchOnBeginSynthesis(getCallerIdentity(), utteranceId, sampleRateInHz, audioFormat, channelCount);
+            }
+        }
+
+        @Override
+        public void dispatchOnAudioAvailable(byte[] audio) {
+            final String utteranceId = getUtteranceId();
+            if (utteranceId != null) {
+                mCallbacks.dispatchOnAudioAvailable(getCallerIdentity(), utteranceId, audio);
             }
         }
 
@@ -940,6 +1024,8 @@ public abstract class TextToSpeechService extends Service {
                 // turn implies that synthesis would not have started.
                 synthesisCallback.stop();
                 TextToSpeechService.this.onStop();
+            } else {
+                dispatchOnStop();
             }
         }
 
@@ -974,8 +1060,7 @@ public abstract class TextToSpeechService extends Service {
 
         @Override
         protected AbstractSynthesisCallback createSynthesisCallback() {
-            return new FileSynthesisCallback(mFileOutputStream.getChannel(),
-                    this, getCallerIdentity(), false);
+            return new FileSynthesisCallback(mFileOutputStream.getChannel(), this, false);
         }
 
         @Override
@@ -1345,11 +1430,11 @@ public abstract class TextToSpeechService extends Service {
             }
         }
 
-        public void dispatchOnStop(Object callerIdentity, String utteranceId) {
+        public void dispatchOnStop(Object callerIdentity, String utteranceId, boolean started) {
             ITextToSpeechCallback cb = getCallbackFor(callerIdentity);
             if (cb == null) return;
             try {
-                cb.onStop(utteranceId);
+                cb.onStop(utteranceId, started);
             } catch (RemoteException e) {
                 Log.e(TAG, "Callback onStop failed: " + e);
             }
@@ -1373,7 +1458,6 @@ public abstract class TextToSpeechService extends Service {
             } catch (RemoteException e) {
                 Log.e(TAG, "Callback onStart failed: " + e);
             }
-
         }
 
         public void dispatchOnError(Object callerIdentity, String utteranceId,
@@ -1384,6 +1468,26 @@ public abstract class TextToSpeechService extends Service {
                 cb.onError(utteranceId, errorCode);
             } catch (RemoteException e) {
                 Log.e(TAG, "Callback onError failed: " + e);
+            }
+        }
+
+        public void dispatchOnBeginSynthesis(Object callerIdentity, String utteranceId, int sampleRateInHz, int audioFormat, int channelCount) {
+            ITextToSpeechCallback cb = getCallbackFor(callerIdentity);
+            if (cb == null) return;
+            try {
+                cb.onBeginSynthesis(utteranceId, sampleRateInHz, audioFormat, channelCount);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Callback dispatchOnBeginSynthesis(String, int, int, int) failed: " + e);
+            }
+        }
+
+        public void dispatchOnAudioAvailable(Object callerIdentity, String utteranceId, byte[] buffer) {
+            ITextToSpeechCallback cb = getCallbackFor(callerIdentity);
+            if (cb == null) return;
+            try {
+                cb.onAudioAvailable(utteranceId, buffer);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Callback dispatchOnAudioAvailable(String, byte[]) failed: " + e);
             }
         }
 

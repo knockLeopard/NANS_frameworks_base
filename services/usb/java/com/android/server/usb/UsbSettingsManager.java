@@ -27,7 +27,6 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
-import android.content.res.Resources;
 import android.content.res.XmlResourceParser;
 import android.hardware.usb.UsbAccessory;
 import android.hardware.usb.UsbDevice;
@@ -45,6 +44,7 @@ import android.util.Xml;
 
 import com.android.internal.content.PackageMonitor;
 import com.android.internal.util.FastXmlSerializer;
+import com.android.internal.util.IndentingPrintWriter;
 import com.android.internal.util.XmlUtils;
 
 import org.xmlpull.v1.XmlPullParser;
@@ -52,12 +52,11 @@ import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlSerializer;
 
 import java.io.File;
-import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -495,6 +494,8 @@ class UsbSettingsManager {
 
     MyPackageMonitor mPackageMonitor = new MyPackageMonitor();
 
+    private final MtpNotificationManager mMtpNotificationManager;
+
     public UsbSettingsManager(Context context, UserHandle user) {
         if (DEBUG) Slog.v(TAG, "Creating settings for " + user);
 
@@ -516,13 +517,21 @@ class UsbSettingsManager {
                 com.android.internal.R.bool.config_disableUsbPermissionDialogs);
 
         synchronized (mLock) {
-            if (UserHandle.OWNER.equals(user)) {
+            if (UserHandle.SYSTEM.equals(user)) {
                 upgradeSingleUserLocked();
             }
             readSettingsLocked();
         }
 
         mPackageMonitor.register(mUserContext, null, true);
+        mMtpNotificationManager = new MtpNotificationManager(
+                context,
+                new MtpNotificationManager.OnOpenInAppListener() {
+                    @Override
+                    public void onOpenInApp(UsbDevice device) {
+                        resolveActivity(createDeviceAttachedIntent(device), device);
+                    }
+                });
     }
 
     private void readPreference(XmlPullParser parser)
@@ -559,7 +568,7 @@ class UsbSettingsManager {
             try {
                 fis = new FileInputStream(sSingleUserSettingsFile);
                 XmlPullParser parser = Xml.newPullParser();
-                parser.setInput(fis, null);
+                parser.setInput(fis, StandardCharsets.UTF_8.name());
 
                 XmlUtils.nextElement(parser);
                 while (parser.getEventType() != XmlPullParser.END_DOCUMENT) {
@@ -595,7 +604,7 @@ class UsbSettingsManager {
         try {
             stream = mSettingsFile.openRead();
             XmlPullParser parser = Xml.newPullParser();
-            parser.setInput(stream, null);
+            parser.setInput(stream, StandardCharsets.UTF_8.name());
 
             XmlUtils.nextElement(parser);
             while (parser.getEventType() != XmlPullParser.END_DOCUMENT) {
@@ -624,7 +633,7 @@ class UsbSettingsManager {
             fos = mSettingsFile.startWrite();
 
             FastXmlSerializer serializer = new FastXmlSerializer();
-            serializer.setOutput(fos, "utf-8");
+            serializer.setOutput(fos, StandardCharsets.UTF_8.name());
             serializer.startDocument(null, true);
             serializer.setFeature("http://xmlpull.org/v1/doc/features.html#indent-output", true);
             serializer.startTag(null, "settings");
@@ -724,10 +733,20 @@ class UsbSettingsManager {
     }
 
     public void deviceAttached(UsbDevice device) {
-        Intent intent = new Intent(UsbManager.ACTION_USB_DEVICE_ATTACHED);
-        intent.putExtra(UsbManager.EXTRA_DEVICE, device);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        final Intent intent = createDeviceAttachedIntent(device);
 
+        // Send broadcast to running activity with registered intent
+        mUserContext.sendBroadcast(intent);
+
+        if (MtpNotificationManager.shouldShowNotification(mPackageManager, device)) {
+            // Show notification if the device is MTP storage.
+            mMtpNotificationManager.showNotification(device);
+        } else {
+            resolveActivity(intent, device);
+        }
+    }
+
+    private void resolveActivity(Intent intent, UsbDevice device) {
         ArrayList<ResolveInfo> matches;
         String defaultPackage;
         synchronized (mLock) {
@@ -736,9 +755,6 @@ class UsbSettingsManager {
             // Otherwise we will start the UsbResolverActivity to allow the user to choose.
             defaultPackage = mDevicePreferenceMap.get(new DeviceFilter(device));
         }
-
-        // Send broadcast to running activity with registered intent
-        mUserContext.sendBroadcast(intent);
 
         // Start activity with registered intent
         resolveActivity(intent, matches, defaultPackage, device, null);
@@ -752,6 +768,8 @@ class UsbSettingsManager {
         intent.putExtra(UsbManager.EXTRA_DEVICE, device);
         if (DEBUG) Slog.d(TAG, "usbDeviceRemoved, sending " + intent);
         mContext.sendBroadcastAsUser(intent, UserHandle.ALL);
+
+        mMtpNotificationManager.hideNotification(device.getDeviceId());
     }
 
     public void accessoryAttached(UsbAccessory accessory) {
@@ -1193,36 +1211,43 @@ class UsbSettingsManager {
         }
     }
 
-    public void dump(FileDescriptor fd, PrintWriter pw) {
+    public void dump(IndentingPrintWriter pw) {
         synchronized (mLock) {
-            pw.println("  Device permissions:");
+            pw.println("Device permissions:");
             for (String deviceName : mDevicePermissionMap.keySet()) {
-                pw.print("    " + deviceName + ": ");
+                pw.print("  " + deviceName + ": ");
                 SparseBooleanArray uidList = mDevicePermissionMap.get(deviceName);
                 int count = uidList.size();
                 for (int i = 0; i < count; i++) {
                     pw.print(Integer.toString(uidList.keyAt(i)) + " ");
                 }
-                pw.println("");
+                pw.println();
             }
-            pw.println("  Accessory permissions:");
+            pw.println("Accessory permissions:");
             for (UsbAccessory accessory : mAccessoryPermissionMap.keySet()) {
-                pw.print("    " + accessory + ": ");
+                pw.print("  " + accessory + ": ");
                 SparseBooleanArray uidList = mAccessoryPermissionMap.get(accessory);
                 int count = uidList.size();
                 for (int i = 0; i < count; i++) {
                     pw.print(Integer.toString(uidList.keyAt(i)) + " ");
                 }
-                pw.println("");
+                pw.println();
             }
-            pw.println("  Device preferences:");
+            pw.println("Device preferences:");
             for (DeviceFilter filter : mDevicePreferenceMap.keySet()) {
-                pw.println("    " + filter + ": " + mDevicePreferenceMap.get(filter));
+                pw.println("  " + filter + ": " + mDevicePreferenceMap.get(filter));
             }
-            pw.println("  Accessory preferences:");
+            pw.println("Accessory preferences:");
             for (AccessoryFilter filter : mAccessoryPreferenceMap.keySet()) {
-                pw.println("    " + filter + ": " + mAccessoryPreferenceMap.get(filter));
+                pw.println("  " + filter + ": " + mAccessoryPreferenceMap.get(filter));
             }
         }
+    }
+
+    private static Intent createDeviceAttachedIntent(UsbDevice device) {
+        Intent intent = new Intent(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+        intent.putExtra(UsbManager.EXTRA_DEVICE, device);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return intent;
     }
 }

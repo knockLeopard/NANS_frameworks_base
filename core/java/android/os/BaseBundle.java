@@ -16,26 +16,61 @@
 
 package android.os;
 
+import android.annotation.Nullable;
 import android.util.ArrayMap;
 import android.util.Log;
+import android.util.MathUtils;
+import android.util.Slog;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Map;
 import java.util.Set;
 
 /**
- * A mapping from String values to various types.
+ * A mapping from String keys to values of various types. In most cases, you
+ * should work directly with either the {@link Bundle} or
+ * {@link PersistableBundle} subclass.
  */
 public class BaseBundle {
     private static final String TAG = "Bundle";
     static final boolean DEBUG = false;
 
+    // Keep in sync with frameworks/native/libs/binder/PersistableBundle.cpp.
     static final int BUNDLE_MAGIC = 0x4C444E42; // 'B' 'N' 'D' 'L'
-    static final Parcel EMPTY_PARCEL;
 
-    static {
-        EMPTY_PARCEL = Parcel.obtain();
+    /**
+     * Flag indicating that this Bundle is okay to "defuse." That is, it's okay
+     * for system processes to ignore any {@link BadParcelableException}
+     * encountered when unparceling it, leaving an empty bundle in its place.
+     * <p>
+     * This should <em>only</em> be set when the Bundle reaches its final
+     * destination, otherwise a system process may clobber contents that were
+     * destined for an app that could have unparceled them.
+     */
+    static final int FLAG_DEFUSABLE = 1 << 0;
+
+    private static final boolean LOG_DEFUSABLE = false;
+
+    private static volatile boolean sShouldDefuse = false;
+
+    /**
+     * Set global variable indicating that any Bundles parsed in this process
+     * should be "defused." That is, any {@link BadParcelableException}
+     * encountered will be suppressed and logged, leaving an empty Bundle
+     * instead of crashing.
+     *
+     * @hide
+     */
+    public static void setShouldDefuse(boolean shouldDefuse) {
+        sShouldDefuse = shouldDefuse;
+    }
+
+    // A parcel cannot be obtained during compile-time initialization. Put the
+    // empty parcel into an inner class that can be initialized separately. This
+    // allows to initialize BaseBundle, and classes depending on it.
+    /** {@hide} */
+    static final class NoImagePreloadHolder {
+        public static final Parcel EMPTY_PARCEL = Parcel.obtain();
     }
 
     // Invariant - exactly one of mMap / mParcelledData will be null
@@ -55,6 +90,9 @@ public class BaseBundle {
      */
     private ClassLoader mClassLoader;
 
+    /** {@hide} */
+    int mFlags;
+
     /**
      * Constructs a new, empty Bundle that uses a specific ClassLoader for
      * instantiating Parcelable and Serializable objects.
@@ -63,7 +101,7 @@ public class BaseBundle {
      * inside of the Bundle.
      * @param capacity Initial size of the ArrayMap.
      */
-    BaseBundle(ClassLoader loader, int capacity) {
+    BaseBundle(@Nullable ClassLoader loader, int capacity) {
         mMap = capacity > 0 ?
                 new ArrayMap<String, Object>(capacity) : new ArrayMap<String, Object>();
         mClassLoader = loader == null ? getClass().getClassLoader() : loader;
@@ -119,8 +157,8 @@ public class BaseBundle {
      */
     BaseBundle(BaseBundle b) {
         if (b.mParcelledData != null) {
-            if (b.mParcelledData == EMPTY_PARCEL) {
-                mParcelledData = EMPTY_PARCEL;
+            if (b.isEmptyParcel()) {
+                mParcelledData = NoImagePreloadHolder.EMPTY_PARCEL;
             } else {
                 mParcelledData = Parcel.obtain();
                 mParcelledData.appendFrom(b.mParcelledData, 0, b.mParcelledData.dataSize());
@@ -131,7 +169,7 @@ public class BaseBundle {
         }
 
         if (b.mMap != null) {
-            mMap = new ArrayMap<String, Object>(b.mMap);
+            mMap = new ArrayMap<>(b.mMap);
         } else {
             mMap = null;
         }
@@ -188,41 +226,62 @@ public class BaseBundle {
      * using the currently assigned class loader.
      */
     /* package */ synchronized void unparcel() {
-        if (mParcelledData == null) {
-            if (DEBUG) Log.d(TAG, "unparcel " + Integer.toHexString(System.identityHashCode(this))
-                    + ": no parcelled data");
-            return;
-        }
-
-        if (mParcelledData == EMPTY_PARCEL) {
-            if (DEBUG) Log.d(TAG, "unparcel " + Integer.toHexString(System.identityHashCode(this))
-                    + ": empty");
-            if (mMap == null) {
-                mMap = new ArrayMap<String, Object>(1);
-            } else {
-                mMap.erase();
+        synchronized (this) {
+            final Parcel parcelledData = mParcelledData;
+            if (parcelledData == null) {
+                if (DEBUG) Log.d(TAG, "unparcel "
+                        + Integer.toHexString(System.identityHashCode(this))
+                        + ": no parcelled data");
+                return;
             }
-            mParcelledData = null;
-            return;
-        }
 
-        int N = mParcelledData.readInt();
-        if (DEBUG) Log.d(TAG, "unparcel " + Integer.toHexString(System.identityHashCode(this))
-                + ": reading " + N + " maps");
-        if (N < 0) {
-            return;
+            if (LOG_DEFUSABLE && sShouldDefuse && (mFlags & FLAG_DEFUSABLE) == 0) {
+                Slog.wtf(TAG, "Attempting to unparcel a Bundle while in transit; this may "
+                        + "clobber all data inside!", new Throwable());
+            }
+
+            if (isEmptyParcel()) {
+                if (DEBUG) Log.d(TAG, "unparcel "
+                        + Integer.toHexString(System.identityHashCode(this)) + ": empty");
+                if (mMap == null) {
+                    mMap = new ArrayMap<>(1);
+                } else {
+                    mMap.erase();
+                }
+                mParcelledData = null;
+                return;
+            }
+
+            int N = parcelledData.readInt();
+            if (DEBUG) Log.d(TAG, "unparcel " + Integer.toHexString(System.identityHashCode(this))
+                    + ": reading " + N + " maps");
+            if (N < 0) {
+                return;
+            }
+            ArrayMap<String, Object> map = mMap;
+            if (map == null) {
+                map = new ArrayMap<>(N);
+            } else {
+                map.erase();
+                map.ensureCapacity(N);
+            }
+            try {
+                parcelledData.readArrayMapInternal(map, N, mClassLoader);
+            } catch (BadParcelableException e) {
+                if (sShouldDefuse) {
+                    Log.w(TAG, "Failed to parse Bundle, but defusing quietly", e);
+                    map.erase();
+                } else {
+                    throw e;
+                }
+            } finally {
+                mMap = map;
+                parcelledData.recycle();
+                mParcelledData = null;
+            }
+            if (DEBUG) Log.d(TAG, "unparcel " + Integer.toHexString(System.identityHashCode(this))
+                    + " final map: " + mMap);
         }
-        if (mMap == null) {
-            mMap = new ArrayMap<String, Object>(N);
-        } else {
-            mMap.erase();
-            mMap.ensureCapacity(N);
-        }
-        mParcelledData.readArrayMapInternal(mMap, N, mClassLoader);
-        mParcelledData.recycle();
-        mParcelledData = null;
-        if (DEBUG) Log.d(TAG, "unparcel " + Integer.toHexString(System.identityHashCode(this))
-                + " final map: " + mMap);
     }
 
     /**
@@ -230,6 +289,19 @@ public class BaseBundle {
      */
     public boolean isParcelled() {
         return mParcelledData != null;
+    }
+
+    /**
+     * @hide
+     */
+    public boolean isEmptyParcel() {
+        return mParcelledData == NoImagePreloadHolder.EMPTY_PARCEL;
+    }
+
+    /** @hide */
+    ArrayMap<String, Object> getMap() {
+        unparcel();
+        return mMap;
     }
 
     /**
@@ -276,6 +348,7 @@ public class BaseBundle {
      * @param key a String key
      * @return an Object, or null
      */
+    @Nullable
     public Object get(String key) {
         unparcel();
         return mMap.get(key);
@@ -307,7 +380,7 @@ public class BaseBundle {
      *
      * @param map a Map
      */
-    void putAll(Map map) {
+    void putAll(ArrayMap map) {
         unparcel();
         mMap.putAll(map);
     }
@@ -327,9 +400,9 @@ public class BaseBundle {
      * any existing value for the given key.  Either key or value may be null.
      *
      * @param key a String, or null
-     * @param value a Boolean, or null
+     * @param value a boolean
      */
-    public void putBoolean(String key, boolean value) {
+    public void putBoolean(@Nullable String key, boolean value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -341,7 +414,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a byte
      */
-    void putByte(String key, byte value) {
+    void putByte(@Nullable String key, byte value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -351,9 +424,9 @@ public class BaseBundle {
      * any existing value for the given key.
      *
      * @param key a String, or null
-     * @param value a char, or null
+     * @param value a char
      */
-    void putChar(String key, char value) {
+    void putChar(@Nullable String key, char value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -365,7 +438,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a short
      */
-    void putShort(String key, short value) {
+    void putShort(@Nullable String key, short value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -375,9 +448,9 @@ public class BaseBundle {
      * any existing value for the given key.
      *
      * @param key a String, or null
-     * @param value an int, or null
+     * @param value an int
      */
-    public void putInt(String key, int value) {
+    public void putInt(@Nullable String key, int value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -389,7 +462,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a long
      */
-    public void putLong(String key, long value) {
+    public void putLong(@Nullable String key, long value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -401,7 +474,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a float
      */
-    void putFloat(String key, float value) {
+    void putFloat(@Nullable String key, float value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -413,7 +486,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a double
      */
-    public void putDouble(String key, double value) {
+    public void putDouble(@Nullable String key, double value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -425,7 +498,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a String, or null
      */
-    public void putString(String key, String value) {
+    public void putString(@Nullable String key, @Nullable String value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -437,7 +510,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a CharSequence, or null
      */
-    void putCharSequence(String key, CharSequence value) {
+    void putCharSequence(@Nullable String key, @Nullable CharSequence value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -449,7 +522,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value an ArrayList<Integer> object, or null
      */
-    void putIntegerArrayList(String key, ArrayList<Integer> value) {
+    void putIntegerArrayList(@Nullable String key, @Nullable ArrayList<Integer> value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -461,7 +534,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value an ArrayList<String> object, or null
      */
-    void putStringArrayList(String key, ArrayList<String> value) {
+    void putStringArrayList(@Nullable String key, @Nullable ArrayList<String> value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -473,7 +546,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value an ArrayList<CharSequence> object, or null
      */
-    void putCharSequenceArrayList(String key, ArrayList<CharSequence> value) {
+    void putCharSequenceArrayList(@Nullable String key, @Nullable ArrayList<CharSequence> value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -485,7 +558,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a Serializable object, or null
      */
-    void putSerializable(String key, Serializable value) {
+    void putSerializable(@Nullable String key, @Nullable Serializable value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -497,7 +570,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a boolean array object, or null
      */
-    public void putBooleanArray(String key, boolean[] value) {
+    public void putBooleanArray(@Nullable String key, @Nullable boolean[] value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -509,7 +582,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a byte array object, or null
      */
-    void putByteArray(String key, byte[] value) {
+    void putByteArray(@Nullable String key, @Nullable byte[] value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -521,7 +594,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a short array object, or null
      */
-    void putShortArray(String key, short[] value) {
+    void putShortArray(@Nullable String key, @Nullable short[] value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -533,7 +606,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a char array object, or null
      */
-    void putCharArray(String key, char[] value) {
+    void putCharArray(@Nullable String key, @Nullable char[] value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -545,7 +618,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value an int array object, or null
      */
-    public void putIntArray(String key, int[] value) {
+    public void putIntArray(@Nullable String key, @Nullable int[] value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -557,7 +630,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a long array object, or null
      */
-    public void putLongArray(String key, long[] value) {
+    public void putLongArray(@Nullable String key, @Nullable long[] value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -569,7 +642,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a float array object, or null
      */
-    void putFloatArray(String key, float[] value) {
+    void putFloatArray(@Nullable String key, @Nullable float[] value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -581,7 +654,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a double array object, or null
      */
-    public void putDoubleArray(String key, double[] value) {
+    public void putDoubleArray(@Nullable String key, @Nullable double[] value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -593,7 +666,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a String array object, or null
      */
-    public void putStringArray(String key, String[] value) {
+    public void putStringArray(@Nullable String key, @Nullable String[] value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -605,7 +678,7 @@ public class BaseBundle {
      * @param key a String, or null
      * @param value a CharSequence array object, or null
      */
-    void putCharSequenceArray(String key, CharSequence[] value) {
+    void putCharSequenceArray(@Nullable String key, @Nullable CharSequence[] value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -914,7 +987,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a String value, or null
      */
-    public String getString(String key) {
+    @Nullable
+    public String getString(@Nullable String key) {
         unparcel();
         final Object o = mMap.get(key);
         try {
@@ -936,7 +1010,7 @@ public class BaseBundle {
      * @return the String value associated with the given key, or defaultValue
      *     if no valid String object is currently mapped to that key.
      */
-    public String getString(String key, String defaultValue) {
+    public String getString(@Nullable String key, String defaultValue) {
         final String s = getString(key);
         return (s == null) ? defaultValue : s;
     }
@@ -949,7 +1023,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a CharSequence value, or null
      */
-    CharSequence getCharSequence(String key) {
+    @Nullable
+    CharSequence getCharSequence(@Nullable String key) {
         unparcel();
         final Object o = mMap.get(key);
         try {
@@ -971,7 +1046,7 @@ public class BaseBundle {
      * @return the CharSequence value associated with the given key, or defaultValue
      *     if no valid CharSequence object is currently mapped to that key.
      */
-    CharSequence getCharSequence(String key, CharSequence defaultValue) {
+    CharSequence getCharSequence(@Nullable String key, CharSequence defaultValue) {
         final CharSequence cs = getCharSequence(key);
         return (cs == null) ? defaultValue : cs;
     }
@@ -984,7 +1059,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a Serializable value, or null
      */
-    Serializable getSerializable(String key) {
+    @Nullable
+    Serializable getSerializable(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1006,7 +1082,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return an ArrayList<String> value, or null
      */
-    ArrayList<Integer> getIntegerArrayList(String key) {
+    @Nullable
+    ArrayList<Integer> getIntegerArrayList(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1028,7 +1105,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return an ArrayList<String> value, or null
      */
-    ArrayList<String> getStringArrayList(String key) {
+    @Nullable
+    ArrayList<String> getStringArrayList(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1050,7 +1128,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return an ArrayList<CharSequence> value, or null
      */
-    ArrayList<CharSequence> getCharSequenceArrayList(String key) {
+    @Nullable
+    ArrayList<CharSequence> getCharSequenceArrayList(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1072,7 +1151,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a boolean[] value, or null
      */
-    public boolean[] getBooleanArray(String key) {
+    @Nullable
+    public boolean[] getBooleanArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1094,7 +1174,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a byte[] value, or null
      */
-    byte[] getByteArray(String key) {
+    @Nullable
+    byte[] getByteArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1116,7 +1197,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a short[] value, or null
      */
-    short[] getShortArray(String key) {
+    @Nullable
+    short[] getShortArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1138,7 +1220,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a char[] value, or null
      */
-    char[] getCharArray(String key) {
+    @Nullable
+    char[] getCharArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1160,7 +1243,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return an int[] value, or null
      */
-    public int[] getIntArray(String key) {
+    @Nullable
+    public int[] getIntArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1182,7 +1266,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a long[] value, or null
      */
-    public long[] getLongArray(String key) {
+    @Nullable
+    public long[] getLongArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1204,7 +1289,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a float[] value, or null
      */
-    float[] getFloatArray(String key) {
+    @Nullable
+    float[] getFloatArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1226,7 +1312,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a double[] value, or null
      */
-    public double[] getDoubleArray(String key) {
+    @Nullable
+    public double[] getDoubleArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1248,7 +1335,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a String[] value, or null
      */
-    public String[] getStringArray(String key) {
+    @Nullable
+    public String[] getStringArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1270,7 +1358,8 @@ public class BaseBundle {
      * @param key a String, or null
      * @return a CharSequence[] value, or null
      */
-    CharSequence[] getCharSequenceArray(String key) {
+    @Nullable
+    CharSequence[] getCharSequenceArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1290,14 +1379,20 @@ public class BaseBundle {
      * @param parcel The parcel to copy this bundle to.
      */
     void writeToParcelInner(Parcel parcel, int flags) {
-        if (mParcelledData != null) {
-            if (mParcelledData == EMPTY_PARCEL) {
+        // Keep implementation in sync with writeToParcel() in
+        // frameworks/native/libs/binder/PersistableBundle.cpp.
+        final Parcel parcelledData;
+        synchronized (this) {
+            parcelledData = mParcelledData;
+        }
+        if (parcelledData != null) {
+            if (isEmptyParcel()) {
                 parcel.writeInt(0);
             } else {
-                int length = mParcelledData.dataSize();
+                int length = parcelledData.dataSize();
                 parcel.writeInt(length);
                 parcel.writeInt(BUNDLE_MAGIC);
-                parcel.appendFrom(mParcelledData, 0, length);
+                parcel.appendFrom(parcelledData, 0, length);
             }
         } else {
             // Special case for empty bundles.
@@ -1327,29 +1422,31 @@ public class BaseBundle {
      * @param parcel The parcel to overwrite this bundle from.
      */
     void readFromParcelInner(Parcel parcel) {
+        // Keep implementation in sync with readFromParcel() in
+        // frameworks/native/libs/binder/PersistableBundle.cpp.
         int length = parcel.readInt();
-        if (length < 0) {
-            throw new RuntimeException("Bad length in parcel: " + length);
-        }
         readFromParcelInner(parcel, length);
     }
 
     private void readFromParcelInner(Parcel parcel, int length) {
-        if (length == 0) {
+        if (length < 0) {
+            throw new RuntimeException("Bad length in parcel: " + length);
+
+        } else if (length == 0) {
             // Empty Bundle or end of data.
-            mParcelledData = EMPTY_PARCEL;
+            mParcelledData = NoImagePreloadHolder.EMPTY_PARCEL;
             return;
         }
-        int magic = parcel.readInt();
+
+        final int magic = parcel.readInt();
         if (magic != BUNDLE_MAGIC) {
-            //noinspection ThrowableInstanceNeverThrown
             throw new IllegalStateException("Bad magic number for Bundle: 0x"
                     + Integer.toHexString(magic));
         }
 
         // Advance within this Parcel
         int offset = parcel.dataPosition();
-        parcel.setDataPosition(offset + length);
+        parcel.setDataPosition(MathUtils.addOrThrow(offset, length));
 
         Parcel p = Parcel.obtain();
         p.setDataPosition(0);

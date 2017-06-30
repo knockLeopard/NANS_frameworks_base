@@ -17,7 +17,8 @@
 package com.android.internal.telecom;
 
 import android.app.PendingIntent;
-import android.telecom.AudioState;
+import android.os.Bundle;
+import android.telecom.CallAudioState;
 import android.telecom.ParcelableCall;
 
 import com.android.internal.telecom.IInCallAdapter;
@@ -40,9 +41,13 @@ oneway interface IInCallService {
 
     void setPostDialWait(String callId, String remaining);
 
-    void onAudioStateChanged(in AudioState audioState);
+    void onCallAudioStateChanged(in CallAudioState callAudioState);
 
     void bringToForeground(boolean showDialpad);
 
     void onCanAddCallChanged(boolean canAddCall);
+
+    void silenceRinger();
+
+    void onConnectionEvent(String callId, String event, in Bundle extras);
 }

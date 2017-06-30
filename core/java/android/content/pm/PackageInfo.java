@@ -167,8 +167,7 @@ public class PackageInfo implements Parcelable {
      * or null if there were none.  This is only filled in if the flag
      * {@link PackageManager#GET_PERMISSIONS} was set.  Each value matches
      * the corresponding entry in {@link #requestedPermissions}, and will have
-     * the flags {@link #REQUESTED_PERMISSION_REQUIRED} and
-     * {@link #REQUESTED_PERMISSION_GRANTED} set as appropriate.
+     * the flag {@link #REQUESTED_PERMISSION_GRANTED} set as appropriate.
      */
     public int[] requestedPermissionsFlags;
 
@@ -176,6 +175,8 @@ public class PackageInfo implements Parcelable {
      * Flag for {@link #requestedPermissionsFlags}: the requested permission
      * is required for the application to run; the user can not optionally
      * disable it.  Currently all permissions are required.
+     *
+     * @removed We do not support required permissions.
      */
     public static final int REQUESTED_PERMISSION_REQUIRED = 1<<0;
 
@@ -304,10 +305,10 @@ public class PackageInfo implements Parcelable {
         dest.writeLong(firstInstallTime);
         dest.writeLong(lastUpdateTime);
         dest.writeIntArray(gids);
-        dest.writeTypedArray(activities, parcelableFlags);
-        dest.writeTypedArray(receivers, parcelableFlags);
-        dest.writeTypedArray(services, parcelableFlags);
-        dest.writeTypedArray(providers, parcelableFlags);
+        dest.writeTypedArray(activities, parcelableFlags | Parcelable.PARCELABLE_ELIDE_DUPLICATES);
+        dest.writeTypedArray(receivers, parcelableFlags | Parcelable.PARCELABLE_ELIDE_DUPLICATES);
+        dest.writeTypedArray(services, parcelableFlags | Parcelable.PARCELABLE_ELIDE_DUPLICATES);
+        dest.writeTypedArray(providers, parcelableFlags | Parcelable.PARCELABLE_ELIDE_DUPLICATES);
         dest.writeTypedArray(instrumentation, parcelableFlags);
         dest.writeTypedArray(permissions, parcelableFlags);
         dest.writeStringArray(requestedPermissions);
@@ -371,5 +372,22 @@ public class PackageInfo implements Parcelable {
         restrictedAccountType = source.readString();
         requiredAccountType = source.readString();
         overlayTarget = source.readString();
+
+        // The component lists were flattened with the redundant ApplicationInfo
+        // instances omitted.  Distribute the canonical one here as appropriate.
+        if (applicationInfo != null) {
+            propagateApplicationInfo(applicationInfo, activities);
+            propagateApplicationInfo(applicationInfo, receivers);
+            propagateApplicationInfo(applicationInfo, services);
+            propagateApplicationInfo(applicationInfo, providers);
+        }
+    }
+
+    private void propagateApplicationInfo(ApplicationInfo appInfo, ComponentInfo[] components) {
+        if (components != null) {
+            for (ComponentInfo ci : components) {
+                ci.applicationInfo = appInfo;
+            }
+        }
     }
 }

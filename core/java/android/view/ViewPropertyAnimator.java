@@ -19,8 +19,6 @@ package android.view;
 import android.animation.Animator;
 import android.animation.ValueAnimator;
 import android.animation.TimeInterpolator;
-import android.os.Build;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Set;
@@ -1112,6 +1110,13 @@ public class ViewPropertyAnimator {
         @Override
         public void onAnimationEnd(Animator animation) {
             mView.setHasTransientState(false);
+            if (mAnimatorCleanupMap != null) {
+                Runnable r = mAnimatorCleanupMap.get(animation);
+                if (r != null) {
+                    r.run();
+                }
+                mAnimatorCleanupMap.remove(animation);
+            }
             if (mListener != null) {
                 mListener.onAnimationEnd(animation);
             }
@@ -1121,13 +1126,6 @@ public class ViewPropertyAnimator {
                     r.run();
                 }
                 mAnimatorOnEndMap.remove(animation);
-            }
-            if (mAnimatorCleanupMap != null) {
-                Runnable r = mAnimatorCleanupMap.get(animation);
-                if (r != null) {
-                    r.run();
-                }
-                mAnimatorCleanupMap.remove(animation);
             }
             mAnimatorMap.remove(animation);
         }

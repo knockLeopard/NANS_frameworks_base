@@ -67,12 +67,12 @@ page.article=true
 
 <li>
   Eliminate requirements for unsupported hardware in your app.
-  <p>See <a href="training/tv/start/hardware.html#declare-hardware-requirements">Declaring hardware requirements for TV</a>.</p>
+  <p>See <a href="{@docRoot}training/tv/start/hardware.html#declare-hardware-requirements">Declaring hardware requirements for TV</a>.</p>
 </li>
 
 <li>
   Ensure permissions do not imply hardware requirements
-  <p>See <a href="training/tv/start/hardware.html#hardware-permissions">Declaring permissions that imply hardware features</a>.</p>
+  <p>See <a href="{@docRoot}training/tv/start/hardware.html#hardware-permissions">Declaring permissions that imply hardware features</a>.</p>
 </li>
 
 </ol>
@@ -135,6 +135,11 @@ page.article=true
 <li>
   Follow guidelines for effective advertising.
   <p>See <a href="{@docRoot}training/tv/start/layouts.html#advertising">Provide Effective Advertising</a>.</p>
+</li>
+
+<li>
+  Use the Leanback library for guiding the user through a series of decisions.
+  <p>See <a href="{@docRoot}training/tv/playback/guided-step.html">Adding a Guided Step</a>.</p>
 </li>
 
 </ol>

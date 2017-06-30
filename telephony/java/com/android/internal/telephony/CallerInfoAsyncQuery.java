@@ -34,7 +34,6 @@ import android.telephony.PhoneNumberUtils;
 import android.text.TextUtils;
 import android.telephony.Rlog;
 import android.telephony.SubscriptionManager;
-import android.util.Log;
 
 /**
  * Helper class to make it easier to run asynchronous caller-id lookup queries.
@@ -177,13 +176,13 @@ public class CallerInfoAsyncQuery {
                     // However, if there is any code that this Handler calls (such as in
                     // super.handleMessage) that DOES place unexpected messages on the
                     // queue, then we need pass these messages on.
-                    if (DBG) Rlog.d(LOG_TAG, "Unexpected command (CookieWrapper is null): " + msg.what +
+                    Rlog.i(LOG_TAG, "Unexpected command (CookieWrapper is null): " + msg.what +
                             " ignored by CallerInfoWorkerHandler, passing onto parent.");
 
                     super.handleMessage(msg);
                 } else {
 
-                    if (DBG) Rlog.d(LOG_TAG, "Processing event: " + cw.event + " token (arg1): " + msg.arg1 +
+                    Rlog.d(LOG_TAG, "Processing event: " + cw.event + " token (arg1): " + msg.arg1 +
                         " command: " + msg.what + " query URI: " + sanitizeUriToString(args.uri));
 
                     switch (cw.event) {
@@ -240,7 +239,7 @@ public class CallerInfoAsyncQuery {
          */
         @Override
         protected void onQueryComplete(int token, Object cookie, Cursor cursor) {
-            if (DBG) Rlog.d(LOG_TAG, "##### onQueryComplete() #####   query complete for token: " + token);
+            Rlog.d(LOG_TAG, "##### onQueryComplete() #####   query complete for token: " + token);
 
             //get the cookie and notify the listener.
             CookieWrapper cw = (CookieWrapper) cookie;
@@ -249,7 +248,7 @@ public class CallerInfoAsyncQuery {
                 // from within this code.
                 // However, if there is any code that calls this method, we should
                 // check the parameters to make sure they're viable.
-                if (DBG) Rlog.d(LOG_TAG, "Cookie is null, ignoring onQueryComplete() request.");
+                Rlog.i(LOG_TAG, "Cookie is null, ignoring onQueryComplete() request.");
                 if (cursor != null) {
                     cursor.close();
                 }
@@ -334,9 +333,11 @@ public class CallerInfoAsyncQuery {
 
             //notify the listener that the query is complete.
             if (cw.listener != null) {
-                if (DBG) Rlog.d(LOG_TAG, "notifying listener: " + cw.listener.getClass().toString() +
+                Rlog.d(LOG_TAG, "notifying listener: " + cw.listener.getClass().toString() +
                              " for token: " + token + mCallerInfo);
                 cw.listener.onQueryComplete(token, cw.cookie, mCallerInfo);
+            } else {
+                Rlog.w(LOG_TAG, "There is no listener to notify for this query.");
             }
 
             if (cursor != null) {
@@ -388,7 +389,7 @@ public class CallerInfoAsyncQuery {
     public static CallerInfoAsyncQuery startQuery(int token, Context context, String number,
             OnQueryCompleteListener listener, Object cookie) {
 
-        int subId = SubscriptionManager.getDefaultSubId();
+        int subId = SubscriptionManager.getDefaultSubscriptionId();
         return startQuery(token, context, number, listener, cookie, subId);
     }
 
@@ -437,7 +438,7 @@ public class CallerInfoAsyncQuery {
         // check to see if these are recognized numbers, and use shortcuts if we can.
         if (PhoneNumberUtils.isLocalEmergencyNumber(context, number)) {
             cw.event = EVENT_EMERGENCY_NUMBER;
-        } else if (PhoneNumberUtils.isVoiceMailNumber(subId, number)) {
+        } else if (PhoneNumberUtils.isVoiceMailNumber(context, subId, number)) {
             cw.event = EVENT_VOICEMAIL_NUMBER;
         } else {
             cw.event = EVENT_NEW_QUERY;

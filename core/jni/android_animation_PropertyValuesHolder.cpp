@@ -18,7 +18,7 @@
 #include <assert.h>
 
 #include "jni.h"
-#include <android_runtime/AndroidRuntime.h>
+#include "core_jni_helpers.h"
 #include <utils/misc.h>
 
 // ----------------------------------------------------------------------------
@@ -139,7 +139,7 @@ static void android_animation_PropertyValuesHolder_callMultipleIntMethod(
     env->ReleaseIntArrayElements(arg, intValues, JNI_ABORT);
 }
 
-static JNINativeMethod gMethods[] = {
+static const JNINativeMethod gMethods[] = {
     {   "nGetIntMethod", "(Ljava/lang/Class;Ljava/lang/String;)J",
             (void*)android_animation_PropertyValuesHolder_getIntMethod },
     {   "nGetFloatMethod", "(Ljava/lang/Class;Ljava/lang/String;)J",
@@ -168,8 +168,7 @@ static JNINativeMethod gMethods[] = {
 
 int register_android_animation_PropertyValuesHolder(JNIEnv* env)
 {
-    return AndroidRuntime::registerNativeMethods(env,
-            kClassPathName, gMethods, NELEM(gMethods));
+    return RegisterMethodsOrDie(env, kClassPathName, gMethods, NELEM(gMethods));
 }
 
 };

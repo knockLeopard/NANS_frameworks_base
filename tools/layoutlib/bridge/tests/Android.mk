@@ -19,14 +19,12 @@ include $(CLEAR_VARS)
 # Only compile source java files in this lib.
 LOCAL_SRC_FILES := $(call all-java-files-under, src)
 LOCAL_JAVA_RESOURCE_DIRS := res
-LOCAL_JAVACFLAGS := -source 6 -target 6
 
 LOCAL_MODULE := layoutlib-tests
 LOCAL_MODULE_TAGS := optional
 
 LOCAL_JAVA_LIBRARIES := layoutlib \
 			kxml2-2.3.0 \
-			icu4j \
 			layoutlib_api-prebuilt \
 			tools-common-prebuilt \
 			sdk-common \

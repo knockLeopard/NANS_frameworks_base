@@ -17,30 +17,33 @@
 package com.android.server.net;
 
 import static android.net.NetworkStats.IFACE_ALL;
+import static android.net.NetworkStats.ROAMING_NO;
+import static android.net.NetworkStats.ROAMING_YES;
 import static android.net.NetworkStats.SET_ALL;
 import static android.net.NetworkStats.SET_DEFAULT;
 import static android.net.NetworkStats.TAG_NONE;
 import static android.net.NetworkStats.UID_ALL;
 import static android.net.TrafficStats.UID_REMOVED;
-import static android.text.format.DateUtils.SECOND_IN_MILLIS;
 import static android.text.format.DateUtils.WEEK_IN_MILLIS;
 
-import android.net.ConnectivityManager;
 import android.net.NetworkIdentity;
 import android.net.NetworkStats;
 import android.net.NetworkStatsHistory;
 import android.net.NetworkTemplate;
 import android.net.TrafficStats;
+import android.os.Binder;
 import android.util.ArrayMap;
 import android.util.AtomicFile;
-
-import libcore.io.IoUtils;
+import android.util.IntArray;
 
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.FileRotator;
 import com.android.internal.util.IndentingPrintWriter;
+
 import com.google.android.collect.Lists;
 import com.google.android.collect.Maps;
+
+import libcore.io.IoUtils;
 
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
@@ -131,13 +134,25 @@ public class NetworkStatsCollection implements FileRotator.Reader {
         return mStartMillis == Long.MAX_VALUE && mEndMillis == Long.MIN_VALUE;
     }
 
-    /**
-     * Combine all {@link NetworkStatsHistory} in this collection which match
-     * the requested parameters.
-     */
-    public NetworkStatsHistory getHistory(
-            NetworkTemplate template, int uid, int set, int tag, int fields) {
-        return getHistory(template, uid, set, tag, fields, Long.MIN_VALUE, Long.MAX_VALUE);
+    public int[] getRelevantUids(@NetworkStatsAccess.Level int accessLevel) {
+        return getRelevantUids(accessLevel, Binder.getCallingUid());
+    }
+
+    public int[] getRelevantUids(@NetworkStatsAccess.Level int accessLevel,
+                final int callerUid) {
+        IntArray uids = new IntArray();
+        for (int i = 0; i < mStats.size(); i++) {
+            final Key key = mStats.keyAt(i);
+            if (NetworkStatsAccess.isAccessibleToUser(key.uid, callerUid, accessLevel)) {
+                int j = uids.binarySearch(key.uid);
+
+                if (j < 0) {
+                    j = ~j;
+                    uids.add(j, key.uid);
+                }
+            }
+        }
+        return uids.toArray();
     }
 
     /**
@@ -145,13 +160,44 @@ public class NetworkStatsCollection implements FileRotator.Reader {
      * the requested parameters.
      */
     public NetworkStatsHistory getHistory(
-            NetworkTemplate template, int uid, int set, int tag, int fields, long start, long end) {
+            NetworkTemplate template, int uid, int set, int tag, int fields,
+            @NetworkStatsAccess.Level int accessLevel) {
+        return getHistory(template, uid, set, tag, fields, Long.MIN_VALUE, Long.MAX_VALUE,
+                accessLevel);
+    }
+
+    /**
+     * Combine all {@link NetworkStatsHistory} in this collection which match
+     * the requested parameters.
+     */
+    public NetworkStatsHistory getHistory(
+            NetworkTemplate template, int uid, int set, int tag, int fields, long start, long end,
+            @NetworkStatsAccess.Level int accessLevel) {
+        return getHistory(template, uid, set, tag, fields, start, end, accessLevel,
+                Binder.getCallingUid());
+    }
+
+    /**
+     * Combine all {@link NetworkStatsHistory} in this collection which match
+     * the requested parameters.
+     */
+    public NetworkStatsHistory getHistory(
+            NetworkTemplate template, int uid, int set, int tag, int fields, long start, long end,
+            @NetworkStatsAccess.Level int accessLevel, int callerUid) {
+        if (!NetworkStatsAccess.isAccessibleToUser(uid, callerUid, accessLevel)) {
+            throw new SecurityException("Network stats history of uid " + uid
+                    + " is forbidden for caller " + callerUid);
+        }
+
         final NetworkStatsHistory combined = new NetworkStatsHistory(
-                mBucketDuration, estimateBuckets(), fields);
+                mBucketDuration, start == end ? 1 : estimateBuckets(), fields);
+
+        // shortcut when we know stats will be empty
+        if (start == end) return combined;
+
         for (int i = 0; i < mStats.size(); i++) {
             final Key key = mStats.keyAt(i);
-            final boolean setMatches = set == SET_ALL || key.set == set;
-            if (key.uid == uid && setMatches && key.tag == tag
+            if (key.uid == uid && NetworkStats.setMatches(set, key.set) && key.tag == tag
                     && templateMatches(template, key.ident)) {
                 final NetworkStatsHistory value = mStats.valueAt(i);
                 combined.recordHistory(value, start, end);
@@ -164,19 +210,31 @@ public class NetworkStatsCollection implements FileRotator.Reader {
      * Summarize all {@link NetworkStatsHistory} in this collection which match
      * the requested parameters.
      */
-    public NetworkStats getSummary(NetworkTemplate template, long start, long end) {
+    public NetworkStats getSummary(NetworkTemplate template, long start, long end,
+            @NetworkStatsAccess.Level int accessLevel) {
+        return getSummary(template, start, end, accessLevel, Binder.getCallingUid());
+    }
+
+    /**
+     * Summarize all {@link NetworkStatsHistory} in this collection which match
+     * the requested parameters.
+     */
+    public NetworkStats getSummary(NetworkTemplate template, long start, long end,
+            @NetworkStatsAccess.Level int accessLevel, int callerUid) {
         final long now = System.currentTimeMillis();
 
         final NetworkStats stats = new NetworkStats(end - start, 24);
-        final NetworkStats.Entry entry = new NetworkStats.Entry();
-        NetworkStatsHistory.Entry historyEntry = null;
-
         // shortcut when we know stats will be empty
         if (start == end) return stats;
 
+        final NetworkStats.Entry entry = new NetworkStats.Entry();
+        NetworkStatsHistory.Entry historyEntry = null;
+
         for (int i = 0; i < mStats.size(); i++) {
             final Key key = mStats.keyAt(i);
-            if (templateMatches(template, key.ident)) {
+            if (templateMatches(template, key.ident)
+                    && NetworkStatsAccess.isAccessibleToUser(key.uid, callerUid, accessLevel)
+                    && key.set < NetworkStats.SET_DEBUG_START) {
                 final NetworkStatsHistory value = mStats.valueAt(i);
                 historyEntry = value.getValues(start, end, now, historyEntry);
 
@@ -184,6 +242,7 @@ public class NetworkStatsCollection implements FileRotator.Reader {
                 entry.uid = key.uid;
                 entry.set = key.set;
                 entry.tag = key.tag;
+                entry.roaming = key.ident.isAnyMemberRoaming() ? ROAMING_YES : ROAMING_NO;
                 entry.rxBytes = historyEntry.rxBytes;
                 entry.rxPackets = historyEntry.rxPackets;
                 entry.txBytes = historyEntry.txBytes;
@@ -509,6 +568,7 @@ public class NetworkStatsCollection implements FileRotator.Reader {
             final NetworkStatsHistory value = mStats.valueAt(i);
 
             if (!templateMatches(groupTemplate, key.ident)) continue;
+            if (key.set >= NetworkStats.SET_DEBUG_START) continue;
 
             final Key groupKey = new Key(null, key.uid, key.set, key.tag);
             NetworkStatsHistory groupHistory = grouped.get(groupKey);

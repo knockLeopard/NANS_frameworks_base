@@ -16,30 +16,66 @@
 
 package com.android.systemui.statusbar.policy;
 
+import android.content.Context;
 import android.content.Intent;
+import android.telephony.SubscriptionInfo;
+import com.android.settingslib.net.DataUsageController;
+import com.android.settingslib.wifi.AccessPoint;
+
+import java.util.List;
 
 public interface NetworkController {
 
     boolean hasMobileDataFeature();
-    void addNetworkSignalChangedCallback(NetworkSignalChangedCallback cb);
-    void removeNetworkSignalChangedCallback(NetworkSignalChangedCallback cb);
+    void addSignalCallback(SignalCallback cb);
+    void removeSignalCallback(SignalCallback cb);
     void setWifiEnabled(boolean enabled);
     void onUserSwitched(int newUserId);
     AccessPointController getAccessPointController();
-    MobileDataController getMobileDataController();
+    DataUsageController getMobileDataController();
+    DataSaverController getDataSaverController();
 
-    public interface NetworkSignalChangedCallback {
-        void onWifiSignalChanged(boolean enabled, boolean connected, int wifiSignalIconId,
-                boolean activityIn, boolean activityOut,
-                String wifiSignalContentDescriptionId, String description);
-        void onMobileDataSignalChanged(boolean enabled, int mobileSignalIconId,
-                String mobileSignalContentDescriptionId, int dataTypeIconId,
-                boolean activityIn, boolean activityOut,
-                String dataTypeContentDescriptionId, String description,
-                boolean isDataTypeIconWide);
-        void onNoSimVisibleChanged(boolean visible);
-        void onAirplaneModeChanged(boolean enabled);
-        void onMobileDataEnabled(boolean enabled);
+    boolean hasVoiceCallingFeature();
+
+    void addEmergencyListener(EmergencyListener listener);
+    void removeEmergencyListener(EmergencyListener listener);
+
+    public interface SignalCallback {
+        default void setWifiIndicators(boolean enabled, IconState statusIcon, IconState qsIcon,
+                boolean activityIn, boolean activityOut, String description) {}
+
+        default void setMobileDataIndicators(IconState statusIcon, IconState qsIcon, int statusType,
+                int qsType, boolean activityIn, boolean activityOut, String typeContentDescription,
+                String description, boolean isWide, int subId, boolean roaming) {}
+        default void setSubs(List<SubscriptionInfo> subs) {}
+        default void setNoSims(boolean show) {}
+
+        default void setEthernetIndicators(IconState icon) {}
+
+        default void setIsAirplaneMode(IconState icon) {}
+
+        default void setMobileDataEnabled(boolean enabled) {}
+    }
+
+    public interface EmergencyListener {
+        void setEmergencyCallsOnly(boolean emergencyOnly);
+    }
+
+    public static class IconState {
+        public final boolean visible;
+        public final int icon;
+        public final String contentDescription;
+
+        public IconState(boolean visible, int icon, String contentDescription) {
+            this.visible = visible;
+            this.icon = icon;
+            this.contentDescription = contentDescription;
+        }
+
+        public IconState(boolean visible, int icon, int contentDescription,
+                Context context) {
+            this(visible, icon, context.getString(contentDescription));
+        }
     }
 
     /**
@@ -50,42 +86,13 @@ public interface NetworkController {
         void addAccessPointCallback(AccessPointCallback callback);
         void removeAccessPointCallback(AccessPointCallback callback);
         void scanForAccessPoints();
+        int getIcon(AccessPoint ap);
         boolean connect(AccessPoint ap);
         boolean canConfigWifi();
 
         public interface AccessPointCallback {
-            void onAccessPointsChanged(AccessPoint[] accessPoints);
+            void onAccessPointsChanged(List<AccessPoint> accessPoints);
             void onSettingsActivityTriggered(Intent settingsIntent);
-        }
-
-        public static class AccessPoint {
-            public static final int NO_NETWORK = -1;  // see WifiManager
-
-            public int networkId;
-            public int iconId;
-            public String ssid;
-            public boolean isConnected;
-            public boolean isConfigured;
-            public boolean hasSecurity;
-            public int level;  // 0 - 5
-        }
-    }
-
-    /**
-     * Tracks mobile data support and usage.
-     */
-    public interface MobileDataController {
-        boolean isMobileDataSupported();
-        boolean isMobileDataEnabled();
-        void setMobileDataEnabled(boolean enabled);
-        DataUsageInfo getDataUsageInfo();
-
-        public static class DataUsageInfo {
-            public String carrier;
-            public String period;
-            public long limitLevel;
-            public long warningLevel;
-            public long usageLevel;
         }
     }
 }

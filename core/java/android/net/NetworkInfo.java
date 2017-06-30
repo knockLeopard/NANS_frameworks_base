@@ -119,13 +119,9 @@ public class NetworkInfo implements Parcelable {
     private String mReason;
     private String mExtraInfo;
     private boolean mIsFailover;
-    private boolean mIsRoaming;
-    private boolean mIsConnectedToProvisioningNetwork;
-
-    /**
-     * Indicates whether network connectivity is possible:
-     */
     private boolean mIsAvailable;
+    private boolean mIsRoaming;
+    private boolean mIsMetered;
 
     /**
      * @hide
@@ -140,9 +136,6 @@ public class NetworkInfo implements Parcelable {
         mSubtypeName = subtypeName;
         setDetailedState(DetailedState.IDLE, null, null);
         mState = State.UNKNOWN;
-        mIsAvailable = false; // until we're told otherwise, assume unavailable
-        mIsRoaming = false;
-        mIsConnectedToProvisioningNetwork = false;
     }
 
     /** {@hide} */
@@ -158,9 +151,9 @@ public class NetworkInfo implements Parcelable {
                 mReason = source.mReason;
                 mExtraInfo = source.mExtraInfo;
                 mIsFailover = source.mIsFailover;
-                mIsRoaming = source.mIsRoaming;
                 mIsAvailable = source.mIsAvailable;
-                mIsConnectedToProvisioningNetwork = source.mIsConnectedToProvisioningNetwork;
+                mIsRoaming = source.mIsRoaming;
+                mIsMetered = source.mIsMetered;
             }
         }
     }
@@ -332,19 +325,28 @@ public class NetworkInfo implements Parcelable {
         }
     }
 
-    /** {@hide} */
-    @VisibleForTesting
-    public boolean isConnectedToProvisioningNetwork() {
+    /**
+     * Returns if this network is metered. A network is classified as metered
+     * when the user is sensitive to heavy data usage on that connection due to
+     * monetary costs, data limitations or battery/performance issues. You
+     * should check this before doing large data transfers, and warn the user or
+     * delay the operation until another network is available.
+     *
+     * @return {@code true} if large transfers should be avoided, otherwise
+     *         {@code false}.
+     * @hide
+     */
+    public boolean isMetered() {
         synchronized (this) {
-            return mIsConnectedToProvisioningNetwork;
+            return mIsMetered;
         }
     }
 
     /** {@hide} */
     @VisibleForTesting
-    public void setIsConnectedToProvisioningNetwork(boolean val) {
+    public void setMetered(boolean isMetered) {
         synchronized (this) {
-            mIsConnectedToProvisioningNetwork = val;
+            mIsMetered = isMetered;
         }
     }
 
@@ -428,28 +430,21 @@ public class NetworkInfo implements Parcelable {
             append("], state: ").append(mState).append("/").append(mDetailedState).
             append(", reason: ").append(mReason == null ? "(unspecified)" : mReason).
             append(", extra: ").append(mExtraInfo == null ? "(none)" : mExtraInfo).
-            append(", roaming: ").append(mIsRoaming).
             append(", failover: ").append(mIsFailover).
-            append(", isAvailable: ").append(mIsAvailable).
-            append(", isConnectedToProvisioningNetwork: ").
-            append(mIsConnectedToProvisioningNetwork).
+            append(", available: ").append(mIsAvailable).
+            append(", roaming: ").append(mIsRoaming).
+            append(", metered: ").append(mIsMetered).
             append("]");
             return builder.toString();
         }
     }
 
-    /**
-     * Implement the Parcelable interface
-     * @hide
-     */
+    @Override
     public int describeContents() {
         return 0;
     }
 
-    /**
-     * Implement the Parcelable interface.
-     * @hide
-     */
+    @Override
     public void writeToParcel(Parcel dest, int flags) {
         synchronized (this) {
             dest.writeInt(mNetworkType);
@@ -461,37 +456,34 @@ public class NetworkInfo implements Parcelable {
             dest.writeInt(mIsFailover ? 1 : 0);
             dest.writeInt(mIsAvailable ? 1 : 0);
             dest.writeInt(mIsRoaming ? 1 : 0);
-            dest.writeInt(mIsConnectedToProvisioningNetwork ? 1 : 0);
+            dest.writeInt(mIsMetered ? 1 : 0);
             dest.writeString(mReason);
             dest.writeString(mExtraInfo);
         }
     }
 
-    /**
-     * Implement the Parcelable interface.
-     * @hide
-     */
-    public static final Creator<NetworkInfo> CREATOR =
-        new Creator<NetworkInfo>() {
-            public NetworkInfo createFromParcel(Parcel in) {
-                int netType = in.readInt();
-                int subtype = in.readInt();
-                String typeName = in.readString();
-                String subtypeName = in.readString();
-                NetworkInfo netInfo = new NetworkInfo(netType, subtype, typeName, subtypeName);
-                netInfo.mState = State.valueOf(in.readString());
-                netInfo.mDetailedState = DetailedState.valueOf(in.readString());
-                netInfo.mIsFailover = in.readInt() != 0;
-                netInfo.mIsAvailable = in.readInt() != 0;
-                netInfo.mIsRoaming = in.readInt() != 0;
-                netInfo.mIsConnectedToProvisioningNetwork = in.readInt() != 0;
-                netInfo.mReason = in.readString();
-                netInfo.mExtraInfo = in.readString();
-                return netInfo;
-            }
+    public static final Creator<NetworkInfo> CREATOR = new Creator<NetworkInfo>() {
+        @Override
+        public NetworkInfo createFromParcel(Parcel in) {
+            int netType = in.readInt();
+            int subtype = in.readInt();
+            String typeName = in.readString();
+            String subtypeName = in.readString();
+            NetworkInfo netInfo = new NetworkInfo(netType, subtype, typeName, subtypeName);
+            netInfo.mState = State.valueOf(in.readString());
+            netInfo.mDetailedState = DetailedState.valueOf(in.readString());
+            netInfo.mIsFailover = in.readInt() != 0;
+            netInfo.mIsAvailable = in.readInt() != 0;
+            netInfo.mIsRoaming = in.readInt() != 0;
+            netInfo.mIsMetered = in.readInt() != 0;
+            netInfo.mReason = in.readString();
+            netInfo.mExtraInfo = in.readString();
+            return netInfo;
+        }
 
-            public NetworkInfo[] newArray(int size) {
-                return new NetworkInfo[size];
-            }
-        };
+        @Override
+        public NetworkInfo[] newArray(int size) {
+            return new NetworkInfo[size];
+        }
+    };
 }

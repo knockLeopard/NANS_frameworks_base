@@ -15,6 +15,9 @@
  */
 package android.speech.tts;
 
+import android.annotation.IntDef;
+import android.annotation.Nullable;
+import android.annotation.RawRes;
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
 import android.content.ComponentName;
@@ -37,7 +40,8 @@ import android.util.Log;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.ArrayList;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -74,6 +78,12 @@ public class TextToSpeech {
      * client should never expect to see this result code.
      */
     public static final int STOPPED = -2;
+
+    /** @hide */
+    @IntDef({ERROR_SYNTHESIS, ERROR_SERVICE, ERROR_OUTPUT, ERROR_NETWORK, ERROR_NETWORK_TIMEOUT,
+             ERROR_INVALID_REQUEST, ERROR_NOT_INSTALLED_YET})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface Error {}
 
     /**
      * Denotes a failure of a TTS engine to synthesize the given input.
@@ -215,7 +225,7 @@ public class TextToSpeech {
      *     </li>
      *     <li>
      *         A list of feature strings that engines might support, e.g
-     *         {@link Engine#KEY_FEATURE_NETWORK_SYNTHESIS}). These values may be passed in to
+     *         {@link Engine#KEY_FEATURE_NETWORK_SYNTHESIS}. These values may be passed in to
      *         {@link TextToSpeech#speak} and {@link TextToSpeech#synthesizeToFile} to modify
      *         engine behaviour. The engine can be queried for the set of features it supports
      *         through {@link TextToSpeech#getFeatures(java.util.Locale)}.
@@ -576,9 +586,9 @@ public class TextToSpeech {
          * @see TextToSpeech#getFeatures(java.util.Locale)
          *
          * @deprecated Starting from API level 21, to select network synthesis, call
-         * ({@link TextToSpeech#getVoices()}, find a suitable network voice
+         * {@link TextToSpeech#getVoices()}, find a suitable network voice
          * ({@link Voice#isNetworkConnectionRequired()}) and pass it
-         * to {@link TextToSpeech#setVoice(Voice)}).
+         * to {@link TextToSpeech#setVoice(Voice)}.
          */
         @Deprecated
         public static final String KEY_FEATURE_NETWORK_SYNTHESIS = "networkTts";
@@ -656,7 +666,7 @@ public class TextToSpeech {
     private OnInitListener mInitListener;
     // Written from an unspecified application thread, read from
     // a binder thread.
-    private volatile UtteranceProgressListener mUtteranceProgressListener;
+    @Nullable private volatile UtteranceProgressListener mUtteranceProgressListener;
     private final Object mStartLock = new Object();
 
     private String mRequestedEngine;
@@ -884,7 +894,7 @@ public class TextToSpeech {
      *
      * @return Code indicating success or failure. See {@link #ERROR} and {@link #SUCCESS}.
      */
-    public int addSpeech(String text, String packagename, int resourceId) {
+    public int addSpeech(String text, String packagename, @RawRes int resourceId) {
         synchronized (mStartLock) {
             mUtterances.put(text, makeResourceUri(packagename, resourceId));
             return SUCCESS;
@@ -918,7 +928,7 @@ public class TextToSpeech {
      *
      * @return Code indicating success or failure. See {@link #ERROR} and {@link #SUCCESS}.
      */
-    public int addSpeech(CharSequence text, String packagename, int resourceId) {
+    public int addSpeech(CharSequence text, String packagename, @RawRes int resourceId) {
         synchronized (mStartLock) {
             mUtterances.put(text, makeResourceUri(packagename, resourceId));
             return SUCCESS;
@@ -993,7 +1003,7 @@ public class TextToSpeech {
      *
      * @return Code indicating success or failure. See {@link #ERROR} and {@link #SUCCESS}.
      */
-    public int addEarcon(String earcon, String packagename, int resourceId) {
+    public int addEarcon(String earcon, String packagename, @RawRes int resourceId) {
         synchronized(mStartLock) {
             mEarcons.put(earcon, makeResourceUri(packagename, resourceId));
             return SUCCESS;
@@ -1481,31 +1491,52 @@ public class TextToSpeech {
                 // interface).
 
                 // Sanitize locale using isLanguageAvailable.
-                int result = service.isLanguageAvailable( language, country, variant);
-                if (result >= LANG_AVAILABLE){
-                    if (result < LANG_COUNTRY_VAR_AVAILABLE) {
-                        variant = "";
-                        if (result < LANG_COUNTRY_AVAILABLE) {
-                            country = "";
-                        }
-                    }
+                int result = service.isLanguageAvailable(language, country, variant);
+                if (result >= LANG_AVAILABLE) {
                     // Get the default voice for the locale.
                     String voiceName = service.getDefaultVoiceNameFor(language, country, variant);
                     if (TextUtils.isEmpty(voiceName)) {
-                        Log.w(TAG, "Couldn't find the default voice for " + language + "/" +
-                                country + "/" + variant);
+                        Log.w(TAG, "Couldn't find the default voice for " + language + "-" +
+                                country + "-" + variant);
                         return LANG_NOT_SUPPORTED;
                     }
 
                     // Load it.
                     if (service.loadVoice(getCallerIdentity(), voiceName) == TextToSpeech.ERROR) {
+                        Log.w(TAG, "The service claimed " + language + "-" + country + "-"
+                                + variant + " was available with voice name " + voiceName
+                                + " but loadVoice returned ERROR");
                         return LANG_NOT_SUPPORTED;
                     }
 
+                    // Set the language/country/variant of the voice, so #getLanguage will return
+                    // the currently set voice locale when called.
+                    Voice voice = getVoice(service, voiceName);
+                    if (voice == null) {
+                        Log.w(TAG, "getDefaultVoiceNameFor returned " + voiceName + " for locale "
+                                + language + "-" + country + "-" + variant
+                                + " but getVoice returns null");
+                        return LANG_NOT_SUPPORTED;
+                    }
+                    String voiceLanguage = "";
+                    try {
+                        voiceLanguage = voice.getLocale().getISO3Language();
+                    } catch (MissingResourceException e) {
+                        Log.w(TAG, "Couldn't retrieve ISO 639-2/T language code for locale: " +
+                                voice.getLocale(), e);
+                    }
+
+                    String voiceCountry = "";
+                    try {
+                        voiceCountry = voice.getLocale().getISO3Country();
+                    } catch (MissingResourceException e) {
+                        Log.w(TAG, "Couldn't retrieve ISO 3166 country code for locale: " +
+                                voice.getLocale(), e);
+                    }
                     mParams.putString(Engine.KEY_PARAM_VOICE_NAME, voiceName);
-                    mParams.putString(Engine.KEY_PARAM_LANGUAGE, language);
-                    mParams.putString(Engine.KEY_PARAM_COUNTRY, country);
-                    mParams.putString(Engine.KEY_PARAM_VARIANT, variant);
+                    mParams.putString(Engine.KEY_PARAM_LANGUAGE, voiceLanguage);
+                    mParams.putString(Engine.KEY_PARAM_COUNTRY, voiceCountry);
+                    mParams.putString(Engine.KEY_PARAM_VARIANT, voice.getLocale().getVariant());
                 }
                 return result;
             }
@@ -1654,18 +1685,32 @@ public class TextToSpeech {
                 if (TextUtils.isEmpty(voiceName)) {
                     return null;
                 }
-                List<Voice> voices = service.getVoices();
-                if (voices == null) {
-                    return null;
-                }
-                for (Voice voice : voices) {
-                    if (voice.getName().equals(voiceName)) {
-                        return voice;
-                    }
-                }
-                return null;
+                return getVoice(service, voiceName);
             }
         }, null, "getVoice");
+    }
+
+
+    /**
+     * Returns a Voice instance of the voice with the given voice name.
+     *
+     * @return Voice instance with the given voice name, or {@code null} if not set or on error.
+     *
+     * @see Voice
+     */
+    private Voice getVoice(ITextToSpeechService service, String voiceName) throws RemoteException {
+        List<Voice> voices = service.getVoices();
+        if (voices == null) {
+            Log.w(TAG, "getVoices returned null");
+            return null;
+        }
+        for (Voice voice : voices) {
+            if (voice.getName().equals(voiceName)) {
+                return voice;
+            }
+        }
+        Log.w(TAG, "Could not find voice " + voiceName + " in voice list");
+        return null;
     }
 
     /**
@@ -1690,14 +1735,7 @@ public class TextToSpeech {
 
                 // Sanitize the locale using isLanguageAvailable.
                 int result = service.isLanguageAvailable(language, country, variant);
-                if (result >= LANG_AVAILABLE){
-                    if (result < LANG_COUNTRY_VAR_AVAILABLE) {
-                        variant = "";
-                        if (result < LANG_COUNTRY_AVAILABLE) {
-                            country = "";
-                        }
-                    }
-                } else {
+                if (result < LANG_AVAILABLE) {
                     // The default language is not supported.
                     return null;
                 }
@@ -2066,10 +2104,10 @@ public class TextToSpeech {
         private boolean mEstablished;
 
         private final ITextToSpeechCallback.Stub mCallback = new ITextToSpeechCallback.Stub() {
-            public void onStop(String utteranceId) throws RemoteException {
+            public void onStop(String utteranceId, boolean isStarted) throws RemoteException {
                 UtteranceProgressListener listener = mUtteranceProgressListener;
                 if (listener != null) {
-                    listener.onDone(utteranceId);
+                    listener.onStop(utteranceId, isStarted);
                 }
             };
 
@@ -2094,6 +2132,23 @@ public class TextToSpeech {
                 UtteranceProgressListener listener = mUtteranceProgressListener;
                 if (listener != null) {
                     listener.onStart(utteranceId);
+                }
+            }
+
+            @Override
+            public void onBeginSynthesis(String utteranceId, int sampleRateInHz, int audioFormat,
+                                     int channelCount) {
+                UtteranceProgressListener listener = mUtteranceProgressListener;
+                if (listener != null) {
+                    listener.onBeginSynthesis(utteranceId, sampleRateInHz, audioFormat, channelCount);
+                }
+            }
+
+            @Override
+            public void onAudioAvailable(String utteranceId, byte[] audio) {
+                UtteranceProgressListener listener = mUtteranceProgressListener;
+                if (listener != null) {
+                    listener.onAudioAvailable(utteranceId, audio);
                 }
             }
         };

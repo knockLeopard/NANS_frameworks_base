@@ -1,22 +1,13 @@
-#include <jni.h>
 #include "GraphicsJNI.h"
-
-#include "SkShader.h"
 #include "SkGradientShader.h"
-#include "SkPorterDuff.h"
-#include "SkComposeShader.h"
-#include "SkTemplates.h"
+#include "SkShader.h"
 #include "SkXfermode.h"
+#include "core_jni_helpers.h"
 
-#include <SkiaShader.h>
 #include <Caches.h>
+#include <jni.h>
 
 using namespace android::uirenderer;
-
-static struct {
-    jclass clazz;
-    jfieldID shader;
-} gShaderClassInfo;
 
 static void ThrowIAE_IfNull(JNIEnv* env, void* ptr) {
     if (NULL == ptr) {
@@ -56,27 +47,54 @@ static void Shader_destructor(JNIEnv* env, jobject o, jlong shaderHandle, jlong 
     SkSafeUnref(shader);
 }
 
-static void Shader_setLocalMatrix(JNIEnv* env, jobject o, jlong shaderHandle, jlong matrixHandle)
+static jlong Shader_setLocalMatrix(JNIEnv* env, jobject o, jlong shaderHandle, jlong matrixHandle)
 {
-    SkShader* shader       = reinterpret_cast<SkShader*>(shaderHandle);
+    // ensure we have a valid matrix to use
     const SkMatrix* matrix = reinterpret_cast<SkMatrix*>(matrixHandle);
-    if (shader) {
-        if (matrix) {
-            shader->setLocalMatrix(*matrix);
-        } else {
-            shader->resetLocalMatrix();
-        }
-        shader->setGenerationID(shader->getGenerationID() + 1);
+    if (NULL == matrix) {
+        matrix = &SkMatrix::I();
     }
+
+    // The current shader will no longer need a direct reference owned by Shader.java
+    // as all the data needed is contained within the newly created LocalMatrixShader.
+    SkASSERT(shaderHandle);
+    SkAutoTUnref<SkShader> currentShader(reinterpret_cast<SkShader*>(shaderHandle));
+
+    // Attempt to peel off an existing proxy shader and get the proxy's matrix. If
+    // the proxy existed and it's matrix equals the desired matrix then just return
+    // the proxy, otherwise replace it with a new proxy containing the desired matrix.
+    //
+    // refAsALocalMatrixShader(): if the shader contains a proxy then it unwraps the proxy
+    //                            returning both the underlying shader and the proxy's matrix.
+    // newWithLocalMatrix(): will return a proxy shader that wraps the provided shader and
+    //                       concats the provided local matrix with the shader's matrix.
+    //
+    // WARNING: This proxy replacement only behaves like a setter because the Java
+    //          API enforces that all local matrices are set using this call and
+    //          not passed to the constructor of the Shader.
+    SkMatrix proxyMatrix;
+    SkAutoTUnref<SkShader> baseShader(currentShader->refAsALocalMatrixShader(&proxyMatrix));
+    if (baseShader.get()) {
+        if (proxyMatrix == *matrix) {
+            return reinterpret_cast<jlong>(currentShader.detach());
+        }
+        return reinterpret_cast<jlong>(baseShader->newWithLocalMatrix(*matrix));
+    }
+    return reinterpret_cast<jlong>(currentShader->newWithLocalMatrix(*matrix));
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
-static jlong BitmapShader_constructor(JNIEnv* env, jobject o, jlong bitmapHandle,
+static jlong BitmapShader_constructor(JNIEnv* env, jobject o, jobject jbitmap,
                                       jint tileModeX, jint tileModeY)
 {
-    const SkBitmap* bitmap = reinterpret_cast<SkBitmap*>(bitmapHandle);
-    SkShader* s = SkShader::CreateBitmapShader(*bitmap,
+    SkBitmap bitmap;
+    if (jbitmap) {
+        // Only pass a valid SkBitmap object to the constructor if the Bitmap exists. Otherwise,
+        // we'll pass an empty SkBitmap to avoid crashing/excepting for compatibility.
+        GraphicsJNI::getSkBitmap(env, jbitmap, &bitmap);
+    }
+    SkShader* s = SkShader::CreateBitmapShader(bitmap,
                                         (SkShader::TileMode)tileModeX,
                                         (SkShader::TileMode)tileModeY);
 
@@ -213,75 +231,73 @@ static jlong ComposeShader_create1(JNIEnv* env, jobject o,
     SkShader* shaderA = reinterpret_cast<SkShader *>(shaderAHandle);
     SkShader* shaderB = reinterpret_cast<SkShader *>(shaderBHandle);
     SkXfermode* mode = reinterpret_cast<SkXfermode *>(modeHandle);
-    SkShader* shader = new SkComposeShader(shaderA, shaderB, mode);
+    SkShader* shader = SkShader::CreateComposeShader(shaderA, shaderB, mode);
     return reinterpret_cast<jlong>(shader);
 }
 
 static jlong ComposeShader_create2(JNIEnv* env, jobject o,
-        jlong shaderAHandle, jlong shaderBHandle, jint porterDuffModeHandle)
+        jlong shaderAHandle, jlong shaderBHandle, jint xfermodeHandle)
 {
     SkShader* shaderA = reinterpret_cast<SkShader *>(shaderAHandle);
     SkShader* shaderB = reinterpret_cast<SkShader *>(shaderBHandle);
-    SkPorterDuff::Mode porterDuffMode = static_cast<SkPorterDuff::Mode>(porterDuffModeHandle);
-    SkAutoUnref au(SkPorterDuff::CreateXfermode(porterDuffMode));
-    SkXfermode* mode = (SkXfermode*) au.get();
-    SkShader* shader = new SkComposeShader(shaderA, shaderB, mode);
+    SkXfermode::Mode mode = static_cast<SkXfermode::Mode>(xfermodeHandle);
+    SkAutoTUnref<SkXfermode> xfermode(SkXfermode::Create(mode));
+    SkShader* shader = SkShader::CreateComposeShader(shaderA, shaderB, xfermode.get());
     return reinterpret_cast<jlong>(shader);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
-static JNINativeMethod gColorMethods[] = {
+static const JNINativeMethod gColorMethods[] = {
     { "nativeRGBToHSV",     "(III[F)V", (void*)Color_RGBToHSV   },
     { "nativeHSVToColor",   "(I[F)I",   (void*)Color_HSVToColor }
 };
 
-static JNINativeMethod gShaderMethods[] = {
+static const JNINativeMethod gShaderMethods[] = {
     { "nativeDestructor",        "(J)V",    (void*)Shader_destructor        },
-    { "nativeSetLocalMatrix",    "(JJ)V",   (void*)Shader_setLocalMatrix    }
+    { "nativeSetLocalMatrix",    "(JJ)J",   (void*)Shader_setLocalMatrix    }
 };
 
-static JNINativeMethod gBitmapShaderMethods[] = {
-    { "nativeCreate",     "(JII)J",  (void*)BitmapShader_constructor },
+static const JNINativeMethod gBitmapShaderMethods[] = {
+    { "nativeCreate",     "(Landroid/graphics/Bitmap;II)J",  (void*)BitmapShader_constructor },
 };
 
-static JNINativeMethod gLinearGradientMethods[] = {
+static const JNINativeMethod gLinearGradientMethods[] = {
     { "nativeCreate1",     "(FFFF[I[FI)J",  (void*)LinearGradient_create1     },
     { "nativeCreate2",     "(FFFFIII)J",    (void*)LinearGradient_create2     },
 };
 
-static JNINativeMethod gRadialGradientMethods[] = {
+static const JNINativeMethod gRadialGradientMethods[] = {
     { "nativeCreate1",     "(FFF[I[FI)J",  (void*)RadialGradient_create1     },
     { "nativeCreate2",     "(FFFIII)J",    (void*)RadialGradient_create2     },
 };
 
-static JNINativeMethod gSweepGradientMethods[] = {
+static const JNINativeMethod gSweepGradientMethods[] = {
     { "nativeCreate1",     "(FF[I[F)J",  (void*)SweepGradient_create1     },
     { "nativeCreate2",     "(FFII)J",    (void*)SweepGradient_create2     },
 };
 
-static JNINativeMethod gComposeShaderMethods[] = {
+static const JNINativeMethod gComposeShaderMethods[] = {
     { "nativeCreate1",      "(JJJ)J",   (void*)ComposeShader_create1     },
     { "nativeCreate2",      "(JJI)J",   (void*)ComposeShader_create2     },
 };
 
-#include <android_runtime/AndroidRuntime.h>
-
-#define REG(env, name, array)                                                                       \
-    result = android::AndroidRuntime::registerNativeMethods(env, name, array, SK_ARRAY_COUNT(array));  \
-    if (result < 0) return result
-
 int register_android_graphics_Shader(JNIEnv* env)
 {
-    int result;
+    android::RegisterMethodsOrDie(env, "android/graphics/Color", gColorMethods,
+                                  NELEM(gColorMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/Shader", gShaderMethods,
+                                  NELEM(gShaderMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/BitmapShader", gBitmapShaderMethods,
+                                  NELEM(gBitmapShaderMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/LinearGradient", gLinearGradientMethods,
+                                  NELEM(gLinearGradientMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/RadialGradient", gRadialGradientMethods,
+                                  NELEM(gRadialGradientMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/SweepGradient", gSweepGradientMethods,
+                                  NELEM(gSweepGradientMethods));
+    android::RegisterMethodsOrDie(env, "android/graphics/ComposeShader", gComposeShaderMethods,
+                                  NELEM(gComposeShaderMethods));
 
-    REG(env, "android/graphics/Color", gColorMethods);
-    REG(env, "android/graphics/Shader", gShaderMethods);
-    REG(env, "android/graphics/BitmapShader", gBitmapShaderMethods);
-    REG(env, "android/graphics/LinearGradient", gLinearGradientMethods);
-    REG(env, "android/graphics/RadialGradient", gRadialGradientMethods);
-    REG(env, "android/graphics/SweepGradient", gSweepGradientMethods);
-    REG(env, "android/graphics/ComposeShader", gComposeShaderMethods);
-
-    return result;
+    return 0;
 }

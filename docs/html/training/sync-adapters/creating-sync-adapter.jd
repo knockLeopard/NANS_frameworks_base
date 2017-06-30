@@ -382,7 +382,7 @@ public class MainActivity extends FragmentActivity {
     ...
     // Constants
     // The authority for the sync adapter's content provider
-    public static final String AUTHORITY = "com.example.android.datasync.provider"
+    public static final String AUTHORITY = "com.example.android.datasync.provider";
     // An account type, in the form of a domain name
     public static final String ACCOUNT_TYPE = "example.com";
     // The account name
@@ -416,7 +416,7 @@ public class MainActivity extends FragmentActivity {
          * Add the account and account type, no password or user data
          * If successful, return the Account object, otherwise report an error.
          */
-        if (accountManager.addAccountExplicitly(newAccount, null, null))) {
+        if (accountManager.addAccountExplicitly(newAccount, null, null)) {
             /*
              * If you don't set android:syncable="true" in
              * in your &lt;provider&gt; element in the manifest,
@@ -582,13 +582,6 @@ public class MainActivity extends FragmentActivity {
         {@link android.content.ContentResolver#requestSync requestSync()}. To learn more about
         running the sync adapter, see <a href="running-sync-adapter.html"
         >Running A Sync Adapter</a>.
-    </dd>
-    <dt>
-{@link android.Manifest.permission#AUTHENTICATE_ACCOUNTS android.permission.AUTHENTICATE_ACCOUNTS}
-    </dt>
-    <dd>
-        Allows you to use the authenticator component you created in the lesson
-        <a href="creating-authenticator.html">Creating a Stub Authenticator</a>.
     </dd>
 </dl>
 <p>

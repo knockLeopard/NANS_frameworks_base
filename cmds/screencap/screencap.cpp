@@ -18,6 +18,8 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <linux/fb.h>
 #include <sys/ioctl.h>
@@ -28,12 +30,15 @@
 #include <gui/SurfaceComposerClient.h>
 #include <gui/ISurfaceComposer.h>
 
+#include <ui/DisplayInfo.h>
 #include <ui/PixelFormat.h>
 
+// TODO: Fix Skia.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <SkImageEncoder.h>
-#include <SkBitmap.h>
 #include <SkData.h>
-#include <SkStream.h>
+#pragma GCC diagnostic pop
 
 using namespace android;
 
@@ -62,26 +67,17 @@ static SkColorType flinger2skia(PixelFormat f)
     }
 }
 
-static status_t vinfoToPixelFormat(const fb_var_screeninfo& vinfo,
-        uint32_t* bytespp, uint32_t* f)
-{
-
-    switch (vinfo.bits_per_pixel) {
-        case 16:
-            *f = PIXEL_FORMAT_RGB_565;
-            *bytespp = 2;
-            break;
-        case 24:
-            *f = PIXEL_FORMAT_RGB_888;
-            *bytespp = 3;
-            break;
-        case 32:
-            // TODO: do better decoding of vinfo here
-            *f = PIXEL_FORMAT_RGBX_8888;
-            *bytespp = 4;
-            break;
-        default:
-            return BAD_VALUE;
+static status_t notifyMediaScanner(const char* fileName) {
+    String8 cmd("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://");
+    String8 fileUrl("\"");
+    fileUrl.append(fileName);
+    fileUrl.append("\"");
+    cmd.append(fileName);
+    cmd.append(" > /dev/null");
+    int result = system(cmd.string());
+    if (result < 0) {
+        fprintf(stderr, "Unable to broadcast intent for media scanner.\n");
+        return UNKNOWN_ERROR;
     }
     return NO_ERROR;
 }
@@ -112,10 +108,11 @@ int main(int argc, char** argv)
     argv += optind;
 
     int fd = -1;
+    const char* fn = NULL;
     if (argc == 0) {
         fd = dup(STDOUT_FILENO);
     } else if (argc == 1) {
-        const char* fn = argv[0];
+        fn = argv[0];
         fd = open(fn, O_WRONLY | O_CREAT | O_TRUNC, 0664);
         if (fd == -1) {
             fprintf(stderr, "Error opening file: %s (%s)\n", fn, strerror(errno));
@@ -126,7 +123,7 @@ int main(int argc, char** argv)
             png = true;
         }
     }
-    
+
     if (fd == -1) {
         usage(pname);
         return 1;
@@ -135,55 +132,59 @@ int main(int argc, char** argv)
     void const* mapbase = MAP_FAILED;
     ssize_t mapsize = -1;
 
-    void const* base = 0;
+    void const* base = NULL;
     uint32_t w, s, h, f;
     size_t size = 0;
 
+    // Maps orientations from DisplayInfo to ISurfaceComposer
+    static const uint32_t ORIENTATION_MAP[] = {
+        ISurfaceComposer::eRotateNone, // 0 == DISPLAY_ORIENTATION_0
+        ISurfaceComposer::eRotate270, // 1 == DISPLAY_ORIENTATION_90
+        ISurfaceComposer::eRotate180, // 2 == DISPLAY_ORIENTATION_180
+        ISurfaceComposer::eRotate90, // 3 == DISPLAY_ORIENTATION_270
+    };
+
     ScreenshotClient screenshot;
     sp<IBinder> display = SurfaceComposerClient::getBuiltInDisplay(displayId);
-    if (display != NULL && screenshot.update(display, Rect(), false) == NO_ERROR) {
+    if (display == NULL) {
+        fprintf(stderr, "Unable to get handle for display %d\n", displayId);
+        return 1;
+    }
+
+    Vector<DisplayInfo> configs;
+    SurfaceComposerClient::getDisplayConfigs(display, &configs);
+    int activeConfig = SurfaceComposerClient::getActiveConfig(display);
+    if (static_cast<size_t>(activeConfig) >= configs.size()) {
+        fprintf(stderr, "Active config %d not inside configs (size %zu)\n",
+                activeConfig, configs.size());
+        return 1;
+    }
+    uint8_t displayOrientation = configs[activeConfig].orientation;
+    uint32_t captureOrientation = ORIENTATION_MAP[displayOrientation];
+
+    status_t result = screenshot.update(display, Rect(), 0, 0, 0, -1U,
+            false, captureOrientation);
+    if (result == NO_ERROR) {
         base = screenshot.getPixels();
         w = screenshot.getWidth();
         h = screenshot.getHeight();
         s = screenshot.getStride();
         f = screenshot.getFormat();
         size = screenshot.getSize();
-    } else {
-        const char* fbpath = "/dev/graphics/fb0";
-        int fb = open(fbpath, O_RDONLY);
-        if (fb >= 0) {
-            struct fb_var_screeninfo vinfo;
-            if (ioctl(fb, FBIOGET_VSCREENINFO, &vinfo) == 0) {
-                uint32_t bytespp;
-                if (vinfoToPixelFormat(vinfo, &bytespp, &f) == NO_ERROR) {
-                    size_t offset = (vinfo.xoffset + vinfo.yoffset*vinfo.xres) * bytespp;
-                    w = vinfo.xres;
-                    h = vinfo.yres;
-                    s = vinfo.xres;
-                    size = w*h*bytespp;
-                    mapsize = offset + size;
-                    mapbase = mmap(0, mapsize, PROT_READ, MAP_PRIVATE, fb, 0);
-                    if (mapbase != MAP_FAILED) {
-                        base = (void const *)((char const *)mapbase + offset);
-                    }
-                }
-            }
-            close(fb);
-        }
     }
 
-    if (base) {
+    if (base != NULL) {
         if (png) {
             const SkImageInfo info = SkImageInfo::Make(w, h, flinger2skia(f),
                                                        kPremul_SkAlphaType);
-            SkBitmap b;
-            b.installPixels(info, const_cast<void*>(base), s*bytesPerPixel(f));
-            SkDynamicMemoryWStream stream;
-            SkImageEncoder::EncodeStream(&stream, b,
-                    SkImageEncoder::kPNG_Type, SkImageEncoder::kDefaultQuality);
-            SkData* streamData = stream.copyToData();
-            write(fd, streamData->data(), streamData->size());
-            streamData->unref();
+            SkAutoTUnref<SkData> data(SkImageEncoder::EncodeData(info, base, s*bytesPerPixel(f),
+                    SkImageEncoder::kPNG_Type, SkImageEncoder::kDefaultQuality));
+            if (data.get()) {
+                write(fd, data->data(), data->size());
+            }
+            if (fn != NULL) {
+                notifyMediaScanner(fn);
+            }
         } else {
             write(fd, &w, 4);
             write(fd, &h, 4);

@@ -1,9 +1,8 @@
-#include "jni.h"
-#include <android_runtime/AndroidRuntime.h>
-
 #include "GraphicsJNI.h"
 #include "SkInterpolator.h"
-#include "SkTemplates.h"
+#include "core_jni_helpers.h"
+
+#include <jni.h>
 
 static jlong Interpolator_constructor(JNIEnv* env, jobject clazz, jint valueCount, jint frameCount)
 {
@@ -72,7 +71,7 @@ static jint Interpolator_timeToValues(JNIEnv* env, jobject clazz, jlong interpHa
 /*
  * JNI registration.
  */
-static JNINativeMethod gInterpolatorMethods[] = {
+static const JNINativeMethod gInterpolatorMethods[] = {
     { "nativeConstructor",      "(II)J",        (void*)Interpolator_constructor     },
     { "nativeDestructor",       "(J)V",         (void*)Interpolator_destructor      },
     { "nativeReset",            "(JII)V",       (void*)Interpolator_reset           },
@@ -83,8 +82,6 @@ static JNINativeMethod gInterpolatorMethods[] = {
 
 int register_android_graphics_Interpolator(JNIEnv* env)
 {
-    return android::AndroidRuntime::registerNativeMethods(env,
-                                                       "android/graphics/Interpolator",
-                                                       gInterpolatorMethods,
-                                                       SK_ARRAY_COUNT(gInterpolatorMethods));
+    return android::RegisterMethodsOrDie(env, "android/graphics/Interpolator",
+                                         gInterpolatorMethods, NELEM(gInterpolatorMethods));
 }

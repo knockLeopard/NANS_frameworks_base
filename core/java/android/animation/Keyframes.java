@@ -15,14 +15,14 @@
  */
 package android.animation;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * This interface abstracts a collection of Keyframe objects and is called by
  * ValueAnimator to calculate values between those keyframes for a given animation.
+ * @hide
  */
-interface Keyframes extends Cloneable {
+public interface Keyframes extends Cloneable {
 
     /**
      * Sets the TypeEvaluator to be used when calculating animated values. This object

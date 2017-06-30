@@ -17,13 +17,14 @@
 package com.android.systemui.statusbar.phone;
 
 import android.content.Context;
-import android.content.res.Resources;
 import android.util.AttributeSet;
 import android.util.EventLog;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityEvent;
 
+import com.android.systemui.DejankUtils;
 import com.android.systemui.EventLogTags;
 import com.android.systemui.R;
 
@@ -34,15 +35,23 @@ public class PhoneStatusBarView extends PanelBar {
 
     PhoneStatusBar mBar;
 
-    PanelView mLastFullyOpenedPanel = null;
-    PanelView mNotificationPanel;
+    boolean mIsFullyOpenedPanel = false;
     private final PhoneStatusBarTransitions mBarTransitions;
     private ScrimController mScrimController;
+    private float mMinFraction;
+    private float mPanelFraction;
+    private Runnable mHideExpandedRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (mPanelFraction == 0.0f) {
+                mBar.makeExpandedInvisible();
+            }
+        }
+    };
 
     public PhoneStatusBarView(Context context, AttributeSet attrs) {
         super(context, attrs);
 
-        Resources res = getContext().getResources();
         mBarTransitions = new PhoneStatusBarTransitions(this);
     }
 
@@ -64,21 +73,13 @@ public class PhoneStatusBarView extends PanelBar {
     }
 
     @Override
-    public void addPanel(PanelView pv) {
-        super.addPanel(pv);
-        if (pv.getId() == R.id.notification_panel) {
-            mNotificationPanel = pv;
-        }
-    }
-
-    @Override
-    public boolean panelsEnabled() {
+    public boolean panelEnabled() {
         return mBar.panelsEnabled();
     }
 
     @Override
-    public boolean onRequestSendAccessibilityEvent(View child, AccessibilityEvent event) {
-        if (super.onRequestSendAccessibilityEvent(child, event)) {
+    public boolean onRequestSendAccessibilityEventInternal(View child, AccessibilityEvent event) {
+        if (super.onRequestSendAccessibilityEventInternal(child, event)) {
             // The status bar is very small so augment the view that the user is touching
             // with the content of the status bar a whole. This way an accessibility service
             // may announce the current item as well as the entire content if appropriate.
@@ -92,40 +93,30 @@ public class PhoneStatusBarView extends PanelBar {
     }
 
     @Override
-    public PanelView selectPanelForTouch(MotionEvent touch) {
-        // No double swiping. If either panel is open, nothing else can be pulled down.
-        return mNotificationPanel.getExpandedHeight() > 0
-                ? null
-                : mNotificationPanel;
-    }
-
-    @Override
     public void onPanelPeeked() {
         super.onPanelPeeked();
         mBar.makeExpandedVisible(false);
     }
 
     @Override
-    public void onAllPanelsCollapsed() {
-        super.onAllPanelsCollapsed();
-
+    public void onPanelCollapsed() {
+        super.onPanelCollapsed();
         // Close the status bar in the next frame so we can show the end of the animation.
-        postOnAnimation(new Runnable() {
-            @Override
-            public void run() {
-                mBar.makeExpandedInvisible();
-            }
-        });
-        mLastFullyOpenedPanel = null;
+        DejankUtils.postAfterTraversal(mHideExpandedRunnable);
+        mIsFullyOpenedPanel = false;
+    }
+
+    public void removePendingHideExpandedRunnables() {
+        DejankUtils.removeCallbacks(mHideExpandedRunnable);
     }
 
     @Override
-    public void onPanelFullyOpened(PanelView openPanel) {
-        super.onPanelFullyOpened(openPanel);
-        if (openPanel != mLastFullyOpenedPanel) {
-            openPanel.sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
+    public void onPanelFullyOpened() {
+        super.onPanelFullyOpened();
+        if (!mIsFullyOpenedPanel) {
+            mPanel.sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         }
-        mLastFullyOpenedPanel = openPanel;
+        mIsFullyOpenedPanel = true;
     }
 
     @Override
@@ -144,10 +135,11 @@ public class PhoneStatusBarView extends PanelBar {
     }
 
     @Override
-    public void onTrackingStarted(PanelView panel) {
-        super.onTrackingStarted(panel);
+    public void onTrackingStarted() {
+        super.onTrackingStarted();
         mBar.onTrackingStarted();
         mScrimController.onTrackingStarted();
+        removePendingHideExpandedRunnables();
     }
 
     @Override
@@ -157,8 +149,8 @@ public class PhoneStatusBarView extends PanelBar {
     }
 
     @Override
-    public void onTrackingStopped(PanelView panel, boolean expand) {
-        super.onTrackingStopped(panel, expand);
+    public void onTrackingStopped(boolean expand) {
+        super.onTrackingStopped(expand);
         mBar.onTrackingStopped(expand);
     }
 
@@ -174,9 +166,32 @@ public class PhoneStatusBarView extends PanelBar {
     }
 
     @Override
-    public void panelExpansionChanged(PanelView panel, float frac, boolean expanded) {
-        super.panelExpansionChanged(panel, frac, expanded);
-        mScrimController.setPanelExpansion(frac);
-        mBar.updateCarrierLabelVisibility(false);
+    public void panelScrimMinFractionChanged(float minFraction) {
+        if (mMinFraction != minFraction) {
+            mMinFraction = minFraction;
+            if (minFraction != 0.0f) {
+                mScrimController.animateNextChange();
+            }
+            updateScrimFraction();
+        }
+    }
+
+    @Override
+    public void panelExpansionChanged(float frac, boolean expanded) {
+        super.panelExpansionChanged(frac, expanded);
+        mPanelFraction = frac;
+        updateScrimFraction();
+    }
+
+    private void updateScrimFraction() {
+        float scrimFraction = Math.max(mPanelFraction, mMinFraction);
+        mScrimController.setPanelExpansion(scrimFraction);
+    }
+
+    public void onDensityOrFontScaleChanged() {
+        ViewGroup.LayoutParams layoutParams = getLayoutParams();
+        layoutParams.height = getResources().getDimensionPixelSize(
+                R.dimen.status_bar_height);
+        setLayoutParams(layoutParams);
     }
 }

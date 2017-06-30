@@ -42,7 +42,7 @@ startpage=true
   The Android framework provides classes for building user interfaces for these types of apps with
   the <a href="{@docRoot}tools/support-library/features.html#v17-leanback">v17 leanback support
   library</a>. This library provides a framework of classes for creating an efficient and familiar
-  interface for browsing and playing media files with minimal coding. The classes are designed
+  interface for browsing and playing media files with minimal coding. The classes are designed to
   be extended and customized so you can create an experience that is unique to your app.
 </p>
 
@@ -64,4 +64,15 @@ startpage=true
 
   <dt><b><a href="now-playing.html">Displaying a Now Playing Card</a></b></dt>
     <dd>Learn how to use a MediaSession to display a Now Playing card on the home screen.</dd>
+
+  <dt><b><a href="guided-step.html">Adding a Guided Step</a></b></dt>
+    <dd>Learn how to use the Leanback support library to guide a user through a series of
+    decisions.</dd>
+
+  <dt><b><a href="onboarding.html">Introducing First-time Users to Your App</a></b></dt>
+    <dd>Learn how to use the Leanback support library to show first-time users
+    how to get the most out of your app.</dd>
+
+  <dt><b><a href="options.html">Enabling Background Playback</a></b></dt>
+    <dd>Learn how to continue playback when the user clicks on <strong>Home</strong>.</dd>
 </dl>

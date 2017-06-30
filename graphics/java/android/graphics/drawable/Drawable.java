@@ -16,7 +16,17 @@
 
 package android.graphics.drawable;
 
+import com.android.internal.R;
+
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
+
+import android.annotation.AttrRes;
+import android.annotation.ColorInt;
+import android.annotation.IntRange;
 import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.content.pm.ActivityInfo.Config;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.content.res.Resources.Theme;
@@ -43,9 +53,6 @@ import android.util.StateSet;
 import android.util.TypedValue;
 import android.util.Xml;
 import android.view.View;
-
-import org.xmlpull.v1.XmlPullParser;
-import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -102,6 +109,9 @@ import java.util.Collection;
  *     <li> <b>Nine Patch</b>: an extension to the PNG format allows it to
  *     specify information about how to stretch it and place things inside of
  *     it.
+ *     <li><b>Vector</b>: a drawable defined in an XML file as a set of points,
+ *     lines, and curves along with its associated color information. This type
+ *     of drawable can be scaled without loss of display quality.
  *     <li> <b>Shape</b>: contains simple drawing commands instead of a raw
  *     bitmap, allowing it to resize better in some cases.
  *     <li> <b>Layers</b>: a compound drawable, which draws multiple underlying
@@ -112,6 +122,47 @@ import java.util.Collection;
  *     drawables based on its level.
  *     <li> <b>Scale</b>: a compound drawable with a single child drawable,
  *     whose overall size is modified based on the current level.
+ * </ul>
+ *
+ * <a name="Custom"></a>
+ * <h3>Custom drawables</h3>
+ *
+ * <p>
+ * All versions of Android allow the Drawable class to be extended and used at
+ * run time in place of framework-provided drawable classes. Starting in
+ * {@link android.os.Build.VERSION_CODES#N API 24}, custom drawables classes
+ * may also be used in XML.
+ * <p>
+ * <strong>Note:</strong> Custom drawable classes are only accessible from
+ * within your application package. Other applications will not be able to load
+ * them.
+ * <p>
+ * At a minimum, custom drawable classes must implement the abstract methods on
+ * Drawable and should override the {@link Drawable#draw(Canvas)} method to
+ * draw content.
+ * <p>
+ * Custom drawables classes may be used in XML in multiple ways:
+ * <ul>
+ *     <li>
+ *         Using the fully-qualified class name as the XML element name. For
+ *         this method, the custom drawable class must be a public top-level
+ *         class.
+ * <pre>
+ * &lt;com.myapp.MyCustomDrawable xmlns:android="http://schemas.android.com/apk/res/android"
+ *     android:color="#ffff0000" /&gt;
+ * </pre>
+ *     </li>
+ *     <li>
+ *         Using <em>drawable</em> as the XML element name and specifying the
+ *         fully-qualified class name from the <em>class</em> attribute. This
+ *         method may be used for both public top-level classes and public
+ *         static inner classes.
+ * <pre>
+ * &lt;drawable xmlns:android="http://schemas.android.com/apk/res/android"
+ *     class="com.myapp.MyTopLevelClass$InnerCustomDrawable"
+ *     android:color="#ffff0000" /&gt;
+ * </pre>
+ *     </li>
  * </ul>
  *
  * <div class="special reference">
@@ -130,7 +181,7 @@ public abstract class Drawable {
 
     private int[] mStateSet = StateSet.WILD_CARD;
     private int mLevel = 0;
-    private int mChangingConfigurations = 0;
+    private @Config int mChangingConfigurations = 0;
     private Rect mBounds = ZERO_BOUNDS_RECT;  // lazily becomes a new Rect()
     private WeakReference<Callback> mCallback = null;
     private boolean mVisible = true;
@@ -143,7 +194,7 @@ public abstract class Drawable {
      *
      * @param canvas The canvas to draw into
      */
-    public abstract void draw(Canvas canvas);
+    public abstract void draw(@NonNull Canvas canvas);
 
     /**
      * Specify a bounding rectangle for the Drawable. This is where the drawable
@@ -171,7 +222,7 @@ public abstract class Drawable {
      * Specify a bounding rectangle for the Drawable. This is where the drawable
      * will draw when its draw() method is called.
      */
-    public void setBounds(Rect bounds) {
+    public void setBounds(@NonNull Rect bounds) {
         setBounds(bounds.left, bounds.top, bounds.right, bounds.bottom);
     }
 
@@ -183,7 +234,7 @@ public abstract class Drawable {
      * @param bounds Rect to receive the drawable's bounds (allocated by the
      *               caller).
      */
-    public final void copyBounds(Rect bounds) {
+    public final void copyBounds(@NonNull Rect bounds) {
         bounds.set(mBounds);
     }
 
@@ -195,6 +246,7 @@ public abstract class Drawable {
      *
      * @return A copy of the drawable's bounds
      */
+    @NonNull
     public final Rect copyBounds() {
         return new Rect(mBounds);
     }
@@ -214,6 +266,7 @@ public abstract class Drawable {
      * @see #copyBounds()
      * @see #copyBounds(android.graphics.Rect)
      */
+    @NonNull
     public final Rect getBounds() {
         if (mBounds == ZERO_BOUNDS_RECT) {
             mBounds = new Rect();
@@ -232,6 +285,7 @@ public abstract class Drawable {
      *
      * @return The dirty bounds of this drawable
      */
+    @NonNull
     public Rect getDirtyBounds() {
         return getBounds();
     }
@@ -245,7 +299,7 @@ public abstract class Drawable {
      *
      * @see android.content.pm.ActivityInfo
      */
-    public void setChangingConfigurations(int configs) {
+    public void setChangingConfigurations(@Config int configs) {
         mChangingConfigurations = configs;
     }
 
@@ -262,24 +316,39 @@ public abstract class Drawable {
      *
      * @see android.content.pm.ActivityInfo
      */
-    public int getChangingConfigurations() {
+    public @Config int getChangingConfigurations() {
         return mChangingConfigurations;
     }
 
     /**
-     * Set to true to have the drawable dither its colors when drawn to a device
-     * with fewer than 8-bits per color component. This can improve the look on
-     * those devices, but can also slow down the drawing a little.
+     * Set to true to have the drawable dither its colors when drawn to a
+     * device with fewer than 8-bits per color component.
+     *
+     * @see android.graphics.Paint#setDither(boolean);
+     * @deprecated This property is ignored.
      */
+    @Deprecated
     public void setDither(boolean dither) {}
 
     /**
-     * Set to true to have the drawable filter its bitmap when scaled or rotated
-     * (for drawables that use bitmaps). If the drawable does not use bitmaps,
-     * this call is ignored. This can improve the look when scaled or rotated,
-     * but also slows down the drawing.
+     * Set to true to have the drawable filter its bitmaps with bilinear
+     * sampling when they are scaled or rotated.
+     *
+     * <p>This can improve appearance when bitmaps are rotated. If the drawable
+     * does not use bitmaps, this call is ignored.</p>
+     *
+     * @see #isFilterBitmap()
+     * @see android.graphics.Paint#setFilterBitmap(boolean);
      */
     public void setFilterBitmap(boolean filter) {}
+
+    /**
+     * @return whether this drawable filters its bitmaps
+     * @see #setFilterBitmap(boolean)
+     */
+    public boolean isFilterBitmap() {
+        return false;
+    }
 
     /**
      * Implement this interface if you want to create an animated drawable that
@@ -289,7 +358,7 @@ public abstract class Drawable {
      * to supply your implementation of the interface to the drawable; it uses
      * this interface to schedule and execute animation changes.
      */
-    public static interface Callback {
+    public interface Callback {
         /**
          * Called when the drawable needs to be redrawn.  A view at this point
          * should invalidate itself (or at least the part of itself where the
@@ -297,7 +366,7 @@ public abstract class Drawable {
          *
          * @param who The drawable that is requesting the update.
          */
-        public void invalidateDrawable(Drawable who);
+        void invalidateDrawable(@NonNull Drawable who);
 
         /**
          * A Drawable can call this to schedule the next frame of its
@@ -311,7 +380,7 @@ public abstract class Drawable {
          * @param when The time (in milliseconds) to run.  The timebase is
          *             {@link android.os.SystemClock#uptimeMillis}
          */
-        public void scheduleDrawable(Drawable who, Runnable what, long when);
+        void scheduleDrawable(@NonNull Drawable who, @NonNull Runnable what, long when);
 
         /**
          * A Drawable can call this to unschedule an action previously
@@ -323,7 +392,7 @@ public abstract class Drawable {
          * @param who The drawable being unscheduled.
          * @param what The action being unscheduled.
          */
-        public void unscheduleDrawable(Drawable who, Runnable what);
+        void unscheduleDrawable(@NonNull Drawable who, @NonNull Runnable what);
     }
 
     /**
@@ -334,8 +403,8 @@ public abstract class Drawable {
      *
      * @see #getCallback()
      */
-    public final void setCallback(Callback cb) {
-        mCallback = new WeakReference<Callback>(cb);
+    public final void setCallback(@Nullable Callback cb) {
+        mCallback = cb != null ? new WeakReference<>(cb) : null;
     }
 
     /**
@@ -346,11 +415,9 @@ public abstract class Drawable {
      *
      * @see #setCallback(android.graphics.drawable.Drawable.Callback)
      */
+    @Nullable
     public Callback getCallback() {
-        if (mCallback != null) {
-            return mCallback.get();
-        }
-        return null;
+        return mCallback != null ? mCallback.get() : null;
     }
 
     /**
@@ -379,7 +446,7 @@ public abstract class Drawable {
      *
      * @see Callback#scheduleDrawable
      */
-    public void scheduleSelf(Runnable what, long when) {
+    public void scheduleSelf(@NonNull Runnable what, long when) {
         final Callback callback = getCallback();
         if (callback != null) {
             callback.scheduleDrawable(this, what, when);
@@ -395,7 +462,7 @@ public abstract class Drawable {
      *
      * @see Callback#unscheduleDrawable
      */
-    public void unscheduleSelf(Runnable what) {
+    public void unscheduleSelf(@NonNull Runnable what) {
         final Callback callback = getCallback();
         if (callback != null) {
             callback.unscheduleDrawable(this, what);
@@ -406,34 +473,52 @@ public abstract class Drawable {
      * Returns the resolved layout direction for this Drawable.
      *
      * @return One of {@link android.view.View#LAYOUT_DIRECTION_LTR},
-     *   {@link android.view.View#LAYOUT_DIRECTION_RTL}
-     *
-     * @hide
+     *         {@link android.view.View#LAYOUT_DIRECTION_RTL}
+     * @see #setLayoutDirection(int)
      */
-    public int getLayoutDirection() {
+    public @View.ResolvedLayoutDir int getLayoutDirection() {
         return mLayoutDirection;
     }
 
     /**
-     * Set the layout direction for this drawable. Should be a resolved direction as the
-     * Drawable as no capacity to do the resolution on his own.
+     * Set the layout direction for this drawable. Should be a resolved
+     * layout direction, as the Drawable has no capacity to do the resolution on
+     * its own.
      *
-     * @param layoutDirection One of {@link android.view.View#LAYOUT_DIRECTION_LTR},
-     *   {@link android.view.View#LAYOUT_DIRECTION_RTL}
-     *
-     * @hide
+     * @param layoutDirection the resolved layout direction for the drawable,
+     *                        either {@link android.view.View#LAYOUT_DIRECTION_LTR}
+     *                        or {@link android.view.View#LAYOUT_DIRECTION_RTL}
+     * @return {@code true} if the layout direction change has caused the
+     *         appearance of the drawable to change such that it needs to be
+     *         re-drawn, {@code false} otherwise
+     * @see #getLayoutDirection()
      */
-    public void setLayoutDirection(@View.ResolvedLayoutDir int layoutDirection) {
-        if (getLayoutDirection() != layoutDirection) {
+    public final boolean setLayoutDirection(@View.ResolvedLayoutDir int layoutDirection) {
+        if (mLayoutDirection != layoutDirection) {
             mLayoutDirection = layoutDirection;
+            return onLayoutDirectionChanged(layoutDirection);
         }
+        return false;
+    }
+
+    /**
+     * Called when the drawable's resolved layout direction changes.
+     *
+     * @param layoutDirection the new resolved layout direction
+     * @return {@code true} if the layout direction change has caused the
+     *         appearance of the drawable to change such that it needs to be
+     *         re-drawn, {@code false} otherwise
+     * @see #setLayoutDirection(int)
+     */
+    public boolean onLayoutDirectionChanged(@View.ResolvedLayoutDir int layoutDirection) {
+        return false;
     }
 
     /**
      * Specify an alpha value for the drawable. 0 means fully transparent, and
      * 255 means fully opaque.
      */
-    public abstract void setAlpha(int alpha);
+    public abstract void setAlpha(@IntRange(from=0,to=255) int alpha);
 
     /**
      * Gets the current alpha value for the drawable. 0 means fully transparent,
@@ -442,79 +527,124 @@ public abstract class Drawable {
      * The default return value is 255 if the class does not override this method to return a value
      * specific to its use of alpha.
      */
+    @IntRange(from=0,to=255)
     public int getAlpha() {
         return 0xFF;
     }
 
     /**
-     * @hide Consider for future API inclusion
+     * @hide
+     *
+     * Internal-only method for setting xfermode on certain supported drawables.
+     *
+     * Should not be made public since the layers and drawing area with which
+     * Drawables draw is private implementation detail, and not something apps
+     * should rely upon.
      */
-    public void setXfermode(Xfermode mode) {
+    public void setXfermode(@Nullable Xfermode mode) {
         // Base implementation drops it on the floor for compatibility. Whee!
-        // TODO: For this to be included in the API proper, all framework drawables need impls.
-        // For right now only BitmapDrawable has it.
     }
 
     /**
-     * Specify an optional color filter for the drawable. Pass {@code null} to
-     * remove any existing color filter.
+     * Specify an optional color filter for the drawable.
+     * <p>
+     * If a Drawable has a ColorFilter, each output pixel of the Drawable's
+     * drawing contents will be modified by the color filter before it is
+     * blended onto the render target of a Canvas.
+     * </p>
+     * <p>
+     * Pass {@code null} to remove any existing color filter.
+     * </p>
+     * <p class="note"><strong>Note:</strong> Setting a non-{@code null} color
+     * filter disables {@link #setTintList(ColorStateList) tint}.
+     * </p>
      *
-     * @param cf the color filter to apply, or {@code null} to remove the
+     * @param colorFilter The color filter to apply, or {@code null} to remove the
      *            existing color filter
      */
-    public abstract void setColorFilter(ColorFilter cf);
+    public abstract void setColorFilter(@Nullable ColorFilter colorFilter);
 
     /**
      * Specify a color and Porter-Duff mode to be the color filter for this
      * drawable.
+     * <p>
+     * Convenience for {@link #setColorFilter(ColorFilter)} which constructs a
+     * {@link PorterDuffColorFilter}.
+     * </p>
+     * <p class="note"><strong>Note:</strong> Setting a color filter disables
+     * {@link #setTintList(ColorStateList) tint}.
+     * </p>
      */
-    public void setColorFilter(int color, PorterDuff.Mode mode) {
+    public void setColorFilter(@ColorInt int color, @NonNull PorterDuff.Mode mode) {
         setColorFilter(new PorterDuffColorFilter(color, mode));
     }
 
     /**
-     * Specifies a tint for this drawable.
+     * Specifies tint color for this drawable.
      * <p>
-     * Setting a color filter via {@link #setColorFilter(ColorFilter)} overrides
-     * tint.
+     * A Drawable's drawing content will be blended together with its tint
+     * before it is drawn to the screen. This functions similarly to
+     * {@link #setColorFilter(int, PorterDuff.Mode)}.
+     * </p>
+     * <p>
+     * To clear the tint, pass {@code null} to
+     * {@link #setTintList(ColorStateList)}.
+     * </p>
+     * <p class="note"><strong>Note:</strong> Setting a color filter via
+     * {@link #setColorFilter(ColorFilter)} or
+     * {@link #setColorFilter(int, PorterDuff.Mode)} overrides tint.
+     * </p>
      *
-     * @param tint Color to use for tinting this drawable
+     * @param tintColor Color to use for tinting this drawable
+     * @see #setTintList(ColorStateList)
      * @see #setTintMode(PorterDuff.Mode)
      */
-    public void setTint(int tint) {
-        setTintList(ColorStateList.valueOf(tint));
+    public void setTint(@ColorInt int tintColor) {
+        setTintList(ColorStateList.valueOf(tintColor));
     }
 
     /**
-     * Specifies a tint for this drawable as a color state list.
+     * Specifies tint color for this drawable as a color state list.
      * <p>
-     * Setting a color filter via {@link #setColorFilter(ColorFilter)} overrides
-     * tint.
+     * A Drawable's drawing content will be blended together with its tint
+     * before it is drawn to the screen. This functions similarly to
+     * {@link #setColorFilter(int, PorterDuff.Mode)}.
+     * </p>
+     * <p class="note"><strong>Note:</strong> Setting a color filter via
+     * {@link #setColorFilter(ColorFilter)} or
+     * {@link #setColorFilter(int, PorterDuff.Mode)} overrides tint.
+     * </p>
      *
-     * @param tint Color state list to use for tinting this drawable, or null to
-     *            clear the tint
+     * @param tint Color state list to use for tinting this drawable, or
+     *            {@code null} to clear the tint
+     * @see #setTint(int)
      * @see #setTintMode(PorterDuff.Mode)
      */
-    public void setTintList(ColorStateList tint) {}
+    public void setTintList(@Nullable ColorStateList tint) {}
 
     /**
      * Specifies a tint blending mode for this drawable.
      * <p>
-     * Setting a color filter via {@link #setColorFilter(ColorFilter)} overrides
-     * tint.
+     * Defines how this drawable's tint color should be blended into the drawable
+     * before it is drawn to screen. Default tint mode is {@link PorterDuff.Mode#SRC_IN}.
+     * </p>
+     * <p class="note"><strong>Note:</strong> Setting a color filter via
+     * {@link #setColorFilter(ColorFilter)} or
+     * {@link #setColorFilter(int, PorterDuff.Mode)} overrides tint.
+     * </p>
      *
-     * @param tintMode Color state list to use for tinting this drawable, or null to
-     *            clear the tint
      * @param tintMode A Porter-Duff blending mode
+     * @see #setTint(int)
+     * @see #setTintList(ColorStateList)
      */
-    public void setTintMode(PorterDuff.Mode tintMode) {}
+    public void setTintMode(@NonNull PorterDuff.Mode tintMode) {}
 
     /**
      * Returns the current color filter, or {@code null} if none set.
      *
      * @return the current color filter, or {@code null} if none set
      */
-    public ColorFilter getColorFilter() {
+    public @Nullable ColorFilter getColorFilter() {
         return null;
     }
 
@@ -537,15 +667,21 @@ public abstract class Drawable {
      * Sets the bounds to which the hotspot is constrained, if they should be
      * different from the drawable bounds.
      *
-     * @param left
-     * @param top
-     * @param right
-     * @param bottom
+     * @param left position in pixels of the left bound
+     * @param top position in pixels of the top bound
+     * @param right position in pixels of the right bound
+     * @param bottom position in pixels of the bottom bound
+     * @see #getHotspotBounds(android.graphics.Rect)
      */
     public void setHotspotBounds(int left, int top, int right, int bottom) {}
 
-    /** @hide For internal use only. Individual results may vary. */
-    public void getHotspotBounds(Rect outRect) {
+    /**
+     * Populates {@code outRect} with the hotspot bounds.
+     *
+     * @param outRect the rect to populate with the hotspot bounds
+     * @see #setHotspotBounds(int, int, int, int)
+     */
+    public void getHotspotBounds(@NonNull Rect outRect) {
         outRect.set(getBounds());
     }
 
@@ -593,7 +729,7 @@ public abstract class Drawable {
      * of the Drawable to change (hence requiring an invalidate), otherwise
      * returns false.
      */
-    public boolean setState(final int[] stateSet) {
+    public boolean setState(@NonNull final int[] stateSet) {
         if (!Arrays.equals(mStateSet, stateSet)) {
             mStateSet = stateSet;
             return onStateChange(stateSet);
@@ -608,7 +744,7 @@ public abstract class Drawable {
      * Some drawables may modify their imagery based on the selected state.
      * @return An array of resource Ids describing the current state.
      */
-    public int[] getState() {
+    public @NonNull int[] getState() {
         return mStateSet;
     }
 
@@ -625,7 +761,7 @@ public abstract class Drawable {
      *         {@link StateListDrawable} and {@link LevelListDrawable} this will be the child drawable
      *         currently in use.
      */
-    public Drawable getCurrent() {
+    public @NonNull Drawable getCurrent() {
         return this;
     }
 
@@ -645,7 +781,7 @@ public abstract class Drawable {
      * of the Drawable to change (hence requiring an invalidate), otherwise
      * returns false.
      */
-    public final boolean setLevel(int level) {
+    public final boolean setLevel(@IntRange(from=0,to=10000) int level) {
         if (mLevel != level) {
             mLevel = level;
             return onLevelChange(level);
@@ -658,7 +794,7 @@ public abstract class Drawable {
      *
      * @return int Current level, from 0 (minimum) to 10000 (maximum).
      */
-    public final int getLevel() {
+    public final @IntRange(from=0,to=10000) int getLevel() {
         return mLevel;
     }
 
@@ -710,8 +846,10 @@ public abstract class Drawable {
 
     /**
      * Applies the specified theme to this Drawable and its children.
+     *
+     * @param t the theme to apply
      */
-    public void applyTheme(@SuppressWarnings("unused") Theme t) {
+    public void applyTheme(@NonNull @SuppressWarnings("unused") Theme t) {
     }
 
     public boolean canApplyTheme() {
@@ -727,6 +865,14 @@ public abstract class Drawable {
      * {@link android.graphics.PixelFormat#TRANSPARENT}, or
      * {@link android.graphics.PixelFormat#OPAQUE}.
      *
+     * <p>An OPAQUE drawable is one that draws all all content within its bounds, completely
+     * covering anything behind the drawable. A TRANSPARENT drawable is one that draws nothing
+     * within its bounds, allowing everything behind it to show through. A TRANSLUCENT drawable
+     * is a drawable in any other state, where the drawable will draw some, but not all,
+     * of the content within its bounds and at least some content behind the drawable will
+     * be visible. If the visibility of the drawable's contents cannot be determined, the
+     * safest/best return value is TRANSLUCENT.
+     *
      * <p>Generally a Drawable should be as conservative as possible with the
      * value it returns.  For example, if it contains multiple child drawables
      * and only shows one of them at a time, if only one of the children is
@@ -734,15 +880,18 @@ public abstract class Drawable {
      * returned.  You can use the method {@link #resolveOpacity} to perform a
      * standard reduction of two opacities to the appropriate single output.
      *
-     * <p>Note that the returned value does <em>not</em> take into account a
+     * <p>Note that the returned value does not necessarily take into account a
      * custom alpha or color filter that has been applied by the client through
-     * the {@link #setAlpha} or {@link #setColorFilter} methods.
+     * the {@link #setAlpha} or {@link #setColorFilter} methods. Some subclasses,
+     * such as {@link BitmapDrawable}, {@link ColorDrawable}, and {@link GradientDrawable},
+     * do account for the value of {@link #setAlpha}, but the general behavior is dependent
+     * upon the implementation of the subclass.
      *
      * @return int The opacity class of the Drawable.
      *
      * @see android.graphics.PixelFormat
      */
-    public abstract int getOpacity();
+    public abstract @PixelFormat.Opacity int getOpacity();
 
     /**
      * Return the appropriate opacity value for two source opacities.  If
@@ -759,7 +908,8 @@ public abstract class Drawable {
      *
      * @see #getOpacity
      */
-    public static int resolveOpacity(int op1, int op2) {
+    public static @PixelFormat.Opacity int resolveOpacity(@PixelFormat.Opacity int op1,
+            @PixelFormat.Opacity int op2) {
         if (op1 == op2) {
             return op1;
         }
@@ -788,7 +938,7 @@ public abstract class Drawable {
      * report, else a Region holding the parts of the Drawable's bounds that
      * are transparent.
      */
-    public Region getTransparentRegion() {
+    public @Nullable Region getTransparentRegion() {
         return null;
     }
 
@@ -801,7 +951,10 @@ public abstract class Drawable {
      * if it looks the same and there is no need to redraw it since its
      * last state.
      */
-    protected boolean onStateChange(int[] state) { return false; }
+    protected boolean onStateChange(int[] state) {
+        return false;
+    }
+
     /** Override this in your subclass to change appearance if you vary based
      *  on level.
      * @return Returns true if the level change has caused the appearance of
@@ -809,24 +962,39 @@ public abstract class Drawable {
      * if it looks the same and there is no need to redraw it since its
      * last level.
      */
-    protected boolean onLevelChange(int level) { return false; }
+    protected boolean onLevelChange(int level) {
+        return false;
+    }
+
     /**
      * Override this in your subclass to change appearance if you vary based on
      * the bounds.
      */
-    protected void onBoundsChange(Rect bounds) {}
+    protected void onBoundsChange(Rect bounds) {
+        // Stub method.
+    }
 
     /**
-     * Return the intrinsic width of the underlying drawable object.  Returns
-     * -1 if it has no intrinsic width, such as with a solid color.
+     * Returns the drawable's intrinsic width.
+     * <p>
+     * Intrinsic width is the width at which the drawable would like to be laid
+     * out, including any inherent padding. If the drawable has no intrinsic
+     * width, such as a solid color, this method returns -1.
+     *
+     * @return the intrinsic width, or -1 if no intrinsic width
      */
     public int getIntrinsicWidth() {
         return -1;
     }
 
     /**
-     * Return the intrinsic height of the underlying drawable object. Returns
-     * -1 if it has no intrinsic height, such as with a solid color.
+     * Returns the drawable's intrinsic height.
+     * <p>
+     * Intrinsic height is the height at which the drawable would like to be
+     * laid out, including any inherent padding. If the drawable has no
+     * intrinsic height, such as a solid color, this method returns -1.
+     *
+     * @return the intrinsic height, or -1 if no intrinsic height
      */
     public int getIntrinsicHeight() {
         return -1;
@@ -879,7 +1047,7 @@ public abstract class Drawable {
      *
      * @hide
      */
-    public Insets getOpticalInsets() {
+    public @NonNull Insets getOpticalInsets() {
         return Insets.NONE;
     }
 
@@ -913,7 +1081,7 @@ public abstract class Drawable {
      * @see ConstantState
      * @see #getConstantState()
      */
-    public Drawable mutate() {
+    public @NonNull Drawable mutate() {
         return this;
     }
 
@@ -983,8 +1151,7 @@ public abstract class Drawable {
         // to the compatibility density only to have them scaled back up when
         // drawn to the screen.
         if (opts == null) opts = new BitmapFactory.Options();
-        opts.inScreenDensity = res != null
-                ? res.getDisplayMetrics().noncompatDensityDpi : DisplayMetrics.DENSITY_DEVICE;
+        opts.inScreenDensity = Drawable.resolveDensity(res, 0);
         Bitmap  bm = BitmapFactory.decodeResourceStream(res, value, is, pad, opts);
         if (bm != null) {
             byte[] np = bm.getNinePatchChunk();
@@ -1020,9 +1187,10 @@ public abstract class Drawable {
         AttributeSet attrs = Xml.asAttributeSet(parser);
 
         int type;
-        while ((type=parser.next()) != XmlPullParser.START_TAG &&
-                type != XmlPullParser.END_DOCUMENT) {
-            // Empty loop
+        //noinspection StatementWithEmptyBody
+        while ((type=parser.next()) != XmlPullParser.START_TAG
+                && type != XmlPullParser.END_DOCUMENT) {
+            // Empty loop.
         }
 
         if (type != XmlPullParser.START_TAG) {
@@ -1056,79 +1224,8 @@ public abstract class Drawable {
      */
     public static Drawable createFromXmlInner(Resources r, XmlPullParser parser, AttributeSet attrs,
             Theme theme) throws XmlPullParserException, IOException {
-        final Drawable drawable;
-
-        final String name = parser.getName();
-        switch (name) {
-            case "selector":
-                drawable = new StateListDrawable();
-                break;
-            case "animated-selector":
-                drawable = new AnimatedStateListDrawable();
-                break;
-            case "level-list":
-                drawable = new LevelListDrawable();
-                break;
-            case "layer-list":
-                drawable = new LayerDrawable();
-                break;
-            case "transition":
-                drawable = new TransitionDrawable();
-                break;
-            case "ripple":
-                drawable = new RippleDrawable();
-                break;
-            case "color":
-                drawable = new ColorDrawable();
-                break;
-            case "shape":
-                drawable = new GradientDrawable();
-                break;
-            case "vector":
-                drawable = new VectorDrawable();
-                break;
-            case "animated-vector":
-                drawable = new AnimatedVectorDrawable();
-                break;
-            case "scale":
-                drawable = new ScaleDrawable();
-                break;
-            case "clip":
-                drawable = new ClipDrawable();
-                break;
-            case "rotate":
-                drawable = new RotateDrawable();
-                break;
-            case "animated-rotate":
-                drawable = new AnimatedRotateDrawable();
-                break;
-            case "animation-list":
-                drawable = new AnimationDrawable();
-                break;
-            case "inset":
-                drawable = new InsetDrawable();
-                break;
-            case "bitmap":
-                drawable = new BitmapDrawable(r);
-                if (r != null) {
-                    ((BitmapDrawable) drawable).setTargetDensity(r.getDisplayMetrics());
-                }
-                break;
-            case "nine-patch":
-                drawable = new NinePatchDrawable();
-                if (r != null) {
-                    ((NinePatchDrawable) drawable).setTargetDensity(r.getDisplayMetrics());
-                }
-                break;
-            default:
-                throw new XmlPullParserException(parser.getPositionDescription() +
-                        ": invalid drawable tag " + name);
-
-        }
-        drawable.inflate(r, parser, attrs, theme);
-        return drawable;
+        return r.getDrawableInflater().inflateFromXml(parser.getName(), parser, attrs, theme);
     }
-
 
     /**
      * Create a drawable from file path name.
@@ -1156,13 +1253,15 @@ public abstract class Drawable {
      *
      * @see #inflate(Resources, XmlPullParser, AttributeSet, Theme)
      */
-    public void inflate(Resources r, XmlPullParser parser, AttributeSet attrs)
-            throws XmlPullParserException, IOException {
+    public void inflate(@NonNull Resources r, @NonNull XmlPullParser parser,
+            @NonNull AttributeSet attrs) throws XmlPullParserException, IOException {
         inflate(r, parser, attrs, null);
     }
 
     /**
      * Inflate this Drawable from an XML resource optionally styled by a theme.
+     * This can't be called more than once for each Drawable. Note that framework may have called
+     * this once to create the Drawable instance from XML resource.
      *
      * @param r Resources used to resolve attribute values
      * @param parser XML parser from which to inflate this Drawable
@@ -1171,17 +1270,11 @@ public abstract class Drawable {
      * @throws XmlPullParserException
      * @throws IOException
      */
-    public void inflate(Resources r, XmlPullParser parser, AttributeSet attrs, Theme theme)
+    public void inflate(@NonNull Resources r, @NonNull XmlPullParser parser,
+            @NonNull AttributeSet attrs, @Nullable Theme theme)
             throws XmlPullParserException, IOException {
-        final TypedArray a;
-        if (theme != null) {
-            a = theme.obtainStyledAttributes(
-                    attrs, com.android.internal.R.styleable.Drawable, 0, 0);
-        } else {
-            a = r.obtainAttributes(attrs, com.android.internal.R.styleable.Drawable);
-        }
-
-        inflateWithAttributes(r, parser, a, com.android.internal.R.styleable.Drawable_visible);
+        final TypedArray a = obtainAttributes(r, theme, attrs, R.styleable.Drawable);
+        mVisible = a.getBoolean(R.styleable.Drawable_visible, mVisible);
         a.recycle();
     }
 
@@ -1191,8 +1284,9 @@ public abstract class Drawable {
      * @throws XmlPullParserException
      * @throws IOException
      */
-    void inflateWithAttributes(Resources r, XmlPullParser parser, TypedArray attrs, int visibleAttr)
-            throws XmlPullParserException, IOException {
+    void inflateWithAttributes(@NonNull @SuppressWarnings("unused") Resources r,
+            @NonNull @SuppressWarnings("unused") XmlPullParser parser, @NonNull TypedArray attrs,
+            @AttrRes int visibleAttr) throws XmlPullParserException, IOException {
         mVisible = attrs.getBoolean(visibleAttr, mVisible);
     }
 
@@ -1212,48 +1306,70 @@ public abstract class Drawable {
      */
     public static abstract class ConstantState {
         /**
-         * Create a new drawable without supplying resources the caller
-         * is running in.  Note that using this means the density-dependent
-         * drawables (like bitmaps) will not be able to update their target
-         * density correctly. One should use {@link #newDrawable(Resources)}
-         * instead to provide a resource.
+         * Creates a new Drawable instance from its constant state.
+         * <p>
+         * <strong>Note:</strong> Using this method means density-dependent
+         * properties, such as pixel dimensions or bitmap images, will not be
+         * updated to match the density of the target display. To ensure
+         * correct scaling, use {@link #newDrawable(Resources)} instead to
+         * provide an appropriate Resources object.
+         *
+         * @return a new drawable object based on this constant state
+         * @see #newDrawable(Resources)
          */
-        public abstract Drawable newDrawable();
+        public abstract @NonNull Drawable newDrawable();
 
         /**
-         * Create a new Drawable instance from its constant state.  This
-         * must be implemented for drawables that change based on the target
-         * density of their caller (that is depending on whether it is
-         * in compatibility mode).
+         * Creates a new Drawable instance from its constant state using the
+         * specified resources. This method should be implemented for drawables
+         * that have density-dependent properties.
+         * <p>
+         * The default implementation for this method calls through to
+         * {@link #newDrawable()}.
+         *
+         * @param res the resources of the context in which the drawable will
+         *            be displayed
+         * @return a new drawable object based on this constant state
          */
-        public Drawable newDrawable(Resources res) {
+        public @NonNull Drawable newDrawable(@Nullable Resources res) {
             return newDrawable();
         }
 
         /**
-         * Create a new Drawable instance from its constant state. This must be
-         * implemented for drawables that can have a theme applied.
+         * Creates a new Drawable instance from its constant state using the
+         * specified resources and theme. This method should be implemented for
+         * drawables that have theme-dependent properties.
+         * <p>
+         * The default implementation for this method calls through to
+         * {@link #newDrawable(Resources)}.
+         *
+         * @param res the resources of the context in which the drawable will
+         *            be displayed
+         * @param theme the theme of the context in which the drawable will be
+         *              displayed
+         * @return a new drawable object based on this constant state
          */
-        public Drawable newDrawable(Resources res, Theme theme) {
-            return newDrawable(null);
+        public @NonNull Drawable newDrawable(@Nullable Resources res,
+                @Nullable @SuppressWarnings("unused") Theme theme) {
+            return newDrawable(res);
         }
 
         /**
          * Return a bit mask of configuration changes that will impact
          * this drawable (and thus require completely reloading it).
          */
-        public abstract int getChangingConfigurations();
+        public abstract @Config int getChangingConfigurations();
 
         /**
          * @return Total pixel count
          * @hide
          */
-        public int addAtlasableBitmaps(Collection<Bitmap> atlasList) {
+        public int addAtlasableBitmaps(@NonNull Collection<Bitmap> atlasList) {
             return 0;
         }
 
         /** @hide */
-        protected final boolean isAtlasable(Bitmap bitmap) {
+        protected final boolean isAtlasable(@Nullable Bitmap bitmap) {
             return bitmap != null && bitmap.getConfig() == Bitmap.Config.ARGB_8888;
         }
 
@@ -1272,7 +1388,7 @@ public abstract class Drawable {
      * @see ConstantState
      * @see Drawable#mutate()
      */
-    public ConstantState getConstantState() {
+    public @Nullable ConstantState getConstantState() {
         return null;
     }
 
@@ -1290,8 +1406,8 @@ public abstract class Drawable {
      * Ensures the tint filter is consistent with the current tint color and
      * mode.
      */
-    PorterDuffColorFilter updateTintFilter(PorterDuffColorFilter tintFilter, ColorStateList tint,
-            PorterDuff.Mode tintMode) {
+    @Nullable PorterDuffColorFilter updateTintFilter(@Nullable PorterDuffColorFilter tintFilter,
+            @Nullable ColorStateList tint, @Nullable PorterDuff.Mode tintMode) {
         if (tint == null || tintMode == null) {
             return null;
         }
@@ -1309,13 +1425,85 @@ public abstract class Drawable {
     /**
      * Obtains styled attributes from the theme, if available, or unstyled
      * resources if the theme is null.
+     * @hide
      */
-    static TypedArray obtainAttributes(
-            Resources res, Theme theme, AttributeSet set, int[] attrs) {
+    protected static @NonNull TypedArray obtainAttributes(@NonNull Resources res,
+            @Nullable Theme theme, @NonNull AttributeSet set, @NonNull int[] attrs) {
         if (theme == null) {
             return res.obtainAttributes(set, attrs);
         }
         return theme.obtainStyledAttributes(set, attrs, 0, 0);
+    }
+
+    /**
+     * Scales a floating-point pixel value from the source density to the
+     * target density.
+     *
+     * @param pixels the pixel value for use in source density
+     * @param sourceDensity the source density
+     * @param targetDensity the target density
+     * @return the scaled pixel value for use in target density
+     */
+    static float scaleFromDensity(float pixels, int sourceDensity, int targetDensity) {
+        return pixels * targetDensity / sourceDensity;
+    }
+
+    /**
+     * Scales a pixel value from the source density to the target density,
+     * optionally handling the resulting pixel value as a size rather than an
+     * offset.
+     * <p>
+     * A size conversion involves rounding the base value and ensuring that
+     * a non-zero base value is at least one pixel in size.
+     * <p>
+     * An offset conversion involves simply truncating the base value to an
+     * integer.
+     *
+     * @param pixels the pixel value for use in source density
+     * @param sourceDensity the source density
+     * @param targetDensity the target density
+     * @param isSize {@code true} to handle the resulting scaled value as a
+     *               size, or {@code false} to handle it as an offset
+     * @return the scaled pixel value for use in target density
+     */
+    static int scaleFromDensity(
+            int pixels, int sourceDensity, int targetDensity, boolean isSize) {
+        if (pixels == 0 || sourceDensity == targetDensity) {
+            return pixels;
+        }
+
+        final float result = pixels * targetDensity / (float) sourceDensity;
+        if (!isSize) {
+            return (int) result;
+        }
+
+        final int rounded = Math.round(result);
+        if (rounded != 0) {
+            return rounded;
+        } else if (pixels > 0) {
+            return 1;
+        } else {
+            return -1;
+        }
+    }
+
+    static int resolveDensity(@Nullable Resources r, int parentDensity) {
+        final int densityDpi = r == null ? parentDensity : r.getDisplayMetrics().densityDpi;
+        return densityDpi == 0 ? DisplayMetrics.DENSITY_DEFAULT : densityDpi;
+    }
+
+    /**
+     * Re-throws an exception as a {@link RuntimeException} with an empty stack
+     * trace to avoid cluttering the log. The original exception's stack trace
+     * will still be included.
+     *
+     * @param cause the exception to re-throw
+     * @throws RuntimeException
+     */
+    static void rethrowAsRuntimeException(@NonNull Exception cause) throws RuntimeException {
+        final RuntimeException e = new RuntimeException(cause);
+        e.setStackTrace(new StackTraceElement[0]);
+        throw e;
     }
 
     /**

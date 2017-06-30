@@ -23,7 +23,6 @@ import android.view.Surface;
 
 import java.util.Arrays;
 
-import libcore.util.EmptyArray;
 import libcore.util.Objects;
 
 /**
@@ -89,6 +88,11 @@ final class DisplayDeviceInfo {
     public static final int FLAG_OWN_CONTENT_ONLY = 1 << 7;
 
     /**
+     * Flag: This display device has a round shape.
+     */
+    public static final int FLAG_ROUND = 1 << 8;
+
+    /**
      * Touch attachment: Display does not receive touch.
      */
     public static final int TOUCH_NONE = 0;
@@ -102,6 +106,21 @@ final class DisplayDeviceInfo {
      * Touch attachment: Touch input is via an external interface, such as USB.
      */
     public static final int TOUCH_EXTERNAL = 2;
+
+    /**
+     * Diff result: The {@link #state} fields differ.
+     */
+    public static final int DIFF_STATE = 1 << 0;
+
+    /**
+     * Diff result: Other fields differ.
+     */
+    public static final int DIFF_OTHER = 1 << 1;
+
+    /**
+     * Diff result: The color mode fields differ.
+     */
+    public static final int DIFF_COLOR_MODE = 1 << 2;
 
     /**
      * Gets the name of the display device, which may be derived from EDID or
@@ -127,14 +146,30 @@ final class DisplayDeviceInfo {
     public int height;
 
     /**
-     * The refresh rate of the display, in frames per second.
+     * The active mode of the display.
      */
-    public float refreshRate;
+    public int modeId;
 
     /**
-     * The supported refresh rates of the display at the current resolution in frames per second.
+     * The default mode of the display.
      */
-    public float[] supportedRefreshRates = EmptyArray.FLOAT;
+    public int defaultModeId;
+
+    /**
+     * The supported modes of the display.
+     */
+    public Display.Mode[] supportedModes = Display.Mode.EMPTY_ARRAY;
+
+    /** The active color mode of the display */
+    public int colorMode;
+
+    /** The supported color modes of the display */
+    public int[] supportedColorModes = { Display.COLOR_MODE_DEFAULT };
+
+    /**
+     * The HDR capabilities this display claims to support.
+     */
+    public Display.HdrCapabilities hdrCapabilities;
 
     /**
      * The nominal apparent density of the display in DPI used for layout calculations.
@@ -238,26 +273,45 @@ final class DisplayDeviceInfo {
     }
 
     public boolean equals(DisplayDeviceInfo other) {
-        return other != null
-                && Objects.equal(name, other.name)
-                && Objects.equal(uniqueId, other.uniqueId)
-                && width == other.width
-                && height == other.height
-                && refreshRate == other.refreshRate
-                && Arrays.equals(supportedRefreshRates, other.supportedRefreshRates)
-                && densityDpi == other.densityDpi
-                && xDpi == other.xDpi
-                && yDpi == other.yDpi
-                && appVsyncOffsetNanos == other.appVsyncOffsetNanos
-                && presentationDeadlineNanos == other.presentationDeadlineNanos
-                && flags == other.flags
-                && touch == other.touch
-                && rotation == other.rotation
-                && type == other.type
-                && Objects.equal(address, other.address)
-                && state == other.state
-                && ownerUid == other.ownerUid
-                && Objects.equal(ownerPackageName, other.ownerPackageName);
+        return other != null && diff(other) == 0;
+    }
+
+    /**
+     * Computes the difference between display device infos.
+     * Assumes other is not null.
+     */
+    public int diff(DisplayDeviceInfo other) {
+        int diff = 0;
+        if (state != other.state) {
+            diff |= DIFF_STATE;
+        }
+        if (colorMode != other.colorMode) {
+            diff |= DIFF_COLOR_MODE;
+        }
+        if (!Objects.equal(name, other.name)
+                || !Objects.equal(uniqueId, other.uniqueId)
+                || width != other.width
+                || height != other.height
+                || modeId != other.modeId
+                || defaultModeId != other.defaultModeId
+                || !Arrays.equals(supportedModes, other.supportedModes)
+                || !Arrays.equals(supportedColorModes, other.supportedColorModes)
+                || !Objects.equal(hdrCapabilities, other.hdrCapabilities)
+                || densityDpi != other.densityDpi
+                || xDpi != other.xDpi
+                || yDpi != other.yDpi
+                || appVsyncOffsetNanos != other.appVsyncOffsetNanos
+                || presentationDeadlineNanos != other.presentationDeadlineNanos
+                || flags != other.flags
+                || touch != other.touch
+                || rotation != other.rotation
+                || type != other.type
+                || !Objects.equal(address, other.address)
+                || ownerUid != other.ownerUid
+                || !Objects.equal(ownerPackageName, other.ownerPackageName)) {
+            diff |= DIFF_OTHER;
+        }
+        return diff;
     }
 
     @Override
@@ -270,8 +324,12 @@ final class DisplayDeviceInfo {
         uniqueId = other.uniqueId;
         width = other.width;
         height = other.height;
-        refreshRate = other.refreshRate;
-        supportedRefreshRates = other.supportedRefreshRates;
+        modeId = other.modeId;
+        defaultModeId = other.defaultModeId;
+        supportedModes = other.supportedModes;
+        colorMode = other.colorMode;
+        supportedColorModes = other.supportedColorModes;
+        hdrCapabilities = other.hdrCapabilities;
         densityDpi = other.densityDpi;
         xDpi = other.xDpi;
         yDpi = other.yDpi;
@@ -294,8 +352,12 @@ final class DisplayDeviceInfo {
         sb.append("DisplayDeviceInfo{\"");
         sb.append(name).append("\": uniqueId=\"").append(uniqueId).append("\", ");
         sb.append(width).append(" x ").append(height);
-        sb.append(", ").append(refreshRate).append(" fps");
-        sb.append(", supportedRefreshRates ").append(Arrays.toString(supportedRefreshRates));
+        sb.append(", modeId ").append(modeId);
+        sb.append(", defaultModeId ").append(defaultModeId);
+        sb.append(", supportedModes ").append(Arrays.toString(supportedModes));
+        sb.append(", colorMode ").append(colorMode);
+        sb.append(", supportedColorModes ").append(Arrays.toString(supportedColorModes));
+        sb.append(", HdrCapabilities ").append(hdrCapabilities);
         sb.append(", density ").append(densityDpi);
         sb.append(", ").append(xDpi).append(" x ").append(yDpi).append(" dpi");
         sb.append(", appVsyncOff ").append(appVsyncOffsetNanos);
@@ -354,6 +416,9 @@ final class DisplayDeviceInfo {
         }
         if ((flags & FLAG_OWN_CONTENT_ONLY) != 0) {
             msg.append(", FLAG_OWN_CONTENT_ONLY");
+        }
+        if ((flags & FLAG_ROUND) != 0) {
+            msg.append(", FLAG_ROUND");
         }
         return msg.toString();
     }

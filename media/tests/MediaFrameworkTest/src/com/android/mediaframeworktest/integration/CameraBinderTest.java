@@ -19,18 +19,16 @@ package com.android.mediaframeworktest.integration;
 import android.hardware.CameraInfo;
 import android.hardware.ICamera;
 import android.hardware.ICameraClient;
+import android.hardware.ICameraService;
 import android.hardware.ICameraServiceListener;
-import android.hardware.IProCameraCallbacks;
-import android.hardware.IProCameraUser;
 import android.hardware.camera2.ICameraDeviceCallbacks;
 import android.hardware.camera2.ICameraDeviceUser;
 import android.hardware.camera2.impl.CameraMetadataNative;
 import android.hardware.camera2.impl.CaptureResultExtras;
-import android.hardware.camera2.utils.BinderHolder;
-import android.hardware.camera2.utils.CameraBinderDecorator;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.RemoteException;
+import android.os.ServiceSpecificException;
 import android.test.AndroidTestCase;
 import android.test.suitebuilder.annotation.SmallTest;
 import android.util.Log;
@@ -58,6 +56,9 @@ public class CameraBinderTest extends AndroidTestCase {
     private static final int API_VERSION_1 = 1;
     private static final int API_VERSION_2 = 2;
 
+    private static final int CAMERA_TYPE_BACKWARD_COMPATIBLE = 0;
+    private static final int CAMERA_TYPE_ALL = 1;
+
     protected CameraBinderTestUtils mUtils;
 
     public CameraBinderTest() {
@@ -73,7 +74,7 @@ public class CameraBinderTest extends AndroidTestCase {
     @SmallTest
     public void testNumberOfCameras() throws Exception {
 
-        int numCameras = mUtils.getCameraService().getNumberOfCameras();
+        int numCameras = mUtils.getCameraService().getNumberOfCameras(CAMERA_TYPE_ALL);
         assertTrue("At least this many cameras: " + mUtils.getGuessedNumCameras(),
                 numCameras >= mUtils.getGuessedNumCameras());
         Log.v(TAG, "Number of cameras " + numCameras);
@@ -83,14 +84,7 @@ public class CameraBinderTest extends AndroidTestCase {
     public void testCameraInfo() throws Exception {
         for (int cameraId = 0; cameraId < mUtils.getGuessedNumCameras(); ++cameraId) {
 
-            CameraInfo info = new CameraInfo();
-            info.info.facing = -1;
-            info.info.orientation = -1;
-
-            assertTrue(
-                    "Camera service returned info for camera " + cameraId,
-                    mUtils.getCameraService().getCameraInfo(cameraId, info) ==
-                    CameraBinderTestUtils.NO_ERROR);
+            CameraInfo info = mUtils.getCameraService().getCameraInfo(cameraId);
             assertTrue("Facing was not set for camera " + cameraId, info.info.facing != -1);
             assertTrue("Orientation was not set for camera " + cameraId,
                     info.info.orientation != -1);
@@ -104,20 +98,17 @@ public class CameraBinderTest extends AndroidTestCase {
     public void testGetLegacyParameters() throws Exception {
         for (int cameraId = 0; cameraId < mUtils.getGuessedNumCameras(); ++cameraId) {
 
-            String[] parameters = new String[1];
-            assertEquals("Camera service returned parameters for camera " + cameraId,
-                    CameraBinderTestUtils.NO_ERROR,
-                    mUtils.getCameraService().getLegacyParameters(cameraId, /*out*/parameters));
-            assertNotNull(parameters[0]);
+            String parameters = mUtils.getCameraService().getLegacyParameters(cameraId);
+            assertNotNull(parameters);
             assertTrue("Parameters should have at least one character in it",
-                    parameters[0].length() > 0);
+                    parameters.length() > 0);
 
-            int end = parameters[0].length();
+            int end = parameters.length();
             if (end > MAX_PARAMETERS_LENGTH) {
                 end = MAX_PARAMETERS_LENGTH;
             }
 
-            Log.v(TAG, "Camera " + cameraId + " parameters: " + parameters[0].substring(0, end));
+            Log.v(TAG, "Camera " + cameraId + " parameters: " + parameters.substring(0, end));
         }
     }
 
@@ -126,14 +117,8 @@ public class CameraBinderTest extends AndroidTestCase {
     public void testSupportsCamera2Api() throws Exception {
         for (int cameraId = 0; cameraId < mUtils.getGuessedNumCameras(); ++cameraId) {
 
-            int res = mUtils.getCameraService().supportsCameraApi(cameraId, API_VERSION_2);
+            boolean supports = mUtils.getCameraService().supportsCameraApi(cameraId, API_VERSION_2);
 
-            if (res != CameraBinderTestUtils.NO_ERROR && res != CameraBinderTestUtils.EOPNOTSUPP) {
-                fail("Camera service returned bad value when queried if it supports camera2 api: "
-                        + res + " for camera ID " + cameraId);
-            }
-
-            boolean supports = res == CameraBinderTestUtils.NO_ERROR;
             Log.v(TAG, "Camera " + cameraId + " supports api2: " + supports);
         }
     }
@@ -143,10 +128,10 @@ public class CameraBinderTest extends AndroidTestCase {
     public void testSupportsCamera1Api() throws Exception {
         for (int cameraId = 0; cameraId < mUtils.getGuessedNumCameras(); ++cameraId) {
 
-            int res = mUtils.getCameraService().supportsCameraApi(cameraId, API_VERSION_1);
-            assertEquals(
-                    "Camera service returned bad value when queried if it supports camera1 api: "
-                    + res + " for camera ID " + cameraId, CameraBinderTestUtils.NO_ERROR, res);
+            boolean supports = mUtils.getCameraService().supportsCameraApi(cameraId, API_VERSION_1);
+            assertTrue(
+                    "Camera service returned false when queried if it supports camera1 api " +
+                    " for camera ID " + cameraId, supports);
         }
     }
 
@@ -168,35 +153,10 @@ public class CameraBinderTest extends AndroidTestCase {
 
             String clientPackageName = getContext().getPackageName();
 
-            BinderHolder holder = new BinderHolder();
-            CameraBinderDecorator.newInstance(mUtils.getCameraService())
+            ICamera cameraUser = mUtils.getCameraService()
                     .connect(dummyCallbacks, cameraId, clientPackageName,
-                    CameraBinderTestUtils.USE_CALLING_UID, holder);
-            ICamera cameraUser = ICamera.Stub.asInterface(holder.getBinder());
-            assertNotNull(String.format("Camera %s was null", cameraId), cameraUser);
-
-            Log.v(TAG, String.format("Camera %s connected", cameraId));
-
-            cameraUser.disconnect();
-        }
-    }
-
-    static class DummyProCameraCallbacks extends DummyBase implements IProCameraCallbacks {
-    }
-
-    @SmallTest
-    public void testConnectPro() throws Exception {
-        for (int cameraId = 0; cameraId < mUtils.getGuessedNumCameras(); ++cameraId) {
-
-            IProCameraCallbacks dummyCallbacks = new DummyProCameraCallbacks();
-
-            String clientPackageName = getContext().getPackageName();
-
-            BinderHolder holder = new BinderHolder();
-            CameraBinderDecorator.newInstance(mUtils.getCameraService())
-                    .connectPro(dummyCallbacks, cameraId,
-                    clientPackageName, CameraBinderTestUtils.USE_CALLING_UID, holder);
-            IProCameraUser cameraUser = IProCameraUser.Stub.asInterface(holder.getBinder());
+                            ICameraService.USE_CALLING_UID,
+                            ICameraService.USE_CALLING_PID);
             assertNotNull(String.format("Camera %s was null", cameraId), cameraUser);
 
             Log.v(TAG, String.format("Camera %s connected", cameraId));
@@ -214,14 +174,11 @@ public class CameraBinderTest extends AndroidTestCase {
 
             String clientPackageName = getContext().getPackageName();
 
-            BinderHolder holder = new BinderHolder();
-
             try {
-                CameraBinderDecorator.newInstance(mUtils.getCameraService())
+                cameraUser = mUtils.getCameraService()
                         .connectLegacy(dummyCallbacks, cameraId, CAMERA_HAL_API_VERSION_1_0,
-                        clientPackageName,
-                        CameraBinderTestUtils.USE_CALLING_UID, holder);
-                cameraUser = ICamera.Stub.asInterface(holder.getBinder());
+                                clientPackageName,
+                                ICameraService.USE_CALLING_UID);
                 assertNotNull(String.format("Camera %s was null", cameraId), cameraUser);
 
                 Log.v(TAG, String.format("Camera %s connected as HAL1 legacy device", cameraId));
@@ -287,6 +244,25 @@ public class CameraBinderTest extends AndroidTestCase {
             // TODO Auto-generated method stub
 
         }
+
+        /*
+         * (non-Javadoc)
+         * @see android.hardware.camera2.ICameraDeviceCallbacks#onPrepared()
+         */
+        @Override
+        public void onPrepared(int streamId) throws RemoteException {
+            // TODO Auto-generated method stub
+
+        }
+
+        /*
+         * (non-Javadoc)
+         * @see android.hardware.camera2.ICameraDeviceCallbacks#onRepeatingRequestError()
+         */
+        @Override
+        public void onRepeatingRequestError(long lastFrameNumber) {
+            // TODO Auto-generated method stub
+        }
     }
 
     @SmallTest
@@ -297,11 +273,11 @@ public class CameraBinderTest extends AndroidTestCase {
 
             String clientPackageName = getContext().getPackageName();
 
-            BinderHolder holder = new BinderHolder();
-            CameraBinderDecorator.newInstance(mUtils.getCameraService())
-                    .connectDevice(dummyCallbacks, cameraId,
-                    clientPackageName, CameraBinderTestUtils.USE_CALLING_UID, holder);
-            ICameraDeviceUser cameraUser = ICameraDeviceUser.Stub.asInterface(holder.getBinder());
+            ICameraDeviceUser cameraUser =
+                    mUtils.getCameraService().connectDevice(
+                        dummyCallbacks, cameraId,
+                        clientPackageName,
+                        ICameraService.USE_CALLING_UID);
             assertNotNull(String.format("Camera %s was null", cameraId), cameraUser);
 
             Log.v(TAG, String.format("Camera %s connected", cameraId));
@@ -315,6 +291,11 @@ public class CameraBinderTest extends AndroidTestCase {
         public void onStatusChanged(int status, int cameraId)
                 throws RemoteException {
             Log.v(TAG, String.format("Camera %d has status changed to 0x%x", cameraId, status));
+        }
+        public void onTorchStatusChanged(int status, String cameraId)
+                throws RemoteException {
+            Log.v(TAG, String.format("Camera %s has torch status changed to 0x%x",
+                    cameraId, status));
         }
     }
 
@@ -331,27 +312,33 @@ public class CameraBinderTest extends AndroidTestCase {
 
             ICameraServiceListener listener = new DummyCameraServiceListener();
 
-            assertTrue(
-                    "Listener was removed before added",
-                    mUtils.getCameraService().removeListener(listener) ==
-                    CameraBinderTestUtils.BAD_VALUE);
+            try {
+                mUtils.getCameraService().removeListener(listener);
+                fail("Listener was removed before added");
+            } catch (ServiceSpecificException e) {
+                assertEquals("Listener was removed before added",
+                        e.errorCode, ICameraService.ERROR_ILLEGAL_ARGUMENT);
+            }
 
-            assertTrue("Listener was not added",
-                    mUtils.getCameraService().addListener(listener) ==
-                    CameraBinderTestUtils.NO_ERROR);
-            assertTrue(
-                    "Listener was wrongly added again",
-                    mUtils.getCameraService().addListener(listener) ==
-                    CameraBinderTestUtils.ALREADY_EXISTS);
+            mUtils.getCameraService().addListener(listener);
 
-            assertTrue(
-                    "Listener was not removed",
-                    mUtils.getCameraService().removeListener(listener) ==
-                    CameraBinderTestUtils.NO_ERROR);
-            assertTrue(
-                    "Listener was wrongly removed again",
-                    mUtils.getCameraService().removeListener(listener) ==
-                    CameraBinderTestUtils.BAD_VALUE);
+            try {
+                mUtils.getCameraService().addListener(listener);
+                fail("Listener was wrongly added again");
+            } catch (ServiceSpecificException e) {
+                assertEquals("Listener was wrongly added again",
+                        e.errorCode, ICameraService.ERROR_ALREADY_EXISTS);
+            }
+
+            mUtils.getCameraService().removeListener(listener);
+
+            try {
+                mUtils.getCameraService().removeListener(listener);
+                fail("Listener was wrongly removed twice");
+            } catch (ServiceSpecificException e) {
+                assertEquals("Listener was wrongly removed twice",
+                        e.errorCode, ICameraService.ERROR_ILLEGAL_ARGUMENT);
+            }
         }
     }
 }

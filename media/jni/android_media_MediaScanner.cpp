@@ -360,7 +360,6 @@ android_media_MediaScanner_extractAlbumArt(
         env->SetByteArrayRegion(array, 0, mediaAlbumArt->size(), data);
     }
 
-done:
     free(mediaAlbumArt);
     // if NewByteArray() returned NULL, an out-of-memory
     // exception will have been raised. I just want to
@@ -413,7 +412,7 @@ android_media_MediaScanner_native_finalize(JNIEnv *env, jobject thiz)
     setNativeScanner_l(env, thiz, 0);
 }
 
-static JNINativeMethod gMethods[] = {
+static const JNINativeMethod gMethods[] = {
     {
         "processDirectory",
         "(Ljava/lang/String;Landroid/media/MediaScannerClient;)V",

@@ -35,12 +35,21 @@ using android::Sensor;
 using android::SensorManager;
 using android::SensorEventQueue;
 using android::String8;
+using android::String16;
 
 /*****************************************************************************/
-
 ASensorManager* ASensorManager_getInstance()
 {
-    return &SensorManager::getInstance();
+    return ASensorManager_getInstanceForPackage(NULL);
+}
+
+ASensorManager* ASensorManager_getInstanceForPackage(const char* packageName)
+{
+    if (packageName) {
+        return &SensorManager::getInstanceForPackage(String16(packageName));
+    } else {
+        return &SensorManager::getInstanceForPackage(String16());
+    }
 }
 
 int ASensorManager_getSensorList(ASensorManager* manager,
@@ -95,6 +104,14 @@ int ASensorManager_destroyEventQueue(ASensorManager* manager,
 }
 
 /*****************************************************************************/
+
+int ASensorEventQueue_registerSensor(ASensorEventQueue* queue, ASensor const* sensor,
+        int32_t samplingPeriodUs, int maxBatchReportLatencyUs)
+{
+    return static_cast<SensorEventQueue*>(queue)->enableSensor(
+            static_cast<Sensor const*>(sensor)->getHandle(), samplingPeriodUs,
+                    maxBatchReportLatencyUs, 0);
+}
 
 int ASensorEventQueue_enableSensor(ASensorEventQueue* queue, ASensor const* sensor)
 {

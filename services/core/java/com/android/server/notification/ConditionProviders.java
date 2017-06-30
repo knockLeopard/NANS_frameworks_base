@@ -16,7 +16,11 @@
 
 package com.android.server.notification;
 
+import android.annotation.NonNull;
+import android.app.INotificationManager;
+import android.app.NotificationManager;
 import android.content.ComponentName;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.net.Uri;
 import android.os.Handler;
@@ -25,12 +29,10 @@ import android.os.IInterface;
 import android.os.RemoteException;
 import android.os.UserHandle;
 import android.provider.Settings;
-import android.provider.Settings.Global;
 import android.service.notification.Condition;
 import android.service.notification.ConditionProviderService;
-import android.service.notification.IConditionListener;
 import android.service.notification.IConditionProvider;
-import android.service.notification.ZenModeConfig;
+import android.text.TextUtils;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Slog;
@@ -41,53 +43,47 @@ import com.android.server.notification.NotificationManagerService.DumpFilter;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Objects;
 
 public class ConditionProviders extends ManagedServices {
-    private static final Condition[] NO_CONDITIONS = new Condition[0];
+    private final ArrayList<ConditionRecord> mRecords = new ArrayList<>();
+    private final ArraySet<String> mSystemConditionProviderNames;
+    private final ArraySet<SystemConditionProviderService> mSystemConditionProviders
+            = new ArraySet<>();
 
-    private final ZenModeHelper mZenModeHelper;
-    private final ArrayMap<IBinder, IConditionListener> mListeners
-            = new ArrayMap<IBinder, IConditionListener>();
-    private final ArrayList<ConditionRecord> mRecords = new ArrayList<ConditionRecord>();
-    private final ArraySet<String> mSystemConditionProviders;
-    private final CountdownConditionProvider mCountdown;
-    private final DowntimeConditionProvider mDowntime;
-    private final NextAlarmConditionProvider mNextAlarm;
-    private final NextAlarmTracker mNextAlarmTracker;
+    private Callback mCallback;
 
-    private Condition mExitCondition;
-    private ComponentName mExitConditionComponent;
-
-    public ConditionProviders(Context context, Handler handler,
-            UserProfiles userProfiles, ZenModeHelper zenModeHelper) {
+    public ConditionProviders(Context context, Handler handler, UserProfiles userProfiles) {
         super(context, handler, new Object(), userProfiles);
-        mZenModeHelper = zenModeHelper;
-        mZenModeHelper.addCallback(new ZenModeHelperCallback());
-        mSystemConditionProviders = safeSet(PropConfig.getStringArray(mContext,
+        mSystemConditionProviderNames = safeSet(PropConfig.getStringArray(mContext,
                 "system.condition.providers",
                 R.array.config_system_condition_providers));
-        final boolean countdown = mSystemConditionProviders.contains(ZenModeConfig.COUNTDOWN_PATH);
-        final boolean downtime = mSystemConditionProviders.contains(ZenModeConfig.DOWNTIME_PATH);
-        final boolean nextAlarm = mSystemConditionProviders.contains(ZenModeConfig.NEXT_ALARM_PATH);
-        mNextAlarmTracker = (downtime || nextAlarm) ? new NextAlarmTracker(mContext) : null;
-        mCountdown = countdown ? new CountdownConditionProvider() : null;
-        mDowntime = downtime ? new DowntimeConditionProvider(this, mNextAlarmTracker,
-                mZenModeHelper) : null;
-        mNextAlarm = nextAlarm ? new NextAlarmConditionProvider(mNextAlarmTracker) : null;
-        loadZenConfig();
     }
 
-    public boolean isSystemConditionProviderEnabled(String path) {
-        return mSystemConditionProviders.contains(path);
+    public void setCallback(Callback callback) {
+        mCallback = callback;
+    }
+
+    public boolean isSystemProviderEnabled(String path) {
+        return mSystemConditionProviderNames.contains(path);
+    }
+
+    public void addSystemProvider(SystemConditionProviderService service) {
+        mSystemConditionProviders.add(service);
+        service.attachBase(mContext);
+        registerService(service.asInterface(), service.getComponent(), UserHandle.USER_SYSTEM);
+    }
+
+    public Iterable<SystemConditionProviderService> getSystemProviders() {
+        return mSystemConditionProviders;
     }
 
     @Override
     protected Config getConfig() {
-        Config c = new Config();
+        final Config c = new Config();
         c.caption = "condition provider";
         c.serviceInterface = ConditionProviderService.SERVICE_INTERFACE;
-        c.secureSettingName = Settings.Secure.ENABLED_CONDITION_PROVIDERS;
+        c.secureSettingName = Settings.Secure.ENABLED_NOTIFICATION_POLICY_ACCESS_PACKAGES;
+        c.secondarySettingName = Settings.Secure.ENABLED_NOTIFICATION_LISTENERS;
         c.bindPermission = android.Manifest.permission.BIND_CONDITION_PROVIDER_SERVICE;
         c.settingsAction = Settings.ACTION_CONDITION_PROVIDER_SETTINGS;
         c.clientLabel = R.string.condition_provider_service_binding_label;
@@ -98,12 +94,6 @@ public class ConditionProviders extends ManagedServices {
     public void dump(PrintWriter pw, DumpFilter filter) {
         super.dump(pw, filter);
         synchronized(mMutex) {
-            if (filter == null) {
-                pw.print("    mListeners("); pw.print(mListeners.size()); pw.println("):");
-                for (int i = 0; i < mListeners.size(); i++) {
-                    pw.print("      "); pw.println(mListeners.keyAt(i));
-                }
-            }
             pw.print("    mRecords("); pw.print(mRecords.size()); pw.println("):");
             for (int i = 0; i < mRecords.size(); i++) {
                 final ConditionRecord r = mRecords.get(i);
@@ -115,18 +105,9 @@ public class ConditionProviders extends ManagedServices {
                 }
             }
         }
-        pw.print("    mSystemConditionProviders: "); pw.println(mSystemConditionProviders);
-        if (mCountdown != null) {
-            mCountdown.dump(pw, filter);
-        }
-        if (mDowntime != null) {
-            mDowntime.dump(pw, filter);
-        }
-        if (mNextAlarm != null) {
-            mNextAlarm.dump(pw, filter);
-        }
-        if (mNextAlarmTracker != null) {
-            mNextAlarmTracker.dump(pw, filter);
+        pw.print("    mSystemConditionProviders: "); pw.println(mSystemConditionProviderNames);
+        for (int i = 0; i < mSystemConditionProviders.size(); i++) {
+            mSystemConditionProviders.valueAt(i).dump(pw, filter);
         }
     }
 
@@ -136,33 +117,26 @@ public class ConditionProviders extends ManagedServices {
     }
 
     @Override
+    protected boolean checkType(IInterface service) {
+        return service instanceof IConditionProvider;
+    }
+
+    @Override
     public void onBootPhaseAppsCanStart() {
         super.onBootPhaseAppsCanStart();
-        if (mNextAlarmTracker != null) {
-            mNextAlarmTracker.init();
+        for (int i = 0; i < mSystemConditionProviders.size(); i++) {
+            mSystemConditionProviders.valueAt(i).onBootComplete();
         }
-        if (mCountdown != null) {
-            mCountdown.attachBase(mContext);
-            registerService(mCountdown.asInterface(), CountdownConditionProvider.COMPONENT,
-                    UserHandle.USER_OWNER);
-        }
-        if (mDowntime != null) {
-            mDowntime.attachBase(mContext);
-            registerService(mDowntime.asInterface(), DowntimeConditionProvider.COMPONENT,
-                    UserHandle.USER_OWNER);
-        }
-        if (mNextAlarm != null) {
-            mNextAlarm.attachBase(mContext);
-            registerService(mNextAlarm.asInterface(), NextAlarmConditionProvider.COMPONENT,
-                    UserHandle.USER_OWNER);
+        if (mCallback != null) {
+            mCallback.onBootComplete();
         }
     }
 
     @Override
-    public void onUserSwitched() {
-        super.onUserSwitched();
-        if (mNextAlarmTracker != null) {
-            mNextAlarmTracker.onUserSwitched();
+    public void onUserSwitched(int user) {
+        super.onUserSwitched(user);
+        if (mCallback != null) {
+            mCallback.onUserSwitched();
         }
     }
 
@@ -174,23 +148,8 @@ public class ConditionProviders extends ManagedServices {
         } catch (RemoteException e) {
             // we tried
         }
-        synchronized (mMutex) {
-            if (info.component.equals(mExitConditionComponent)) {
-                // ensure record exists, we'll wire it up and subscribe below
-                final ConditionRecord manualRecord =
-                        getRecordLocked(mExitCondition.id, mExitConditionComponent);
-                manualRecord.isManual = true;
-            }
-            final int N = mRecords.size();
-            for(int i = 0; i < N; i++) {
-                final ConditionRecord r = mRecords.get(i);
-                if (!r.component.equals(info.component)) continue;
-                r.info = info;
-                // if automatic or manual, auto-subscribe
-                if (r.isAutomatic || r.isManual) {
-                    subscribeLocked(r);
-                }
-            }
+        if (mCallback != null) {
+            mCallback.onServiceAdded(info.component);
         }
     }
 
@@ -200,17 +159,27 @@ public class ConditionProviders extends ManagedServices {
         for (int i = mRecords.size() - 1; i >= 0; i--) {
             final ConditionRecord r = mRecords.get(i);
             if (!r.component.equals(removed.component)) continue;
-            if (r.isManual) {
-                // removing the current manual condition, exit zen
-                onManualConditionClearing();
-                mZenModeHelper.setZenMode(Global.ZEN_MODE_OFF, "manualServiceRemoved");
-            }
-            if (r.isAutomatic) {
-                // removing an automatic condition, exit zen
-                mZenModeHelper.setZenMode(Global.ZEN_MODE_OFF, "automaticServiceRemoved");
-            }
             mRecords.remove(i);
         }
+    }
+
+    @Override
+    public void onPackagesChanged(boolean removingPackage, String[] pkgList) {
+        if (removingPackage) {
+            INotificationManager inm = NotificationManager.getService();
+
+            if (pkgList != null && (pkgList.length > 0)) {
+                for (String pkgName : pkgList) {
+                    try {
+                        inm.removeAutomaticZenRules(pkgName);
+                        inm.setNotificationPolicyAccessGranted(pkgName, false);
+                    } catch (Exception e) {
+                        Slog.e(TAG, "Failed to clean up rules for " + pkgName, e);
+                    }
+                }
+            }
+        }
+        super.onPackagesChanged(removingPackage, pkgList);
     }
 
     public ManagedServiceInfo checkServiceToken(IConditionProvider provider) {
@@ -219,34 +188,12 @@ public class ConditionProviders extends ManagedServices {
         }
     }
 
-    public void requestZenModeConditions(IConditionListener callback, int relevance) {
-        synchronized(mMutex) {
-            if (DEBUG) Slog.d(TAG, "requestZenModeConditions callback=" + callback
-                    + " relevance=" + Condition.relevanceToString(relevance));
-            if (callback == null) return;
-            relevance = relevance & (Condition.FLAG_RELEVANT_NOW | Condition.FLAG_RELEVANT_ALWAYS);
-            if (relevance != 0) {
-                mListeners.put(callback.asBinder(), callback);
-                requestConditionsLocked(relevance);
-            } else {
-                mListeners.remove(callback.asBinder());
-                if (mListeners.isEmpty()) {
-                    requestConditionsLocked(0);
-                }
-            }
-        }
-    }
-
-    private Condition[] validateConditions(String pkg, Condition[] conditions) {
+    private Condition[] removeDuplicateConditions(String pkg, Condition[] conditions) {
         if (conditions == null || conditions.length == 0) return null;
         final int N = conditions.length;
         final ArrayMap<Uri, Condition> valid = new ArrayMap<Uri, Condition>(N);
         for (int i = 0; i < N; i++) {
             final Uri id = conditions[i].id;
-            if (!Condition.isValidId(id, pkg)) {
-                Slog.w(TAG, "Ignoring condition from " + pkg + " for invalid id: " + id);
-                continue;
-            }
             if (valid.containsKey(id)) {
                 Slog.w(TAG, "Ignoring condition from " + pkg + " for duplicate id: " + id);
                 continue;
@@ -262,7 +209,8 @@ public class ConditionProviders extends ManagedServices {
         return rt;
     }
 
-    private ConditionRecord getRecordLocked(Uri id, ComponentName component) {
+    private ConditionRecord getRecordLocked(Uri id, ComponentName component, boolean create) {
+        if (id == null || component == null) return null;
         final int N = mRecords.size();
         for (int i = 0; i < N; i++) {
             final ConditionRecord r = mRecords.get(i);
@@ -270,120 +218,112 @@ public class ConditionProviders extends ManagedServices {
                 return r;
             }
         }
-        final ConditionRecord r = new ConditionRecord(id, component);
-        mRecords.add(r);
-        return r;
+        if (create) {
+            final ConditionRecord r = new ConditionRecord(id, component);
+            mRecords.add(r);
+            return r;
+        }
+        return null;
     }
 
     public void notifyConditions(String pkg, ManagedServiceInfo info, Condition[] conditions) {
         synchronized(mMutex) {
             if (DEBUG) Slog.d(TAG, "notifyConditions pkg=" + pkg + " info=" + info + " conditions="
                     + (conditions == null ? null : Arrays.asList(conditions)));
-            conditions = validateConditions(pkg, conditions);
+            conditions = removeDuplicateConditions(pkg, conditions);
             if (conditions == null || conditions.length == 0) return;
             final int N = conditions.length;
-            for (IConditionListener listener : mListeners.values()) {
-                try {
-                    listener.onConditionsReceived(conditions);
-                } catch (RemoteException e) {
-                    Slog.w(TAG, "Error sending conditions to listener " + listener, e);
-                }
-            }
             for (int i = 0; i < N; i++) {
                 final Condition c = conditions[i];
-                final ConditionRecord r = getRecordLocked(c.id, info.component);
-                final Condition oldCondition = r.condition;
-                final boolean conditionUpdate = oldCondition != null && !oldCondition.equals(c);
+                final ConditionRecord r = getRecordLocked(c.id, info.component, true /*create*/);
                 r.info = info;
                 r.condition = c;
-                // if manual, exit zen if false (or failed), update if true (and changed)
-                if (r.isManual) {
-                    if (c.state == Condition.STATE_FALSE || c.state == Condition.STATE_ERROR) {
-                        final boolean failed = c.state == Condition.STATE_ERROR;
-                        if (failed) {
-                            Slog.w(TAG, "Exit zen: manual condition failed: " + c);
-                        } else if (DEBUG) {
-                            Slog.d(TAG, "Exit zen: manual condition false: " + c);
-                        }
-                        onManualConditionClearing();
-                        mZenModeHelper.setZenMode(Settings.Global.ZEN_MODE_OFF,
-                                "manualConditionExit");
-                        unsubscribeLocked(r);
-                        r.isManual = false;
-                    } else if (c.state == Condition.STATE_TRUE && conditionUpdate) {
-                        if (DEBUG) Slog.d(TAG, "Current condition updated, still true. old="
-                                + oldCondition + " new=" + c);
-                        setZenModeCondition(c, "conditionUpdate");
-                    }
-                }
-                // if automatic, exit zen if false (or failed), enter zen if true
-                if (r.isAutomatic) {
-                    if (c.state == Condition.STATE_FALSE || c.state == Condition.STATE_ERROR) {
-                        final boolean failed = c.state == Condition.STATE_ERROR;
-                        if (failed) {
-                            Slog.w(TAG, "Exit zen: automatic condition failed: " + c);
-                        } else if (DEBUG) {
-                            Slog.d(TAG, "Exit zen: automatic condition false: " + c);
-                        }
-                        mZenModeHelper.setZenMode(Settings.Global.ZEN_MODE_OFF,
-                                "automaticConditionExit");
-                    } else if (c.state == Condition.STATE_TRUE) {
-                        Slog.d(TAG, "Enter zen: automatic condition true: " + c);
-                        mZenModeHelper.setZenMode(Settings.Global.ZEN_MODE_IMPORTANT_INTERRUPTIONS,
-                                "automaticConditionEnter");
-                    }
-                }
+            }
+        }
+        final int N = conditions.length;
+        for (int i = 0; i < N; i++) {
+            final Condition c = conditions[i];
+            if (mCallback != null) {
+                mCallback.onConditionChanged(c.id, c);
             }
         }
     }
 
-    private void ensureRecordExists(Condition condition, IConditionProvider provider,
-            ComponentName component) {
+    public IConditionProvider findConditionProvider(ComponentName component) {
+        if (component == null) return null;
+        for (ManagedServiceInfo service : mServices) {
+            if (component.equals(service.component)) {
+                return provider(service);
+            }
+        }
+        return null;
+    }
+
+    public Condition findCondition(ComponentName component, Uri conditionId) {
+        if (component == null || conditionId == null) return null;
+        synchronized (mMutex) {
+            final ConditionRecord r = getRecordLocked(conditionId, component, false /*create*/);
+            return r != null ? r.condition : null;
+        }
+    }
+
+    public void ensureRecordExists(ComponentName component, Uri conditionId,
+            IConditionProvider provider) {
         // constructed by convention, make sure the record exists...
-        final ConditionRecord r = getRecordLocked(condition.id, component);
+        final ConditionRecord r = getRecordLocked(conditionId, component, true /*create*/);
         if (r.info == null) {
             // ... and is associated with the in-process service
             r.info = checkServiceTokenLocked(provider);
         }
     }
 
-    public void setZenModeCondition(Condition condition, String reason) {
-        if (DEBUG) Slog.d(TAG, "setZenModeCondition " + condition + " reason=" + reason);
-        synchronized(mMutex) {
-            ComponentName conditionComponent = null;
-            if (condition != null) {
-                if (mCountdown != null && ZenModeConfig.isValidCountdownConditionId(condition.id)) {
-                    ensureRecordExists(condition, mCountdown.asInterface(),
-                            CountdownConditionProvider.COMPONENT);
-                }
-                if (mDowntime != null && ZenModeConfig.isValidDowntimeConditionId(condition.id)) {
-                    ensureRecordExists(condition, mDowntime.asInterface(),
-                            DowntimeConditionProvider.COMPONENT);
-                }
-            }
-            final int N = mRecords.size();
-            for (int i = 0; i < N; i++) {
-                final ConditionRecord r = mRecords.get(i);
-                final boolean idEqual = condition != null && r.id.equals(condition.id);
-                if (r.isManual && !idEqual) {
-                    // was previous manual condition, unsubscribe
-                    unsubscribeLocked(r);
-                    r.isManual = false;
-                } else if (idEqual && !r.isManual) {
-                    // is new manual condition, subscribe
-                    subscribeLocked(r);
-                    r.isManual = true;
-                }
-                if (idEqual) {
-                    conditionComponent = r.component;
+    @Override
+    protected @NonNull ArraySet<ComponentName> loadComponentNamesFromSetting(String settingName,
+            int userId) {
+        final ContentResolver cr = mContext.getContentResolver();
+        String settingValue = Settings.Secure.getStringForUser(
+                cr,
+                settingName,
+                userId);
+        if (TextUtils.isEmpty(settingValue))
+            return new ArraySet<>();
+        String[] packages = settingValue.split(ENABLED_SERVICES_SEPARATOR);
+        ArraySet<ComponentName> result = new ArraySet<>(packages.length);
+        for (int i = 0; i < packages.length; i++) {
+            if (!TextUtils.isEmpty(packages[i])) {
+                final ComponentName component = ComponentName.unflattenFromString(packages[i]);
+                if (component != null) {
+                    result.addAll(queryPackageForServices(component.getPackageName(), userId));
+                } else {
+                    result.addAll(queryPackageForServices(packages[i], userId));
                 }
             }
-            if (!Objects.equals(mExitCondition, condition)) {
-                mExitCondition = condition;
-                mExitConditionComponent = conditionComponent;
-                ZenLog.traceExitCondition(mExitCondition, mExitConditionComponent, reason);
-                saveZenConfigLocked();
+        }
+        return result;
+    }
+
+    public boolean subscribeIfNecessary(ComponentName component, Uri conditionId) {
+        synchronized (mMutex) {
+            final ConditionRecord r = getRecordLocked(conditionId, component, false /*create*/);
+            if (r == null) {
+                Slog.w(TAG, "Unable to subscribe to " + component + " " + conditionId);
+                return false;
             }
+            if (r.subscribed) return true;
+            subscribeLocked(r);
+            return r.subscribed;
+        }
+    }
+
+    public void unsubscribeIfNecessary(ComponentName component, Uri conditionId) {
+        synchronized (mMutex) {
+            final ConditionRecord r = getRecordLocked(conditionId, component, false /*create*/);
+            if (r == null) {
+                Slog.w(TAG, "Unable to unsubscribe to " + component + " " + conditionId);
+                return;
+            }
+            if (!r.subscribed) return;
+            unsubscribeLocked(r);;
         }
     }
 
@@ -393,8 +333,9 @@ public class ConditionProviders extends ManagedServices {
         RemoteException re = null;
         if (provider != null) {
             try {
-                Slog.d(TAG, "Subscribing to " + r.id + " with " + provider);
+                Slog.d(TAG, "Subscribing to " + r.id + " with " + r.component);
                 provider.onSubscribe(r.id);
+                r.subscribed = true;
             } catch (RemoteException e) {
                 Slog.w(TAG, "Error subscribing to " + r, e);
                 re = e;
@@ -417,53 +358,6 @@ public class ConditionProviders extends ManagedServices {
         return rt;
     }
 
-    public void setAutomaticZenModeConditions(Uri[] conditionIds) {
-        setAutomaticZenModeConditions(conditionIds, true /*save*/);
-    }
-
-    private void setAutomaticZenModeConditions(Uri[] conditionIds, boolean save) {
-        if (DEBUG) Slog.d(TAG, "setAutomaticZenModeConditions "
-                + (conditionIds == null ? null : Arrays.asList(conditionIds)));
-        synchronized(mMutex) {
-            final ArraySet<Uri> newIds = safeSet(conditionIds);
-            final int N = mRecords.size();
-            boolean changed = false;
-            for (int i = 0; i < N; i++) {
-                final ConditionRecord r = mRecords.get(i);
-                final boolean automatic = newIds.contains(r.id);
-                if (!r.isAutomatic && automatic) {
-                    // subscribe to new automatic
-                    subscribeLocked(r);
-                    r.isAutomatic = true;
-                    changed = true;
-                } else if (r.isAutomatic && !automatic) {
-                    // unsubscribe from old automatic
-                    unsubscribeLocked(r);
-                    r.isAutomatic = false;
-                    changed = true;
-                }
-            }
-            if (save && changed) {
-                saveZenConfigLocked();
-            }
-        }
-    }
-
-    public Condition[] getAutomaticZenModeConditions() {
-        synchronized(mMutex) {
-            final int N = mRecords.size();
-            ArrayList<Condition> rt = null;
-            for (int i = 0; i < N; i++) {
-                final ConditionRecord r = mRecords.get(i);
-                if (r.isAutomatic && r.condition != null) {
-                    if (rt == null) rt = new ArrayList<Condition>();
-                    rt.add(r.condition);
-                }
-            }
-            return rt == null ? NO_CONDITIONS : rt.toArray(new Condition[rt.size()]);
-        }
-    }
-
     private void unsubscribeLocked(ConditionRecord r) {
         if (DEBUG) Slog.d(TAG, "unsubscribeLocked " + r);
         final IConditionProvider provider = provider(r);
@@ -475,6 +369,7 @@ public class ConditionProviders extends ManagedServices {
                 Slog.w(TAG, "Error unsubscribing to " + r, e);
                 re = e;
             }
+            r.subscribed = false;
         }
         ZenLog.traceUnsubscribe(r != null ? r.id : null, provider, re);
     }
@@ -487,122 +382,12 @@ public class ConditionProviders extends ManagedServices {
         return info == null ? null : (IConditionProvider) info.service;
     }
 
-    private void requestConditionsLocked(int flags) {
-        for (ManagedServiceInfo info : mServices) {
-            final IConditionProvider provider = provider(info);
-            if (provider == null) continue;
-            // clear all stored conditions from this provider that we no longer care about
-            for (int i = mRecords.size() - 1; i >= 0; i--) {
-                final ConditionRecord r = mRecords.get(i);
-                if (r.info != info) continue;
-                if (r.isManual || r.isAutomatic) continue;
-                mRecords.remove(i);
-            }
-            try {
-                provider.onRequestConditions(flags);
-            } catch (RemoteException e) {
-                Slog.w(TAG, "Error requesting conditions from " + info.component, e);
-            }
-        }
-    }
-
-    private void loadZenConfig() {
-        final ZenModeConfig config = mZenModeHelper.getConfig();
-        if (config == null) {
-            if (DEBUG) Slog.d(TAG, "loadZenConfig: no config");
-            return;
-        }
-        synchronized (mMutex) {
-            final boolean changingExit = !Objects.equals(mExitCondition, config.exitCondition);
-            mExitCondition = config.exitCondition;
-            mExitConditionComponent = config.exitConditionComponent;
-            if (changingExit) {
-                ZenLog.traceExitCondition(mExitCondition, mExitConditionComponent, "config");
-            }
-            if (mDowntime != null) {
-                mDowntime.setConfig(config);
-            }
-            if (config.conditionComponents == null || config.conditionIds == null
-                    || config.conditionComponents.length != config.conditionIds.length) {
-                if (DEBUG) Slog.d(TAG, "loadZenConfig: no conditions");
-                setAutomaticZenModeConditions(null, false /*save*/);
-                return;
-            }
-            final ArraySet<Uri> newIds = new ArraySet<Uri>();
-            final int N = config.conditionComponents.length;
-            for (int i = 0; i < N; i++) {
-                final ComponentName component = config.conditionComponents[i];
-                final Uri id = config.conditionIds[i];
-                if (component != null && id != null) {
-                    getRecordLocked(id, component);  // ensure record exists
-                    newIds.add(id);
-                }
-            }
-            if (DEBUG) Slog.d(TAG, "loadZenConfig: N=" + N);
-            setAutomaticZenModeConditions(newIds.toArray(new Uri[newIds.size()]), false /*save*/);
-        }
-    }
-
-    private void saveZenConfigLocked() {
-        ZenModeConfig config = mZenModeHelper.getConfig();
-        if (config == null) return;
-        config = config.copy();
-        final ArrayList<ConditionRecord> automatic = new ArrayList<ConditionRecord>();
-        final int automaticN = mRecords.size();
-        for (int i = 0; i < automaticN; i++) {
-            final ConditionRecord r = mRecords.get(i);
-            if (r.isAutomatic) {
-                automatic.add(r);
-            }
-        }
-        if (automatic.isEmpty()) {
-            config.conditionComponents = null;
-            config.conditionIds = null;
-        } else {
-            final int N = automatic.size();
-            config.conditionComponents = new ComponentName[N];
-            config.conditionIds = new Uri[N];
-            for (int i = 0; i < N; i++) {
-                final ConditionRecord r = automatic.get(i);
-                config.conditionComponents[i] = r.component;
-                config.conditionIds[i] = r.id;
-            }
-        }
-        config.exitCondition = mExitCondition;
-        config.exitConditionComponent = mExitConditionComponent;
-        if (DEBUG) Slog.d(TAG, "Setting zen config to: " + config);
-        mZenModeHelper.setConfig(config);
-    }
-
-    private void onManualConditionClearing() {
-        if (mDowntime != null) {
-            mDowntime.onManualConditionClearing();
-        }
-    }
-
-    private class ZenModeHelperCallback extends ZenModeHelper.Callback {
-        @Override
-        void onConfigChanged() {
-            loadZenConfig();
-        }
-
-        @Override
-        void onZenModeChanged() {
-            final int mode = mZenModeHelper.getZenMode();
-            if (mode == Global.ZEN_MODE_OFF) {
-                // ensure any manual condition is cleared
-                setZenModeCondition(null, "zenOff");
-            }
-        }
-    }
-
     private static class ConditionRecord {
         public final Uri id;
         public final ComponentName component;
         public Condition condition;
         public ManagedServiceInfo info;
-        public boolean isAutomatic;
-        public boolean isManual;
+        public boolean subscribed;
 
         private ConditionRecord(Uri id, ComponentName component) {
             this.id = id;
@@ -612,10 +397,17 @@ public class ConditionProviders extends ManagedServices {
         @Override
         public String toString() {
             final StringBuilder sb = new StringBuilder("ConditionRecord[id=")
-                    .append(id).append(",component=").append(component);
-            if (isAutomatic) sb.append(",automatic");
-            if (isManual) sb.append(",manual");
+                    .append(id).append(",component=").append(component)
+                    .append(",subscribed=").append(subscribed);
             return sb.append(']').toString();
         }
     }
+
+    public interface Callback {
+        void onBootComplete();
+        void onServiceAdded(ComponentName component);
+        void onConditionChanged(Uri id, Condition condition);
+        void onUserSwitched();
+    }
+
 }

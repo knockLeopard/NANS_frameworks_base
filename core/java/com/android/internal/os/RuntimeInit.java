@@ -20,10 +20,12 @@ import android.app.ActivityManagerNative;
 import android.app.ActivityThread;
 import android.app.ApplicationErrorReport;
 import android.os.Build;
+import android.os.DeadObjectException;
 import android.os.Debug;
 import android.os.IBinder;
 import android.os.Process;
 import android.os.SystemProperties;
+import android.os.Trace;
 import android.util.Log;
 import android.util.Slog;
 import com.android.internal.logging.AndroidConfig;
@@ -56,8 +58,7 @@ public class RuntimeInit {
     private static final native void nativeSetExitWithoutCleanup(boolean exitWithoutCleanup);
 
     private static int Clog_e(String tag, String msg, Throwable tr) {
-        return Log.println_native(Log.LOG_ID_CRASH, Log.ERROR, tag,
-                msg + '\n' + Log.getStackTraceString(tr));
+        return Log.printlns(Log.LOG_ID_CRASH, Log.ERROR, tag, msg, tr);
     }
 
     /**
@@ -85,14 +86,25 @@ public class RuntimeInit {
                     Clog_e(TAG, message.toString(), e);
                 }
 
+                // Try to end profiling. If a profiler is running at this point, and we kill the
+                // process (below), the in-memory buffer will be lost. So try to stop, which will
+                // flush the buffer. (This makes method trace profiling useful to debug crashes.)
+                if (ActivityThread.currentActivityThread() != null) {
+                    ActivityThread.currentActivityThread().stopProfiling();
+                }
+
                 // Bring up crash dialog, wait for it to be dismissed
                 ActivityManagerNative.getDefault().handleApplicationCrash(
                         mApplicationObject, new ApplicationErrorReport.CrashInfo(e));
             } catch (Throwable t2) {
-                try {
-                    Clog_e(TAG, "Error reporting crash", t2);
-                } catch (Throwable t3) {
-                    // Even Clog_e() fails!  Oh well.
+                if (t2 instanceof DeadObjectException) {
+                    // System process is dead; ignore
+                } else {
+                    try {
+                        Clog_e(TAG, "Error reporting crash", t2);
+                    } catch (Throwable t3) {
+                        // Even Clog_e() fails!  Oh well.
+                    }
                 }
             } finally {
                 // Try everything to make sure this process goes away.
@@ -233,6 +245,7 @@ public class RuntimeInit {
     }
 
     public static final void main(String[] argv) {
+        enableDdms();
         if (argv.length == 2 && argv[1].equals("application")) {
             if (DEBUG) Slog.d(TAG, "RuntimeInit: Starting application");
             redirectLogStreams();
@@ -268,11 +281,11 @@ public class RuntimeInit {
             throws ZygoteInit.MethodAndArgsCaller {
         if (DEBUG) Slog.d(TAG, "RuntimeInit: Starting application from zygote");
 
+        Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, "RuntimeInit");
         redirectLogStreams();
 
         commonInit();
         nativeZygoteInit();
-
         applicationInit(targetSdkVersion, argv, classLoader);
     }
 
@@ -317,6 +330,9 @@ public class RuntimeInit {
             return;
         }
 
+        // The end of of the RuntimeInit event (see #zygoteInit).
+        Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+
         // Remaining arguments are passed to the start class's static main
         invokeStaticMain(args.startClass, args.startArgs, classLoader);
     }
@@ -347,8 +363,12 @@ public class RuntimeInit {
                 System.exit(10);
             }
         } catch (Throwable t2) {
-            Slog.e(TAG, "Error reporting WTF", t2);
-            Slog.e(TAG, "Original WTF:", t);
+            if (t2 instanceof DeadObjectException) {
+                // System process is dead; ignore
+            } else {
+                Slog.e(TAG, "Error reporting WTF", t2);
+                Slog.e(TAG, "Original WTF:", t);
+            }
         }
     }
 
@@ -365,9 +385,9 @@ public class RuntimeInit {
     }
 
     /**
-     * Enable debugging features.
+     * Enable DDMS.
      */
-    static {
+    static final void enableDdms() {
         // Register handlers for DDM messages.
         android.ddm.DdmRegister.registerHandlers();
     }

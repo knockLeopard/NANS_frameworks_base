@@ -235,10 +235,13 @@ public class ApplicationErrorReport implements Parcelable {
         dest.writeString(processName);
         dest.writeLong(time);
         dest.writeInt(systemApp ? 1 : 0);
+        dest.writeInt(crashInfo != null ? 1 : 0);
 
         switch (type) {
             case TYPE_CRASH:
-                crashInfo.writeToParcel(dest, flags);
+                if (crashInfo != null) {
+                    crashInfo.writeToParcel(dest, flags);
+                }
                 break;
             case TYPE_ANR:
                 anrInfo.writeToParcel(dest, flags);
@@ -259,10 +262,11 @@ public class ApplicationErrorReport implements Parcelable {
         processName = in.readString();
         time = in.readLong();
         systemApp = in.readInt() == 1;
+        boolean hasCrashInfo = in.readInt() == 1;
 
         switch (type) {
             case TYPE_CRASH:
-                crashInfo = new CrashInfo(in);
+                crashInfo = hasCrashInfo ? new CrashInfo(in) : null;
                 anrInfo = null;
                 batteryInfo = null;
                 runningServiceInfo = null;
@@ -341,7 +345,7 @@ public class ApplicationErrorReport implements Parcelable {
             PrintWriter pw = new FastPrintWriter(sw, false, 256);
             tr.printStackTrace(pw);
             pw.flush();
-            stackTrace = sw.toString();
+            stackTrace = sanitizeString(sw.toString());
             exceptionMessage = tr.getMessage();
 
             // Populate fields with the "root cause" exception
@@ -370,6 +374,34 @@ public class ApplicationErrorReport implements Parcelable {
                 throwMethodName = "unknown";
                 throwLineNumber = 0;
             }
+
+            exceptionMessage = sanitizeString(exceptionMessage);
+        }
+
+        /** {@hide} */
+        public void appendStackTrace(String tr) {
+            stackTrace = sanitizeString(stackTrace + tr);
+        }
+
+        /**
+         * Ensure that the string is of reasonable size, truncating from the middle if needed.
+         */
+        private String sanitizeString(String s) {
+            int prefixLength = 10 * 1024;
+            int suffixLength = 10 * 1024;
+            int acceptableLength = prefixLength + suffixLength;
+
+            if (s != null && s.length() > acceptableLength) {
+                String replacement =
+                        "\n[TRUNCATED " + (s.length() - acceptableLength) + " CHARS]\n";
+
+                StringBuilder sb = new StringBuilder(acceptableLength + replacement.length());
+                sb.append(s.substring(0, prefixLength));
+                sb.append(replacement);
+                sb.append(s.substring(s.length() - suffixLength));
+                return sb.toString();
+            }
+            return s;
         }
 
         /**

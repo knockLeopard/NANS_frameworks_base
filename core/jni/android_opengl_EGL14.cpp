@@ -16,6 +16,10 @@
 
 // This source file is automatically generated
 
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#pragma GCC diagnostic ignored "-Wunused-function"
+
 #include "jni.h"
 #include "JNIHelp.h"
 #include <android_runtime/AndroidRuntime.h>
@@ -156,7 +160,8 @@ static jobject
 android_eglGetDisplayInt
   (JNIEnv *_env, jobject _this, jint display_id) {
 
-    if ((EGLNativeDisplayType)display_id != EGL_DEFAULT_DISPLAY) {
+    if (static_cast<uintptr_t>(display_id) !=
+        reinterpret_cast<uintptr_t>(EGL_DEFAULT_DISPLAY)) {
         jniThrowException(_env, "java/lang/UnsupportedOperationException", "eglGetDisplay");
         return 0;
     }
@@ -179,51 +184,43 @@ android_eglInitialize
     jint _minorRemaining;
     EGLint *minor = (EGLint *) 0;
 
-    if (!major_ref) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "major == null";
-        goto exit;
+    if (major_ref) {
+        if (majorOffset < 0) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "majorOffset < 0";
+            goto exit;
+        }
+        _majorRemaining = _env->GetArrayLength(major_ref) - majorOffset;
+        if (_majorRemaining < 1) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "length - majorOffset < 1 < needed";
+            goto exit;
+        }
+        major_base = (EGLint *)
+            _env->GetIntArrayElements(major_ref, (jboolean *)0);
+        major = major_base + majorOffset;
     }
-    if (majorOffset < 0) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "majorOffset < 0";
-        goto exit;
-    }
-    _majorRemaining = _env->GetArrayLength(major_ref) - majorOffset;
-    if (_majorRemaining < 1) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "length - majorOffset < 1 < needed";
-        goto exit;
-    }
-    major_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(major_ref, (jboolean *)0);
-    major = major_base + majorOffset;
 
-    if (!minor_ref) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "minor == null";
-        goto exit;
+    if (minor_ref) {
+        if (minorOffset < 0) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "minorOffset < 0";
+            goto exit;
+        }
+        _minorRemaining = _env->GetArrayLength(minor_ref) - minorOffset;
+        if (_minorRemaining < 1) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "length - minorOffset < 1 < needed";
+            goto exit;
+        }
+        minor_base = (EGLint *)
+            _env->GetIntArrayElements(minor_ref, (jboolean *)0);
+        minor = minor_base + minorOffset;
     }
-    if (minorOffset < 0) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "minorOffset < 0";
-        goto exit;
-    }
-    _minorRemaining = _env->GetArrayLength(minor_ref) - minorOffset;
-    if (_minorRemaining < 1) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "length - minorOffset < 1 < needed";
-        goto exit;
-    }
-    minor_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(minor_ref, (jboolean *)0);
-    minor = minor_base + minorOffset;
 
     _returnValue = eglInitialize(
         (EGLDisplay)dpy_native,
@@ -233,11 +230,11 @@ android_eglInitialize
 
 exit:
     if (minor_base) {
-        _env->ReleasePrimitiveArrayCritical(minor_ref, minor_base,
+        _env->ReleaseIntArrayElements(minor_ref, (jint*)minor_base,
             _exception ? JNI_ABORT: 0);
     }
     if (major_base) {
-        _env->ReleasePrimitiveArrayCritical(major_ref, major_base,
+        _env->ReleaseIntArrayElements(major_ref, (jint*)major_base,
             _exception ? JNI_ABORT: 0);
     }
     if (_exception) {
@@ -284,26 +281,22 @@ android_eglGetConfigs
     jint _num_configRemaining;
     EGLint *num_config = (EGLint *) 0;
 
-    if (!configs_ref) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "configs == null";
-        goto exit;
+    if (configs_ref) {
+        if (configsOffset < 0) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "configsOffset < 0";
+            goto exit;
+        }
+        _configsRemaining = _env->GetArrayLength(configs_ref) - configsOffset;
+        if (_configsRemaining < config_size) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "length - configsOffset < config_size < needed";
+            goto exit;
+        }
+        configs = new EGLConfig[_configsRemaining];
     }
-    if (configsOffset < 0) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "configsOffset < 0";
-        goto exit;
-    }
-    _configsRemaining = _env->GetArrayLength(configs_ref) - configsOffset;
-    if (_configsRemaining < config_size) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "length - configsOffset < config_size < needed";
-        goto exit;
-    }
-    configs = new EGLConfig[_configsRemaining];
 
     if (!num_config_ref) {
         _exception = 1;
@@ -319,7 +312,7 @@ android_eglGetConfigs
     }
     _num_configRemaining = _env->GetArrayLength(num_config_ref) - num_configOffset;
     num_config_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(num_config_ref, (jboolean *)0);
+        _env->GetIntArrayElements(num_config_ref, (jboolean *)0);
     num_config = num_config_base + num_configOffset;
 
     _returnValue = eglGetConfigs(
@@ -331,7 +324,7 @@ android_eglGetConfigs
 
 exit:
     if (num_config_base) {
-        _env->ReleasePrimitiveArrayCritical(num_config_ref, num_config_base,
+        _env->ReleaseIntArrayElements(num_config_ref, (jint*)num_config_base,
             _exception ? JNI_ABORT: 0);
     }
     if (configs) {
@@ -380,7 +373,7 @@ android_eglChooseConfig
     }
     _attrib_listRemaining = _env->GetArrayLength(attrib_list_ref) - attrib_listOffset;
     attrib_list_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(attrib_list_ref, (jboolean *)0);
+        _env->GetIntArrayElements(attrib_list_ref, (jboolean *)0);
     attrib_list = attrib_list_base + attrib_listOffset;
     attrib_list_sentinel = false;
     for (int i = _attrib_listRemaining - 1; i >= 0; i--)  {
@@ -396,26 +389,22 @@ android_eglChooseConfig
         goto exit;
     }
 
-    if (!configs_ref) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "configs == null";
-        goto exit;
+    if (configs_ref) {
+        if (configsOffset < 0) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "configsOffset < 0";
+            goto exit;
+        }
+        _configsRemaining = _env->GetArrayLength(configs_ref) - configsOffset;
+        if (_configsRemaining < config_size) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "length - configsOffset < config_size < needed";
+            goto exit;
+        }
+        configs = new EGLConfig[_configsRemaining];
     }
-    if (configsOffset < 0) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "configsOffset < 0";
-        goto exit;
-    }
-    _configsRemaining = _env->GetArrayLength(configs_ref) - configsOffset;
-    if (_configsRemaining < config_size) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "length - configsOffset < config_size < needed";
-        goto exit;
-    }
-    configs = new EGLConfig[_configsRemaining];
 
     if (!num_config_ref) {
         _exception = 1;
@@ -437,7 +426,7 @@ android_eglChooseConfig
         goto exit;
     }
     num_config_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(num_config_ref, (jboolean *)0);
+        _env->GetIntArrayElements(num_config_ref, (jboolean *)0);
     num_config = num_config_base + num_configOffset;
 
     _returnValue = eglChooseConfig(
@@ -450,11 +439,11 @@ android_eglChooseConfig
 
 exit:
     if (num_config_base) {
-        _env->ReleasePrimitiveArrayCritical(num_config_ref, num_config_base,
+        _env->ReleaseIntArrayElements(num_config_ref, (jint*)num_config_base,
             _exception ? JNI_ABORT: 0);
     }
     if (attrib_list_base) {
-        _env->ReleasePrimitiveArrayCritical(attrib_list_ref, attrib_list_base,
+        _env->ReleaseIntArrayElements(attrib_list_ref, (jint*)attrib_list_base,
             JNI_ABORT);
     }
     if (configs) {
@@ -504,7 +493,7 @@ android_eglGetConfigAttrib
         goto exit;
     }
     value_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(value_ref, (jboolean *)0);
+        _env->GetIntArrayElements(value_ref, (jboolean *)0);
     value = value_base + offset;
 
     _returnValue = eglGetConfigAttrib(
@@ -516,7 +505,7 @@ android_eglGetConfigAttrib
 
 exit:
     if (value_base) {
-        _env->ReleasePrimitiveArrayCritical(value_ref, value_base,
+        _env->ReleaseIntArrayElements(value_ref, (jint*)value_base,
             _exception ? JNI_ABORT: 0);
     }
     if (_exception) {
@@ -541,18 +530,32 @@ android_eglCreateWindowSurface
     EGLint *attrib_list = (EGLint *) 0;
     android::sp<ANativeWindow> window;
 
-    if (!attrib_list_ref) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "attrib_list == null";
-        goto exit;
+    if (attrib_list_ref) {
+        if (offset < 0) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "offset < 0";
+            goto exit;
+        }
+        _remaining = _env->GetArrayLength(attrib_list_ref) - offset;
+        attrib_list_base = (EGLint *)
+            _env->GetIntArrayElements(attrib_list_ref, (jboolean *)0);
+        attrib_list = attrib_list_base + offset;
+        attrib_list_sentinel = 0;
+        for (int i = _remaining - 1; i >= 0; i--)  {
+            if (*((EGLint*)(attrib_list + i)) == EGL_NONE){
+                attrib_list_sentinel = 1;
+                break;
+            }
+        }
+        if (attrib_list_sentinel == 0) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "attrib_list must contain EGL_NONE!";
+            goto exit;
+        }
     }
-    if (offset < 0) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "offset < 0";
-        goto exit;
-    }
+
     if (win == NULL) {
 not_valid_surface:
         _exception = 1;
@@ -566,24 +569,6 @@ not_valid_surface:
     if (window == NULL)
         goto not_valid_surface;
 
-    _remaining = _env->GetArrayLength(attrib_list_ref) - offset;
-    attrib_list_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(attrib_list_ref, (jboolean *)0);
-    attrib_list = attrib_list_base + offset;
-    attrib_list_sentinel = 0;
-    for (int i = _remaining - 1; i >= 0; i--)  {
-        if (*((EGLint*)(attrib_list + i)) == EGL_NONE){
-            attrib_list_sentinel = 1;
-            break;
-        }
-    }
-    if (attrib_list_sentinel == 0) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "attrib_list must contain EGL_NONE!";
-        goto exit;
-    }
-
     _returnValue = eglCreateWindowSurface(
         (EGLDisplay)dpy_native,
         (EGLConfig)config_native,
@@ -593,7 +578,7 @@ not_valid_surface:
 
 exit:
     if (attrib_list_base) {
-        _env->ReleasePrimitiveArrayCritical(attrib_list_ref, attrib_list_base,
+        _env->ReleaseIntArrayElements(attrib_list_ref, attrib_list_base,
             JNI_ABORT);
     }
     if (_exception) {
@@ -650,7 +635,7 @@ not_valid_surface:
 
     _remaining = _env->GetArrayLength(attrib_list_ref) - offset;
     attrib_list_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(attrib_list_ref, (jboolean *)0);
+        _env->GetIntArrayElements(attrib_list_ref, (jboolean *)0);
     attrib_list = attrib_list_base + offset;
     attrib_list_sentinel = 0;
     for (int i = _remaining - 1; i >= 0; i--)  {
@@ -675,7 +660,7 @@ not_valid_surface:
 
 exit:
     if (attrib_list_base) {
-        _env->ReleasePrimitiveArrayCritical(attrib_list_ref, attrib_list_base,
+        _env->ReleaseIntArrayElements(attrib_list_ref, attrib_list_base,
             JNI_ABORT);
     }
     if (_exception) {
@@ -698,34 +683,30 @@ android_eglCreatePbufferSurface
     jint _remaining;
     EGLint *attrib_list = (EGLint *) 0;
 
-    if (!attrib_list_ref) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "attrib_list == null";
-        goto exit;
-    }
-    if (offset < 0) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "offset < 0";
-        goto exit;
-    }
-    _remaining = _env->GetArrayLength(attrib_list_ref) - offset;
-    attrib_list_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(attrib_list_ref, (jboolean *)0);
-    attrib_list = attrib_list_base + offset;
-    attrib_list_sentinel = false;
-    for (int i = _remaining - 1; i >= 0; i--)  {
-        if (attrib_list[i] == EGL_NONE){
-            attrib_list_sentinel = true;
-            break;
+    if (attrib_list_ref) {
+        if (offset < 0) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "offset < 0";
+            goto exit;
         }
-    }
-    if (attrib_list_sentinel == false) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "attrib_list must contain EGL_NONE!";
-        goto exit;
+        _remaining = _env->GetArrayLength(attrib_list_ref) - offset;
+        attrib_list_base = (EGLint *)
+            _env->GetIntArrayElements(attrib_list_ref, (jboolean *)0);
+        attrib_list = attrib_list_base + offset;
+        attrib_list_sentinel = false;
+        for (int i = _remaining - 1; i >= 0; i--)  {
+            if (attrib_list[i] == EGL_NONE){
+                attrib_list_sentinel = true;
+                break;
+            }
+        }
+        if (attrib_list_sentinel == false) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "attrib_list must contain EGL_NONE!";
+            goto exit;
+        }
     }
 
     _returnValue = eglCreatePbufferSurface(
@@ -736,7 +717,7 @@ android_eglCreatePbufferSurface
 
 exit:
     if (attrib_list_base) {
-        _env->ReleasePrimitiveArrayCritical(attrib_list_ref, attrib_list_base,
+        _env->ReleaseIntArrayElements(attrib_list_ref, (jint*)attrib_list_base,
             JNI_ABORT);
     }
     if (_exception) {
@@ -803,7 +784,7 @@ android_eglQuerySurface
         goto exit;
     }
     value_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(value_ref, (jboolean *)0);
+        _env->GetIntArrayElements(value_ref, (jboolean *)0);
     value = value_base + offset;
 
     _returnValue = eglQuerySurface(
@@ -815,7 +796,7 @@ android_eglQuerySurface
 
 exit:
     if (value_base) {
-        _env->ReleasePrimitiveArrayCritical(value_ref, value_base,
+        _env->ReleaseIntArrayElements(value_ref, (jint*)value_base,
             _exception ? JNI_ABORT: 0);
     }
     if (_exception) {
@@ -877,34 +858,30 @@ android_eglCreatePbufferFromClientBuffer
     jint _remaining;
     EGLint *attrib_list = (EGLint *) 0;
 
-    if (!attrib_list_ref) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "attrib_list == null";
-        goto exit;
-    }
-    if (offset < 0) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "offset < 0";
-        goto exit;
-    }
-    _remaining = _env->GetArrayLength(attrib_list_ref) - offset;
-    attrib_list_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(attrib_list_ref, (jboolean *)0);
-    attrib_list = attrib_list_base + offset;
-    attrib_list_sentinel = false;
-    for (int i = _remaining - 1; i >= 0; i--)  {
-        if (attrib_list[i] == EGL_NONE){
-            attrib_list_sentinel = true;
-            break;
+    if (attrib_list_ref) {
+        if (offset < 0) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "offset < 0";
+            goto exit;
         }
-    }
-    if (attrib_list_sentinel == false) {
-        _exception = 1;
-        _exceptionType = "java/lang/IllegalArgumentException";
-        _exceptionMessage = "attrib_list must contain EGL_NONE!";
-        goto exit;
+        _remaining = _env->GetArrayLength(attrib_list_ref) - offset;
+        attrib_list_base = (EGLint *)
+            _env->GetIntArrayElements(attrib_list_ref, (jboolean *)0);
+        attrib_list = attrib_list_base + offset;
+        attrib_list_sentinel = false;
+        for (int i = _remaining - 1; i >= 0; i--)  {
+            if (attrib_list[i] == EGL_NONE){
+                attrib_list_sentinel = true;
+                break;
+            }
+        }
+        if (attrib_list_sentinel == false) {
+            _exception = 1;
+            _exceptionType = "java/lang/IllegalArgumentException";
+            _exceptionMessage = "attrib_list must contain EGL_NONE!";
+            goto exit;
+        }
     }
 
     _returnValue = eglCreatePbufferFromClientBuffer(
@@ -917,7 +894,7 @@ android_eglCreatePbufferFromClientBuffer
 
 exit:
     if (attrib_list_base) {
-        _env->ReleasePrimitiveArrayCritical(attrib_list_ref, attrib_list_base,
+        _env->ReleaseIntArrayElements(attrib_list_ref, attrib_list_base,
             JNI_ABORT);
     }
     if (_exception) {
@@ -935,7 +912,6 @@ android_eglCreatePbufferFromClientBufferInt
     }
     return android_eglCreatePbufferFromClientBuffer(_env, _this, dpy, buftype, buffer, config, attrib_list_ref, offset);
 }
-
 /* EGLBoolean eglSurfaceAttrib ( EGLDisplay dpy, EGLSurface surface, EGLint attribute, EGLint value ) */
 static jboolean
 android_eglSurfaceAttrib
@@ -1029,7 +1005,7 @@ android_eglCreateContext
     }
     _remaining = _env->GetArrayLength(attrib_list_ref) - offset;
     attrib_list_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(attrib_list_ref, (jboolean *)0);
+        _env->GetIntArrayElements(attrib_list_ref, (jboolean *)0);
     attrib_list = attrib_list_base + offset;
     attrib_list_sentinel = false;
     for (int i = _remaining - 1; i >= 0; i--)  {
@@ -1054,7 +1030,7 @@ android_eglCreateContext
 
 exit:
     if (attrib_list_base) {
-        _env->ReleasePrimitiveArrayCritical(attrib_list_ref, attrib_list_base,
+        _env->ReleaseIntArrayElements(attrib_list_ref, (jint*)attrib_list_base,
             JNI_ABORT);
     }
     if (_exception) {
@@ -1160,7 +1136,7 @@ android_eglQueryContext
         goto exit;
     }
     value_base = (EGLint *)
-        _env->GetPrimitiveArrayCritical(value_ref, (jboolean *)0);
+        _env->GetIntArrayElements(value_ref, (jboolean *)0);
     value = value_base + offset;
 
     _returnValue = eglQueryContext(
@@ -1172,7 +1148,7 @@ android_eglQueryContext
 
 exit:
     if (value_base) {
-        _env->ReleasePrimitiveArrayCritical(value_ref, value_base,
+        _env->ReleaseIntArrayElements(value_ref, (jint*)value_base,
             _exception ? JNI_ABORT: 0);
     }
     if (_exception) {
@@ -1227,7 +1203,7 @@ android_eglCopyBuffers
 
 static const char *classPathName = "android/opengl/EGL14";
 
-static JNINativeMethod methods[] = {
+static const JNINativeMethod methods[] = {
 {"_nativeClassInit", "()V", (void*)nativeClassInit },
 {"eglGetError", "()I", (void *) android_eglGetError },
 {"eglGetDisplay", "(I)Landroid/opengl/EGLDisplay;", (void *) android_eglGetDisplayInt },

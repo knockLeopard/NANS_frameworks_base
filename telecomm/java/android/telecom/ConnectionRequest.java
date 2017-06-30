@@ -16,7 +16,6 @@
 
 package android.telecom;
 
-import android.annotation.SystemApi;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Parcel;
@@ -25,9 +24,7 @@ import android.os.Parcelable;
 /**
  * Simple data container encapsulating a request to some entity to
  * create a new {@link Connection}.
- * @hide
  */
-@SystemApi
 public final class ConnectionRequest implements Parcelable {
 
     // TODO: Token to limit recursive invocations
@@ -35,6 +32,7 @@ public final class ConnectionRequest implements Parcelable {
     private final Uri mAddress;
     private final Bundle mExtras;
     private final int mVideoState;
+    private final String mTelecomCallId;
 
     /**
      * @param accountHandle The accountHandle which should be used to place the call.
@@ -45,7 +43,7 @@ public final class ConnectionRequest implements Parcelable {
             PhoneAccountHandle accountHandle,
             Uri handle,
             Bundle extras) {
-        this(accountHandle, handle, extras, VideoProfile.VideoState.AUDIO_ONLY);
+        this(accountHandle, handle, extras, VideoProfile.STATE_AUDIO_ONLY, null);
     }
 
     /**
@@ -53,17 +51,34 @@ public final class ConnectionRequest implements Parcelable {
      * @param handle The handle (e.g., phone number) to which the {@link Connection} is to connect.
      * @param extras Application-specific extra data.
      * @param videoState Determines the video state for the connection.
-     * @hide
      */
     public ConnectionRequest(
             PhoneAccountHandle accountHandle,
             Uri handle,
             Bundle extras,
             int videoState) {
+        this(accountHandle, handle, extras, videoState, null);
+    }
+
+    /**
+     * @param accountHandle The accountHandle which should be used to place the call.
+     * @param handle The handle (e.g., phone number) to which the {@link Connection} is to connect.
+     * @param extras Application-specific extra data.
+     * @param videoState Determines the video state for the connection.
+     * @param telecomCallId The telecom call ID.
+     * @hide
+     */
+    public ConnectionRequest(
+            PhoneAccountHandle accountHandle,
+            Uri handle,
+            Bundle extras,
+            int videoState,
+            String telecomCallId) {
         mAccountHandle = accountHandle;
         mAddress = handle;
         mExtras = extras;
         mVideoState = videoState;
+        mTelecomCallId = telecomCallId;
     }
 
     private ConnectionRequest(Parcel in) {
@@ -71,6 +86,7 @@ public final class ConnectionRequest implements Parcelable {
         mAddress = in.readParcelable(getClass().getClassLoader());
         mExtras = in.readParcelable(getClass().getClassLoader());
         mVideoState = in.readInt();
+        mTelecomCallId = in.readString();
     }
 
     /**
@@ -92,16 +108,25 @@ public final class ConnectionRequest implements Parcelable {
 
     /**
      * Describes the video states supported by the client requesting the connection.
-     * Valid values: {@link VideoProfile.VideoState#AUDIO_ONLY},
-     * {@link VideoProfile.VideoState#BIDIRECTIONAL},
-     * {@link VideoProfile.VideoState#TX_ENABLED},
-     * {@link VideoProfile.VideoState#RX_ENABLED}.
+     * Valid values: {@link VideoProfile#STATE_AUDIO_ONLY},
+     * {@link VideoProfile#STATE_BIDIRECTIONAL},
+     * {@link VideoProfile#STATE_TX_ENABLED},
+     * {@link VideoProfile#STATE_RX_ENABLED}.
      *
      * @return The video state for the connection.
-     * @hide
      */
     public int getVideoState() {
         return mVideoState;
+    }
+
+    /**
+     * Returns the internal Telecom ID associated with the connection request.
+     *
+     * @return The Telecom ID.
+     * @hide
+     */
+    public String getTelecomCallId() {
+        return mTelecomCallId;
     }
 
     @Override
@@ -139,5 +164,6 @@ public final class ConnectionRequest implements Parcelable {
         destination.writeParcelable(mAddress, 0);
         destination.writeParcelable(mExtras, 0);
         destination.writeInt(mVideoState);
+        destination.writeString(mTelecomCallId);
     }
 }

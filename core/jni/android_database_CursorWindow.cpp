@@ -16,6 +16,7 @@
 
 #undef LOG_TAG
 #define LOG_TAG "CursorWindow"
+#define LOG_NDEBUG 0
 
 #include <inttypes.h>
 #include <jni.h>
@@ -30,11 +31,18 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <dirent.h>
+
+#undef LOG_NDEBUG
+#define LOG_NDEBUG 1
 
 #include <androidfw/CursorWindow.h>
 #include "android_os_Parcel.h"
 #include "android_util_Binder.h"
 #include "android_database_SQLiteCommon.h"
+
+#include "core_jni_helpers.h"
 
 namespace android {
 
@@ -57,6 +65,22 @@ static void throwUnknownTypeException(JNIEnv * env, jint type) {
     String8 msg;
     msg.appendFormat("UNKNOWN type %d", type);
     jniThrowException(env, "java/lang/IllegalStateException", msg.string());
+}
+
+static int getFdCount() {
+    char fdpath[PATH_MAX];
+    int count = 0;
+    snprintf(fdpath, PATH_MAX, "/proc/%d/fd", getpid());
+    DIR *dir = opendir(fdpath);
+    if (dir != NULL) {
+        struct dirent *dirent;
+        while ((dirent = readdir(dir))) {
+            count++;
+        }
+        count -= 2; // discount "." and ".."
+        closedir(dir);
+    }
+    return count;
 }
 
 static jlong nativeCreate(JNIEnv* env, jclass clazz, jstring nameObj, jint cursorWindowSize) {
@@ -83,7 +107,8 @@ static jlong nativeCreateFromParcel(JNIEnv* env, jclass clazz, jobject parcelObj
     CursorWindow* window;
     status_t status = CursorWindow::createFromParcel(parcel, &window);
     if (status || !window) {
-        ALOGE("Could not create CursorWindow from Parcel due to error %d.", status);
+        ALOGE("Could not create CursorWindow from Parcel due to error %d, process fd count=%d",
+                status, getFdCount());
         return 0;
     }
 
@@ -180,6 +205,10 @@ static jbyteArray nativeGetBlob(JNIEnv* env, jclass clazz, jlong windowPtr,
     if (type == CursorWindow::FIELD_TYPE_BLOB || type == CursorWindow::FIELD_TYPE_STRING) {
         size_t size;
         const void* value = window->getFieldSlotValueBlob(fieldSlot, &size);
+        if (!value) {
+            throw_sqlite3_exception(env, "Native could not read blob slot");
+            return NULL;
+        }
         jbyteArray byteArray = env->NewByteArray(size);
         if (!byteArray) {
             env->ExceptionClear();
@@ -215,6 +244,10 @@ static jstring nativeGetString(JNIEnv* env, jclass clazz, jlong windowPtr,
     if (type == CursorWindow::FIELD_TYPE_STRING) {
         size_t sizeIncludingNull;
         const char* value = window->getFieldSlotValueString(fieldSlot, &sizeIncludingNull);
+        if (!value) {
+            throw_sqlite3_exception(env, "Native could not read string slot");
+            return NULL;
+        }
         if (sizeIncludingNull <= 1) {
             return gEmptyString;
         }
@@ -475,7 +508,7 @@ static jboolean nativePutNull(JNIEnv* env, jclass clazz, jlong windowPtr,
     return true;
 }
 
-static JNINativeMethod sMethods[] =
+static const JNINativeMethod sMethods[] =
 {
     /* name, signature, funcPtr */
     { "nativeCreate", "(Ljava/lang/String;I)J",
@@ -522,29 +555,16 @@ static JNINativeMethod sMethods[] =
             (void*)nativePutNull },
 };
 
-#define FIND_CLASS(var, className) \
-        var = env->FindClass(className); \
-        LOG_FATAL_IF(! var, "Unable to find class " className);
-
-#define GET_FIELD_ID(var, clazz, fieldName, fieldDescriptor) \
-        var = env->GetFieldID(clazz, fieldName, fieldDescriptor); \
-        LOG_FATAL_IF(! var, "Unable to find field " fieldName);
-
-int register_android_database_CursorWindow(JNIEnv * env)
+int register_android_database_CursorWindow(JNIEnv* env)
 {
-    jclass clazz;
-    FIND_CLASS(clazz, "android/database/CharArrayBuffer");
+    jclass clazz = FindClassOrDie(env, "android/database/CharArrayBuffer");
 
-    GET_FIELD_ID(gCharArrayBufferClassInfo.data, clazz,
-            "data", "[C");
-    GET_FIELD_ID(gCharArrayBufferClassInfo.sizeCopied, clazz,
-            "sizeCopied", "I");
+    gCharArrayBufferClassInfo.data = GetFieldIDOrDie(env, clazz, "data", "[C");
+    gCharArrayBufferClassInfo.sizeCopied = GetFieldIDOrDie(env, clazz, "sizeCopied", "I");
 
-    gEmptyString = jstring(env->NewGlobalRef(env->NewStringUTF("")));
-    LOG_FATAL_IF(!gEmptyString, "Unable to create empty string");
+    gEmptyString = MakeGlobalRefOrDie(env, env->NewStringUTF(""));
 
-    return AndroidRuntime::registerNativeMethods(env, "android/database/CursorWindow",
-            sMethods, NELEM(sMethods));
+    return RegisterMethodsOrDie(env, "android/database/CursorWindow", sMethods, NELEM(sMethods));
 }
 
 } // namespace android

@@ -16,12 +16,17 @@
 
 package android.widget;
 
+import android.annotation.ColorInt;
+import android.annotation.DrawableRes;
+import android.annotation.MenuRes;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.StringRes;
+import android.annotation.StyleRes;
+import android.annotation.TestApi;
 import android.app.ActionBar;
 import android.content.Context;
 import android.content.res.TypedArray;
-import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.os.Parcel;
 import android.os.Parcelable;
@@ -94,6 +99,34 @@ import java.util.List;
  * <p>In modern Android UIs developers should lean more on a visually distinct color scheme for
  * toolbars than on their application icon. The use of application icon plus title as a standard
  * layout is discouraged on API 21 devices and newer.</p>
+ *
+ * @attr ref android.R.styleable#Toolbar_buttonGravity
+ * @attr ref android.R.styleable#Toolbar_collapseContentDescription
+ * @attr ref android.R.styleable#Toolbar_collapseIcon
+ * @attr ref android.R.styleable#Toolbar_contentInsetEnd
+ * @attr ref android.R.styleable#Toolbar_contentInsetLeft
+ * @attr ref android.R.styleable#Toolbar_contentInsetRight
+ * @attr ref android.R.styleable#Toolbar_contentInsetStart
+ * @attr ref android.R.styleable#Toolbar_contentInsetStartWithNavigation
+ * @attr ref android.R.styleable#Toolbar_contentInsetEndWithActions
+ * @attr ref android.R.styleable#Toolbar_gravity
+ * @attr ref android.R.styleable#Toolbar_logo
+ * @attr ref android.R.styleable#Toolbar_logoDescription
+ * @attr ref android.R.styleable#Toolbar_maxButtonHeight
+ * @attr ref android.R.styleable#Toolbar_navigationContentDescription
+ * @attr ref android.R.styleable#Toolbar_navigationIcon
+ * @attr ref android.R.styleable#Toolbar_popupTheme
+ * @attr ref android.R.styleable#Toolbar_subtitle
+ * @attr ref android.R.styleable#Toolbar_subtitleTextAppearance
+ * @attr ref android.R.styleable#Toolbar_subtitleTextColor
+ * @attr ref android.R.styleable#Toolbar_title
+ * @attr ref android.R.styleable#Toolbar_titleMargin
+ * @attr ref android.R.styleable#Toolbar_titleMarginBottom
+ * @attr ref android.R.styleable#Toolbar_titleMarginEnd
+ * @attr ref android.R.styleable#Toolbar_titleMarginStart
+ * @attr ref android.R.styleable#Toolbar_titleMarginTop
+ * @attr ref android.R.styleable#Toolbar_titleTextAppearance
+ * @attr ref android.R.styleable#Toolbar_titleTextColor
  */
 public class Toolbar extends ViewGroup {
     private static final String TAG = "Toolbar";
@@ -128,7 +161,9 @@ public class Toolbar extends ViewGroup {
     private int mTitleMarginTop;
     private int mTitleMarginBottom;
 
-    private final RtlSpacingHelper mContentInsets = new RtlSpacingHelper();
+    private RtlSpacingHelper mContentInsets;
+    private int mContentInsetStartWithNavigation;
+    private int mContentInsetEndWithActions;
 
     private int mGravity = Gravity.START | Gravity.CENTER_VERTICAL;
 
@@ -142,6 +177,9 @@ public class Toolbar extends ViewGroup {
 
     // Clear me after use.
     private final ArrayList<View> mTempViews = new ArrayList<View>();
+
+    // Used to hold views that will be removed while we have an expanded action view.
+    private final ArrayList<View> mHiddenViews = new ArrayList<>();
 
     private final int[] mTempMargins = new int[2];
 
@@ -196,7 +234,7 @@ public class Toolbar extends ViewGroup {
         mGravity = a.getInteger(R.styleable.Toolbar_gravity, mGravity);
         mButtonGravity = a.getInteger(R.styleable.Toolbar_buttonGravity, Gravity.TOP);
         mTitleMarginStart = mTitleMarginEnd = mTitleMarginTop = mTitleMarginBottom =
-                a.getDimensionPixelOffset(R.styleable.Toolbar_titleMargins, 0);
+                a.getDimensionPixelOffset(R.styleable.Toolbar_titleMargin, 0);
 
         final int marginStart = a.getDimensionPixelOffset(R.styleable.Toolbar_titleMarginStart, -1);
         if (marginStart >= 0) {
@@ -232,12 +270,18 @@ public class Toolbar extends ViewGroup {
         final int contentInsetRight =
                 a.getDimensionPixelSize(R.styleable.Toolbar_contentInsetRight, 0);
 
+        ensureContentInsets();
         mContentInsets.setAbsolute(contentInsetLeft, contentInsetRight);
 
         if (contentInsetStart != RtlSpacingHelper.UNDEFINED ||
                 contentInsetEnd != RtlSpacingHelper.UNDEFINED) {
             mContentInsets.setRelative(contentInsetStart, contentInsetEnd);
         }
+
+        mContentInsetStartWithNavigation = a.getDimensionPixelOffset(
+                R.styleable.Toolbar_contentInsetStartWithNavigation, RtlSpacingHelper.UNDEFINED);
+        mContentInsetEndWithActions = a.getDimensionPixelOffset(
+                R.styleable.Toolbar_contentInsetEndWithActions, RtlSpacingHelper.UNDEFINED);
 
         mCollapseIcon = a.getDrawable(R.styleable.Toolbar_collapseIcon);
         mCollapseDescription = a.getText(R.styleable.Toolbar_collapseContentDescription);
@@ -266,6 +310,24 @@ public class Toolbar extends ViewGroup {
         if (!TextUtils.isEmpty(navDesc)) {
             setNavigationContentDescription(navDesc);
         }
+
+        final Drawable logo = a.getDrawable(R.styleable.Toolbar_logo);
+        if (logo != null) {
+            setLogo(logo);
+        }
+
+        final CharSequence logoDesc = a.getText(R.styleable.Toolbar_logoDescription);
+        if (!TextUtils.isEmpty(logoDesc)) {
+            setLogoDescription(logoDesc);
+        }
+
+        if (a.hasValue(R.styleable.Toolbar_titleTextColor)) {
+            setTitleTextColor(a.getColor(R.styleable.Toolbar_titleTextColor, 0xffffffff));
+        }
+
+        if (a.hasValue(R.styleable.Toolbar_subtitleTextColor)) {
+            setSubtitleTextColor(a.getColor(R.styleable.Toolbar_subtitleTextColor, 0xffffffff));
+        }
         a.recycle();
     }
 
@@ -276,7 +338,7 @@ public class Toolbar extends ViewGroup {
      * @param resId theme used to inflate popup menus
      * @see #getPopupTheme()
      */
-    public void setPopupTheme(int resId) {
+    public void setPopupTheme(@StyleRes int resId) {
         if (mPopupTheme != resId) {
             mPopupTheme = resId;
             if (resId == 0) {
@@ -296,9 +358,119 @@ public class Toolbar extends ViewGroup {
         return mPopupTheme;
     }
 
+    /**
+     * Sets the title margin.
+     *
+     * @param start the starting title margin in pixels
+     * @param top the top title margin in pixels
+     * @param end the ending title margin in pixels
+     * @param bottom the bottom title margin in pixels
+     * @see #getTitleMarginStart()
+     * @see #getTitleMarginTop()
+     * @see #getTitleMarginEnd()
+     * @see #getTitleMarginBottom()
+     * @attr ref android.R.styleable#Toolbar_titleMargin
+     */
+    public void setTitleMargin(int start, int top, int end, int bottom) {
+        mTitleMarginStart = start;
+        mTitleMarginTop = top;
+        mTitleMarginEnd = end;
+        mTitleMarginBottom = bottom;
+
+        requestLayout();
+    }
+
+    /**
+     * @return the starting title margin in pixels
+     * @see #setTitleMarginStart(int)
+     * @attr ref android.R.styleable#Toolbar_titleMarginStart
+     */
+    public int getTitleMarginStart() {
+        return mTitleMarginStart;
+    }
+
+    /**
+     * Sets the starting title margin in pixels.
+     *
+     * @param margin the starting title margin in pixels
+     * @see #getTitleMarginStart()
+     * @attr ref android.R.styleable#Toolbar_titleMarginStart
+     */
+    public void setTitleMarginStart(int margin) {
+        mTitleMarginStart = margin;
+
+        requestLayout();
+    }
+
+    /**
+     * @return the top title margin in pixels
+     * @see #setTitleMarginTop(int)
+     * @attr ref android.R.styleable#Toolbar_titleMarginTop
+     */
+    public int getTitleMarginTop() {
+        return mTitleMarginTop;
+    }
+
+    /**
+     * Sets the top title margin in pixels.
+     *
+     * @param margin the top title margin in pixels
+     * @see #getTitleMarginTop()
+     * @attr ref android.R.styleable#Toolbar_titleMarginTop
+     */
+    public void setTitleMarginTop(int margin) {
+        mTitleMarginTop = margin;
+
+        requestLayout();
+    }
+
+    /**
+     * @return the ending title margin in pixels
+     * @see #setTitleMarginEnd(int)
+     * @attr ref android.R.styleable#Toolbar_titleMarginEnd
+     */
+    public int getTitleMarginEnd() {
+        return mTitleMarginEnd;
+    }
+
+    /**
+     * Sets the ending title margin in pixels.
+     *
+     * @param margin the ending title margin in pixels
+     * @see #getTitleMarginEnd()
+     * @attr ref android.R.styleable#Toolbar_titleMarginEnd
+     */
+    public void setTitleMarginEnd(int margin) {
+        mTitleMarginEnd = margin;
+
+        requestLayout();
+    }
+
+    /**
+     * @return the bottom title margin in pixels
+     * @see #setTitleMarginBottom(int)
+     * @attr ref android.R.styleable#Toolbar_titleMarginBottom
+     */
+    public int getTitleMarginBottom() {
+        return mTitleMarginBottom;
+    }
+
+    /**
+     * Sets the bottom title margin in pixels.
+     *
+     * @param margin the bottom title margin in pixels
+     * @see #getTitleMarginBottom()
+     * @attr ref android.R.styleable#Toolbar_titleMarginBottom
+     */
+    public void setTitleMarginBottom(int margin) {
+        mTitleMarginBottom = margin;
+        requestLayout();
+    }
+
     @Override
     public void onRtlPropertiesChanged(@ResolvedLayoutDir int layoutDirection) {
         super.onRtlPropertiesChanged(layoutDirection);
+        ensureContentInsets();
         mContentInsets.setDirection(layoutDirection == LAYOUT_DIRECTION_RTL);
     }
 
@@ -311,7 +483,7 @@ public class Toolbar extends ViewGroup {
      *
      * @param resId ID of a drawable resource
      */
-    public void setLogo(int resId) {
+    public void setLogo(@DrawableRes int resId) {
         setLogo(getContext().getDrawable(resId));
     }
 
@@ -430,12 +602,12 @@ public class Toolbar extends ViewGroup {
     public void setLogo(Drawable drawable) {
         if (drawable != null) {
             ensureLogoView();
-            if (mLogoView.getParent() == null) {
-                addSystemView(mLogoView);
-                updateChildVisibilityForExpandedActionView(mLogoView);
+            if (!isChildOrHidden(mLogoView)) {
+                addSystemView(mLogoView, true);
             }
-        } else if (mLogoView != null && mLogoView.getParent() != null) {
+        } else if (mLogoView != null && isChildOrHidden(mLogoView)) {
             removeView(mLogoView);
+            mHiddenViews.remove(mLogoView);
         }
         if (mLogoView != null) {
             mLogoView.setImageDrawable(drawable);
@@ -461,7 +633,7 @@ public class Toolbar extends ViewGroup {
      *
      * @param resId String resource id
      */
-    public void setLogoDescription(int resId) {
+    public void setLogoDescription(@StringRes int resId) {
         setLogoDescription(getContext().getText(resId));
     }
 
@@ -546,7 +718,7 @@ public class Toolbar extends ViewGroup {
      *
      * @param resId Resource ID of a string to set as the title
      */
-    public void setTitle(int resId) {
+    public void setTitle(@StringRes int resId) {
         setTitle(getContext().getText(resId));
     }
 
@@ -566,18 +738,18 @@ public class Toolbar extends ViewGroup {
                 mTitleTextView.setSingleLine();
                 mTitleTextView.setEllipsize(TextUtils.TruncateAt.END);
                 if (mTitleTextAppearance != 0) {
-                    mTitleTextView.setTextAppearance(context, mTitleTextAppearance);
+                    mTitleTextView.setTextAppearance(mTitleTextAppearance);
                 }
                 if (mTitleTextColor != 0) {
                     mTitleTextView.setTextColor(mTitleTextColor);
                 }
             }
-            if (mTitleTextView.getParent() == null) {
-                addSystemView(mTitleTextView);
-                updateChildVisibilityForExpandedActionView(mTitleTextView);
+            if (!isChildOrHidden(mTitleTextView)) {
+                addSystemView(mTitleTextView, true);
             }
-        } else if (mTitleTextView != null && mTitleTextView.getParent() != null) {
+        } else if (mTitleTextView != null && isChildOrHidden(mTitleTextView)) {
             removeView(mTitleTextView);
+            mHiddenViews.remove(mTitleTextView);
         }
         if (mTitleTextView != null) {
             mTitleTextView.setText(title);
@@ -601,7 +773,7 @@ public class Toolbar extends ViewGroup {
      *
      * @param resId String resource ID
      */
-    public void setSubtitle(int resId) {
+    public void setSubtitle(@StringRes int resId) {
         setSubtitle(getContext().getText(resId));
     }
 
@@ -620,18 +792,18 @@ public class Toolbar extends ViewGroup {
                 mSubtitleTextView.setSingleLine();
                 mSubtitleTextView.setEllipsize(TextUtils.TruncateAt.END);
                 if (mSubtitleTextAppearance != 0) {
-                    mSubtitleTextView.setTextAppearance(context, mSubtitleTextAppearance);
+                    mSubtitleTextView.setTextAppearance(mSubtitleTextAppearance);
                 }
                 if (mSubtitleTextColor != 0) {
                     mSubtitleTextView.setTextColor(mSubtitleTextColor);
                 }
             }
-            if (mSubtitleTextView.getParent() == null) {
-                addSystemView(mSubtitleTextView);
-                updateChildVisibilityForExpandedActionView(mSubtitleTextView);
+            if (!isChildOrHidden(mSubtitleTextView)) {
+                addSystemView(mSubtitleTextView, true);
             }
-        } else if (mSubtitleTextView != null && mSubtitleTextView.getParent() != null) {
+        } else if (mSubtitleTextView != null && isChildOrHidden(mSubtitleTextView)) {
             removeView(mSubtitleTextView);
+            mHiddenViews.remove(mSubtitleTextView);
         }
         if (mSubtitleTextView != null) {
             mSubtitleTextView.setText(subtitle);
@@ -643,10 +815,10 @@ public class Toolbar extends ViewGroup {
      * Sets the text color, size, style, hint color, and highlight color
      * from the specified TextAppearance resource.
      */
-    public void setTitleTextAppearance(Context context, int resId) {
+    public void setTitleTextAppearance(Context context, @StyleRes int resId) {
         mTitleTextAppearance = resId;
         if (mTitleTextView != null) {
-            mTitleTextView.setTextAppearance(context, resId);
+            mTitleTextView.setTextAppearance(resId);
         }
     }
 
@@ -654,10 +826,10 @@ public class Toolbar extends ViewGroup {
      * Sets the text color, size, style, hint color, and highlight color
      * from the specified TextAppearance resource.
      */
-    public void setSubtitleTextAppearance(Context context, int resId) {
+    public void setSubtitleTextAppearance(Context context, @StyleRes int resId) {
         mSubtitleTextAppearance = resId;
         if (mSubtitleTextView != null) {
-            mSubtitleTextView.setTextAppearance(context, resId);
+            mSubtitleTextView.setTextAppearance(resId);
         }
     }
 
@@ -666,7 +838,7 @@ public class Toolbar extends ViewGroup {
      *
      * @param color The new text color in 0xAARRGGBB format
      */
-    public void setTitleTextColor(int color) {
+    public void setTitleTextColor(@ColorInt int color) {
         mTitleTextColor = color;
         if (mTitleTextView != null) {
             mTitleTextView.setTextColor(color);
@@ -678,7 +850,7 @@ public class Toolbar extends ViewGroup {
      *
      * @param color The new text color in 0xAARRGGBB format
      */
-    public void setSubtitleTextColor(int color) {
+    public void setSubtitleTextColor(@ColorInt int color) {
         mSubtitleTextColor = color;
         if (mSubtitleTextView != null) {
             mSubtitleTextView.setTextColor(color);
@@ -709,7 +881,7 @@ public class Toolbar extends ViewGroup {
      *
      * @attr ref android.R.styleable#Toolbar_navigationContentDescription
      */
-    public void setNavigationContentDescription(int resId) {
+    public void setNavigationContentDescription(@StringRes int resId) {
         setNavigationContentDescription(resId != 0 ? getContext().getText(resId) : null);
     }
 
@@ -746,7 +918,7 @@ public class Toolbar extends ViewGroup {
      *
      * @attr ref android.R.styleable#Toolbar_navigationIcon
      */
-    public void setNavigationIcon(int resId) {
+    public void setNavigationIcon(@DrawableRes int resId) {
         setNavigationIcon(getContext().getDrawable(resId));
     }
 
@@ -767,12 +939,12 @@ public class Toolbar extends ViewGroup {
     public void setNavigationIcon(@Nullable Drawable icon) {
         if (icon != null) {
             ensureNavButtonView();
-            if (mNavButtonView.getParent() == null) {
-                addSystemView(mNavButtonView);
-                updateChildVisibilityForExpandedActionView(mNavButtonView);
+            if (!isChildOrHidden(mNavButtonView)) {
+                addSystemView(mNavButtonView, true);
             }
-        } else if (mNavButtonView != null && mNavButtonView.getParent() != null) {
+        } else if (mNavButtonView != null && isChildOrHidden(mNavButtonView)) {
             removeView(mNavButtonView);
+            mHiddenViews.remove(mNavButtonView);
         }
         if (mNavButtonView != null) {
             mNavButtonView.setImageDrawable(icon);
@@ -806,6 +978,15 @@ public class Toolbar extends ViewGroup {
     }
 
     /**
+     * @hide
+     */
+    @Nullable
+    @TestApi
+    public View getNavigationView() {
+        return mNavButtonView;
+    }
+
+    /**
      * Return the Menu shown in the toolbar.
      *
      * <p>Applications that wish to populate the toolbar's menu can do so from here. To use
@@ -816,6 +997,27 @@ public class Toolbar extends ViewGroup {
     public Menu getMenu() {
         ensureMenu();
         return mMenuView.getMenu();
+    }
+
+    /**
+     * Set the icon to use for the overflow button.
+     *
+     * @param icon Drawable to set, may be null to clear the icon
+     */
+    public void setOverflowIcon(@Nullable Drawable icon) {
+        ensureMenu();
+        mMenuView.setOverflowIcon(icon);
+    }
+
+    /**
+     * Return the current drawable used as the overflow icon.
+     *
+     * @return The overflow icon drawable
+     */
+    @Nullable
+    public Drawable getOverflowIcon() {
+        ensureMenu();
+        return mMenuView.getOverflowIcon();
     }
 
     private void ensureMenu() {
@@ -840,7 +1042,7 @@ public class Toolbar extends ViewGroup {
             final LayoutParams lp = generateDefaultLayoutParams();
             lp.gravity = Gravity.END | (mButtonGravity & Gravity.VERTICAL_GRAVITY_MASK);
             mMenuView.setLayoutParams(lp);
-            addSystemView(mMenuView);
+            addSystemView(mMenuView, false);
         }
     }
 
@@ -856,7 +1058,7 @@ public class Toolbar extends ViewGroup {
      *
      * @param resId ID of a menu resource to inflate
      */
-    public void inflateMenu(int resId) {
+    public void inflateMenu(@MenuRes int resId) {
         getMenuInflater().inflate(resId, getMenu());
     }
 
@@ -873,7 +1075,7 @@ public class Toolbar extends ViewGroup {
     }
 
     /**
-     * Set the content insets for this toolbar relative to layout direction.
+     * Sets the content insets for this toolbar relative to layout direction.
      *
      * <p>The content inset affects the valid area for Toolbar content other than
      * the navigation button and menu. Insets define the minimum margin for these components
@@ -887,13 +1089,16 @@ public class Toolbar extends ViewGroup {
      * @see #getContentInsetEnd()
      * @see #getContentInsetLeft()
      * @see #getContentInsetRight()
+     * @attr ref android.R.styleable#Toolbar_contentInsetEnd
+     * @attr ref android.R.styleable#Toolbar_contentInsetStart
      */
     public void setContentInsetsRelative(int contentInsetStart, int contentInsetEnd) {
+        ensureContentInsets();
         mContentInsets.setRelative(contentInsetStart, contentInsetEnd);
     }
 
     /**
-     * Get the starting content inset for this toolbar.
+     * Gets the starting content inset for this toolbar.
      *
      * <p>The content inset affects the valid area for Toolbar content other than
      * the navigation button and menu. Insets define the minimum margin for these components
@@ -906,13 +1111,14 @@ public class Toolbar extends ViewGroup {
      * @see #getContentInsetEnd()
      * @see #getContentInsetLeft()
      * @see #getContentInsetRight()
+     * @attr ref android.R.styleable#Toolbar_contentInsetStart
      */
     public int getContentInsetStart() {
-        return mContentInsets.getStart();
+        return mContentInsets != null ? mContentInsets.getStart() : 0;
     }
 
     /**
-     * Get the ending content inset for this toolbar.
+     * Gets the ending content inset for this toolbar.
      *
      * <p>The content inset affects the valid area for Toolbar content other than
      * the navigation button and menu. Insets define the minimum margin for these components
@@ -925,13 +1131,14 @@ public class Toolbar extends ViewGroup {
      * @see #getContentInsetStart()
      * @see #getContentInsetLeft()
      * @see #getContentInsetRight()
+     * @attr ref android.R.styleable#Toolbar_contentInsetEnd
      */
     public int getContentInsetEnd() {
-        return mContentInsets.getEnd();
+        return mContentInsets != null ? mContentInsets.getEnd() : 0;
     }
 
     /**
-     * Set the content insets for this toolbar.
+     * Sets the content insets for this toolbar.
      *
      * <p>The content inset affects the valid area for Toolbar content other than
      * the navigation button and menu. Insets define the minimum margin for these components
@@ -945,13 +1152,16 @@ public class Toolbar extends ViewGroup {
      * @see #getContentInsetEnd()
      * @see #getContentInsetLeft()
      * @see #getContentInsetRight()
+     * @attr ref android.R.styleable#Toolbar_contentInsetLeft
+     * @attr ref android.R.styleable#Toolbar_contentInsetRight
      */
     public void setContentInsetsAbsolute(int contentInsetLeft, int contentInsetRight) {
+        ensureContentInsets();
         mContentInsets.setAbsolute(contentInsetLeft, contentInsetRight);
     }
 
     /**
-     * Get the left content inset for this toolbar.
+     * Gets the left content inset for this toolbar.
      *
      * <p>The content inset affects the valid area for Toolbar content other than
      * the navigation button and menu. Insets define the minimum margin for these components
@@ -964,13 +1174,14 @@ public class Toolbar extends ViewGroup {
      * @see #getContentInsetStart()
      * @see #getContentInsetEnd()
      * @see #getContentInsetRight()
+     * @attr ref android.R.styleable#Toolbar_contentInsetLeft
      */
     public int getContentInsetLeft() {
-        return mContentInsets.getLeft();
+        return mContentInsets != null ? mContentInsets.getLeft() : 0;
     }
 
     /**
-     * Get the right content inset for this toolbar.
+     * Gets the right content inset for this toolbar.
      *
      * <p>The content inset affects the valid area for Toolbar content other than
      * the navigation button and menu. Insets define the minimum margin for these components
@@ -983,9 +1194,158 @@ public class Toolbar extends ViewGroup {
      * @see #getContentInsetStart()
      * @see #getContentInsetEnd()
      * @see #getContentInsetLeft()
+     * @attr ref android.R.styleable#Toolbar_contentInsetRight
      */
     public int getContentInsetRight() {
-        return mContentInsets.getRight();
+        return mContentInsets != null ? mContentInsets.getRight() : 0;
+    }
+
+    /**
+     * Gets the start content inset to use when a navigation button is present.
+     *
+     * <p>Different content insets are often called for when additional buttons are present
+     * in the toolbar, as well as at different toolbar sizes. The larger value of
+     * {@link #getContentInsetStart()} and this value will be used during layout.</p>
+     *
+     * @return the start content inset used when a navigation icon has been set in pixels
+     *
+     * @see #setContentInsetStartWithNavigation(int)
+     * @attr ref android.R.styleable#Toolbar_contentInsetStartWithNavigation
+     */
+    public int getContentInsetStartWithNavigation() {
+        return mContentInsetStartWithNavigation != RtlSpacingHelper.UNDEFINED
+                ? mContentInsetStartWithNavigation
+                : getContentInsetStart();
+    }
+
+    /**
+     * Sets the start content inset to use when a navigation button is present.
+     *
+     * <p>Different content insets are often called for when additional buttons are present
+     * in the toolbar, as well as at different toolbar sizes. The larger value of
+     * {@link #getContentInsetStart()} and this value will be used during layout.</p>
+     *
+     * @param insetStartWithNavigation the inset to use when a navigation icon has been set
+     *                                 in pixels
+     *
+     * @see #getContentInsetStartWithNavigation()
+     * @attr ref android.R.styleable#Toolbar_contentInsetStartWithNavigation
+     */
+    public void setContentInsetStartWithNavigation(int insetStartWithNavigation) {
+        if (insetStartWithNavigation < 0) {
+            insetStartWithNavigation = RtlSpacingHelper.UNDEFINED;
+        }
+        if (insetStartWithNavigation != mContentInsetStartWithNavigation) {
+            mContentInsetStartWithNavigation = insetStartWithNavigation;
+            if (getNavigationIcon() != null) {
+                requestLayout();
+            }
+        }
+    }
+
+    /**
+     * Gets the end content inset to use when action buttons are present.
+     *
+     * <p>Different content insets are often called for when additional buttons are present
+     * in the toolbar, as well as at different toolbar sizes. The larger value of
+     * {@link #getContentInsetEnd()} and this value will be used during layout.</p>
+     *
+     * @return the end content inset used when a menu has been set in pixels
+     *
+     * @see #setContentInsetEndWithActions(int)
+     * @attr ref android.R.styleable#Toolbar_contentInsetEndWithActions
+     */
+    public int getContentInsetEndWithActions() {
+        return mContentInsetEndWithActions != RtlSpacingHelper.UNDEFINED
+                ? mContentInsetEndWithActions
+                : getContentInsetEnd();
+    }
+
+    /**
+     * Sets the start content inset to use when action buttons are present.
+     *
+     * <p>Different content insets are often called for when additional buttons are present
+     * in the toolbar, as well as at different toolbar sizes. The larger value of
+     * {@link #getContentInsetEnd()} and this value will be used during layout.</p>
+     *
+     * @param insetEndWithActions the inset to use when a menu has been set in pixels
+     *
+     * @see #setContentInsetEndWithActions(int)
+     * @attr ref android.R.styleable#Toolbar_contentInsetEndWithActions
+     */
+    public void setContentInsetEndWithActions(int insetEndWithActions) {
+        if (insetEndWithActions < 0) {
+            insetEndWithActions = RtlSpacingHelper.UNDEFINED;
+        }
+        if (insetEndWithActions != mContentInsetEndWithActions) {
+            mContentInsetEndWithActions = insetEndWithActions;
+            if (getNavigationIcon() != null) {
+                requestLayout();
+            }
+        }
+    }
+
+    /**
+     * Gets the content inset that will be used on the starting side of the bar in the current
+     * toolbar configuration.
+     *
+     * @return the current content inset start in pixels
+     *
+     * @see #getContentInsetStartWithNavigation()
+     */
+    public int getCurrentContentInsetStart() {
+        return getNavigationIcon() != null
+                ? Math.max(getContentInsetStart(), Math.max(mContentInsetStartWithNavigation, 0))
+                : getContentInsetStart();
+    }
+
+    /**
+     * Gets the content inset that will be used on the ending side of the bar in the current
+     * toolbar configuration.
+     *
+     * @return the current content inset end in pixels
+     *
+     * @see #getContentInsetEndWithActions()
+     */
+    public int getCurrentContentInsetEnd() {
+        boolean hasActions = false;
+        if (mMenuView != null) {
+            final MenuBuilder mb = mMenuView.peekMenu();
+            hasActions = mb != null && mb.hasVisibleItems();
+        }
+        return hasActions
+                ? Math.max(getContentInsetEnd(), Math.max(mContentInsetEndWithActions, 0))
+                : getContentInsetEnd();
+    }
+
+    /**
+     * Gets the content inset that will be used on the left side of the bar in the current
+     * toolbar configuration.
+     *
+     * @return the current content inset left in pixels
+     *
+     * @see #getContentInsetStartWithNavigation()
+     * @see #getContentInsetEndWithActions()
+     */
+    public int getCurrentContentInsetLeft() {
+        return isLayoutRtl()
+                ? getCurrentContentInsetEnd()
+                : getCurrentContentInsetStart();
+    }
+
+    /**
+     * Gets the content inset that will be used on the right side of the bar in the current
+     * toolbar configuration.
+     *
+     * @return the current content inset right in pixels
+     *
+     * @see #getContentInsetStartWithNavigation()
+     * @see #getContentInsetEndWithActions()
+     */
+    public int getCurrentContentInsetRight() {
+        return isLayoutRtl()
+                ? getCurrentContentInsetStart()
+                : getCurrentContentInsetEnd();
     }
 
     private void ensureNavButtonView() {
@@ -1015,7 +1375,7 @@ public class Toolbar extends ViewGroup {
         }
     }
 
-    private void addSystemView(View v) {
+    private void addSystemView(View v, boolean allowHide) {
         final ViewGroup.LayoutParams vlp = v.getLayoutParams();
         final LayoutParams lp;
         if (vlp == null) {
@@ -1026,7 +1386,13 @@ public class Toolbar extends ViewGroup {
             lp = (LayoutParams) vlp;
         }
         lp.mViewType = LayoutParams.SYSTEM;
-        addView(v, lp);
+
+        if (allowHide && mExpandedActionView != null) {
+            v.setLayoutParams(lp);
+            mHiddenViews.add(v);
+        } else {
+            addView(v, lp);
+        }
     }
 
     @Override
@@ -1218,7 +1584,7 @@ public class Toolbar extends ViewGroup {
             childState = combineMeasuredStates(childState, mCollapseButtonView.getMeasuredState());
         }
 
-        final int contentInsetStart = getContentInsetStart();
+        final int contentInsetStart = getCurrentContentInsetStart();
         width += Math.max(contentInsetStart, navWidth);
         collapsingMargins[marginStartIndex] = Math.max(0, contentInsetStart - navWidth);
 
@@ -1232,7 +1598,7 @@ public class Toolbar extends ViewGroup {
             childState = combineMeasuredStates(childState, mMenuView.getMeasuredState());
         }
 
-        final int contentInsetEnd = getContentInsetEnd();
+        final int contentInsetEnd = getCurrentContentInsetEnd();
         width += Math.max(contentInsetEnd, menuWidth);
         collapsingMargins[marginEndIndex] = Math.max(0, contentInsetEnd - menuWidth);
 
@@ -1355,10 +1721,12 @@ public class Toolbar extends ViewGroup {
             }
         }
 
-        collapsingMargins[0] = Math.max(0, getContentInsetLeft() - left);
-        collapsingMargins[1] = Math.max(0, getContentInsetRight() - (width - paddingRight - right));
-        left = Math.max(left, getContentInsetLeft());
-        right = Math.min(right, width - paddingRight - getContentInsetRight());
+        final int contentInsetLeft = getCurrentContentInsetLeft();
+        final int contentInsetRight = getCurrentContentInsetRight();
+        collapsingMargins[0] = Math.max(0, contentInsetLeft - left);
+        collapsingMargins[1] = Math.max(0, contentInsetRight - (width - paddingRight - right));
+        left = Math.max(left, contentInsetLeft);
+        right = Math.min(right, width - paddingRight - contentInsetRight);
 
         if (shouldLayout(mExpandedActionView)) {
             if (isRtl) {
@@ -1715,22 +2083,30 @@ public class Toolbar extends ViewGroup {
         return mWrapper;
     }
 
-    private void setChildVisibilityForExpandedActionView(boolean expand) {
+    void removeChildrenForExpandedActionView() {
         final int childCount = getChildCount();
-        for (int i = 0; i < childCount; i++) {
+        // Go backwards since we're removing from the list
+        for (int i = childCount - 1; i >= 0; i--) {
             final View child = getChildAt(i);
             final LayoutParams lp = (LayoutParams) child.getLayoutParams();
             if (lp.mViewType != LayoutParams.EXPANDED && child != mMenuView) {
-                child.setVisibility(expand ? GONE : VISIBLE);
+                removeViewAt(i);
+                mHiddenViews.add(child);
             }
         }
     }
 
-    private void updateChildVisibilityForExpandedActionView(View child) {
-        final LayoutParams lp = (LayoutParams) child.getLayoutParams();
-        if (lp.mViewType != LayoutParams.EXPANDED && child != mMenuView) {
-            child.setVisibility(mExpandedActionView != null ? GONE : VISIBLE);
+    void addChildrenForExpandedActionView() {
+        final int count = mHiddenViews.size();
+        // Re-add in reverse order since we removed in reverse order
+        for (int i = count - 1; i >= 0; i--) {
+            addView(mHiddenViews.get(i));
         }
+        mHiddenViews.clear();
+    }
+
+    private boolean isChildOrHidden(View child) {
+        return child.getParent() == this || mHiddenViews.contains(child);
     }
 
     /**
@@ -1750,6 +2126,15 @@ public class Toolbar extends ViewGroup {
     public void setMenuCallbacks(MenuPresenter.Callback pcb, MenuBuilder.Callback mcb) {
         mActionMenuPresenterCallback = pcb;
         mMenuBuilderCallback = mcb;
+        if (mMenuView != null) {
+            mMenuView.setMenuCallbacks(pcb, mcb);
+        }
+    }
+
+    private void ensureContentInsets() {
+        if (mContentInsets == null) {
+            mContentInsets = new RtlSpacingHelper();
+        }
     }
 
     /**
@@ -1874,7 +2259,7 @@ public class Toolbar extends ViewGroup {
         MenuItemImpl mCurrentExpandedItem;
 
         @Override
-        public void initForMenu(Context context, MenuBuilder menu) {
+        public void initForMenu(@NonNull Context context, @Nullable MenuBuilder menu) {
             // Clear the expanded action view when menus change.
             if (mMenu != null && mCurrentExpandedItem != null) {
                 mMenu.collapseItemActionView(mCurrentExpandedItem);
@@ -1945,7 +2330,7 @@ public class Toolbar extends ViewGroup {
                 addView(mExpandedActionView);
             }
 
-            setChildVisibilityForExpandedActionView(true);
+            removeChildrenForExpandedActionView();
             requestLayout();
             item.setActionViewExpanded(true);
 
@@ -1968,7 +2353,7 @@ public class Toolbar extends ViewGroup {
             removeView(mCollapseButtonView);
             mExpandedActionView = null;
 
-            setChildVisibilityForExpandedActionView(false);
+            addChildrenForExpandedActionView();
             mCurrentExpandedItem = null;
             requestLayout();
             item.setActionViewExpanded(false);

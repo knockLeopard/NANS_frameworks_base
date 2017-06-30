@@ -26,13 +26,13 @@ import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
-import android.view.HardwareCanvas;
+import android.view.DisplayListCanvas;
 import android.view.RenderNodeAnimator;
 import android.view.View;
 import android.view.animation.Interpolator;
 
+import com.android.systemui.Interpolators;
 import com.android.systemui.R;
-import com.android.systemui.statusbar.phone.PhoneStatusBar;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -59,7 +59,6 @@ public class KeyButtonRipple extends Drawable {
     private int mMaxWidth;
 
     private final Interpolator mInterpolator = new LogInterpolator();
-    private final Interpolator mAlphaExitInterpolator = PhoneStatusBar.ALPHA_OUT;
     private boolean mSupportHardware;
     private final View mTargetView;
 
@@ -106,7 +105,7 @@ public class KeyButtonRipple extends Drawable {
     public void draw(Canvas canvas) {
         mSupportHardware = canvas.isHardwareAccelerated();
         if (mSupportHardware) {
-            drawHardware((HardwareCanvas) canvas);
+            drawHardware((DisplayListCanvas) canvas);
         } else {
             drawSoftware(canvas);
         }
@@ -118,7 +117,7 @@ public class KeyButtonRipple extends Drawable {
     }
 
     @Override
-    public void setColorFilter(ColorFilter cf) {
+    public void setColorFilter(ColorFilter colorFilter) {
         // Not supported.
     }
 
@@ -131,7 +130,7 @@ public class KeyButtonRipple extends Drawable {
         return getBounds().width() > getBounds().height();
     }
 
-    private void drawHardware(HardwareCanvas c) {
+    private void drawHardware(DisplayListCanvas c) {
         if (mDrawingHardwareGlow) {
             c.drawRoundRect(mLeftProp, mTopProp, mRightProp, mBottomProp, mRxProp, mRyProp,
                     mPaintProp);
@@ -225,7 +224,7 @@ public class KeyButtonRipple extends Drawable {
 
     private void exitSoftware() {
         ObjectAnimator alphaAnimator = ObjectAnimator.ofFloat(this, "glowAlpha", mGlowAlpha, 0f);
-        alphaAnimator.setInterpolator(mAlphaExitInterpolator);
+        alphaAnimator.setInterpolator(Interpolators.ALPHA_OUT);
         alphaAnimator.setDuration(ANIMATION_DURATION_FADE);
         alphaAnimator.addListener(mAnimatorListener);
         alphaAnimator.start();
@@ -331,7 +330,7 @@ public class KeyButtonRipple extends Drawable {
         final RenderNodeAnimator opacityAnim = new RenderNodeAnimator(mPaintProp,
                 RenderNodeAnimator.PAINT_ALPHA, 0);
         opacityAnim.setDuration(ANIMATION_DURATION_FADE);
-        opacityAnim.setInterpolator(mAlphaExitInterpolator);
+        opacityAnim.setInterpolator(Interpolators.ALPHA_OUT);
         opacityAnim.addListener(mAnimatorListener);
         opacityAnim.setTarget(mTargetView);
 

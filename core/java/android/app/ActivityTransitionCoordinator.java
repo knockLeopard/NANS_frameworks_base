@@ -25,12 +25,14 @@ import android.os.Parcelable;
 import android.os.ResultReceiver;
 import android.transition.Transition;
 import android.transition.TransitionSet;
+import android.transition.Visibility;
 import android.util.ArrayMap;
 import android.view.GhostView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewGroupOverlay;
 import android.view.ViewParent;
+import android.view.ViewRootImpl;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.widget.ImageView;
@@ -187,11 +189,6 @@ abstract class ActivityTransitionCoordinator extends ResultReceiver {
      */
     public static final int MSG_SHARED_ELEMENT_DESTINATION = 107;
 
-    /**
-     * Send the shared element positions.
-     */
-    public static final int MSG_SEND_SHARED_ELEMENT_DESTINATION = 108;
-
     private Window mWindow;
     final protected ArrayList<String> mAllSharedElementNames;
     final protected ArrayList<View> mSharedElements = new ArrayList<View>();
@@ -206,8 +203,9 @@ abstract class ActivityTransitionCoordinator extends ResultReceiver {
     private ArrayList<GhostViewListeners> mGhostViewListeners =
             new ArrayList<GhostViewListeners>();
     private ArrayMap<View, Float> mOriginalAlphas = new ArrayMap<View, Float>();
-    final private ArrayList<View> mRootSharedElements = new ArrayList<View>();
     private ArrayList<Matrix> mSharedElementParentMatrices;
+    private boolean mSharedElementTransitionComplete;
+    private boolean mViewsTransitionComplete;
 
     public ActivityTransitionCoordinator(Window window,
             ArrayList<String> allSharedElementNames,
@@ -253,17 +251,10 @@ abstract class ActivityTransitionCoordinator extends ResultReceiver {
                 final String name = sharedElements.keyAt(i);
                 if (isFirstRun && (view == null || !view.isAttachedToWindow() || name == null)) {
                     sharedElements.removeAt(i);
-                } else {
-                    if (!isNested(view, sharedElements)) {
-                        mSharedElementNames.add(name);
-                        mSharedElements.add(view);
-                        sharedElements.removeAt(i);
-                        if (isFirstRun) {
-                            // We need to keep track which shared elements are roots
-                            // and which are nested.
-                            mRootSharedElements.add(view);
-                        }
-                    }
+                } else if (!isNested(view, sharedElements)) {
+                    mSharedElementNames.add(name);
+                    mSharedElements.add(view);
+                    sharedElements.removeAt(i);
                 }
             }
             isFirstRun = false;
@@ -388,6 +379,7 @@ abstract class ActivityTransitionCoordinator extends ResultReceiver {
             transition.setEpicenterCallback(mEpicenterCallback);
             transition = setTargets(transition, includeTransitioningViews);
         }
+        noLayoutSuppressionForVisibilityTransitions(transition);
         return transition;
     }
 
@@ -484,9 +476,8 @@ abstract class ActivityTransitionCoordinator extends ResultReceiver {
             tempRect.set(0, 0, width, height);
             view.getMatrix().mapRect(tempRect);
 
-            ViewGroup parent = (ViewGroup) view.getParent();
-            left = leftInParent - tempRect.left + parent.getScrollX();
-            top = topInParent - tempRect.top + parent.getScrollY();
+            left = leftInParent - tempRect.left;
+            top = topInParent - tempRect.top;
             right = left + width;
             bottom = top + height;
         }
@@ -514,37 +505,28 @@ abstract class ActivityTransitionCoordinator extends ResultReceiver {
             ViewGroup parent = (ViewGroup) view.getParent();
             Matrix matrix = new Matrix();
             parent.transformMatrixToLocal(matrix);
-
+            matrix.postTranslate(parent.getScrollX(), parent.getScrollY());
             mSharedElementParentMatrices.add(matrix);
         }
     }
 
     private void getSharedElementParentMatrix(View view, Matrix matrix) {
-        final boolean isNestedInOtherSharedElement = !mRootSharedElements.contains(view);
-        final boolean useParentMatrix;
-        if (isNestedInOtherSharedElement) {
-            useParentMatrix = true;
-        } else {
-            final int index = mSharedElementParentMatrices == null ? -1
-                    : mSharedElements.indexOf(view);
-            if (index < 0) {
-                useParentMatrix = true;
-            } else {
-                // The indices of mSharedElementParentMatrices matches the
-                // mSharedElement matrices.
-                Matrix parentMatrix = mSharedElementParentMatrices.get(index);
-                matrix.set(parentMatrix);
-                useParentMatrix = false;
-            }
-        }
-        if (useParentMatrix) {
+        final int index = mSharedElementParentMatrices == null ? -1
+                : mSharedElements.indexOf(view);
+        if (index < 0) {
             matrix.reset();
             ViewParent viewParent = view.getParent();
             if (viewParent instanceof ViewGroup) {
                 // Find the location in the view's parent
                 ViewGroup parent = (ViewGroup) viewParent;
                 parent.transformMatrixToLocal(matrix);
+                matrix.postTranslate(parent.getScrollX(), parent.getScrollY());
             }
+        } else {
+            // The indices of mSharedElementParentMatrices matches the
+            // mSharedElement matrices.
+            Matrix parentMatrix = mSharedElementParentMatrices.get(index);
+            matrix.set(parentMatrix);
         }
     }
 
@@ -701,7 +683,6 @@ abstract class ActivityTransitionCoordinator extends ResultReceiver {
         mResultReceiver = null;
         mPendingTransition = null;
         mListener = null;
-        mRootSharedElements.clear();
         mSharedElementParentMatrices = null;
     }
 
@@ -817,9 +798,12 @@ abstract class ActivityTransitionCoordinator extends ResultReceiver {
         ViewGroup decor = getDecor();
         if (decor != null) {
             boolean moveWithParent = moveSharedElementWithParent();
+            Matrix tempMatrix = new Matrix();
             for (int i = 0; i < numSharedElements; i++) {
                 View view = mSharedElements.get(i);
-                GhostView.addGhost(view, decor);
+                tempMatrix.reset();
+                mSharedElementParentMatrices.get(i).invert(tempMatrix);
+                GhostView.addGhost(view, decor, tempMatrix);
                 ViewGroup parent = (ViewGroup) view.getParent();
                 if (moveWithParent && !isInTransitionGroup(parent, decor)) {
                     GhostViewListeners listener = new GhostViewListeners(view, parent, decor);
@@ -894,6 +878,42 @@ abstract class ActivityTransitionCoordinator extends ResultReceiver {
         }
     }
 
+    protected boolean isViewsTransitionComplete() {
+        return mViewsTransitionComplete;
+    }
+
+    protected void viewsTransitionComplete() {
+        mViewsTransitionComplete = true;
+        startInputWhenTransitionsComplete();
+    }
+
+    protected void sharedElementTransitionComplete() {
+        mSharedElementTransitionComplete = true;
+        startInputWhenTransitionsComplete();
+    }
+    private void startInputWhenTransitionsComplete() {
+        if (mViewsTransitionComplete && mSharedElementTransitionComplete) {
+            final View decor = getDecor();
+            if (decor != null) {
+                final ViewRootImpl viewRoot = decor.getViewRootImpl();
+                if (viewRoot != null) {
+                    viewRoot.setPausedForTransition(false);
+                }
+            }
+            onTransitionsComplete();
+        }
+    }
+
+    protected void pauseInput() {
+        final View decor = getDecor();
+        final ViewRootImpl viewRoot = decor == null ? null : decor.getViewRootImpl();
+        if (viewRoot != null) {
+            viewRoot.setPausedForTransition(true);
+        }
+    }
+
+    protected void onTransitionsComplete() {}
+
     protected class ContinueTransitionListener extends Transition.TransitionListenerAdapter {
         @Override
         public void onTransitionStart(Transition transition) {
@@ -913,6 +933,35 @@ abstract class ActivityTransitionCoordinator extends ResultReceiver {
             }
         }
         return -1;
+    }
+
+    protected void setTransitioningViewsVisiblity(int visiblity, boolean invalidate) {
+        final int numElements = mTransitioningViews == null ? 0 : mTransitioningViews.size();
+        for (int i = 0; i < numElements; i++) {
+            final View view = mTransitioningViews.get(i);
+            view.setTransitionVisibility(visiblity);
+            if (invalidate) {
+                view.invalidate();
+            }
+        }
+    }
+
+    /**
+     * Blocks suppressLayout from Visibility transitions. It is ok to suppress the layout,
+     * but we don't want to force the layout when suppressLayout becomes false. This leads
+     * to visual glitches.
+     */
+    private static void noLayoutSuppressionForVisibilityTransitions(Transition transition) {
+        if (transition instanceof Visibility) {
+            final Visibility visibility = (Visibility) transition;
+            visibility.setSuppressLayout(false);
+        } else if (transition instanceof TransitionSet) {
+            final TransitionSet set = (TransitionSet) transition;
+            final int count = set.getTransitionCount();
+            for (int i = 0; i < count; i++) {
+                noLayoutSuppressionForVisibilityTransitions(set.getTransitionAt(i));
+            }
+        }
     }
 
     private static class FixedEpicenterCallback extends Transition.EpicenterCallback {

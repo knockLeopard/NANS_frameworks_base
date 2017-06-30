@@ -18,17 +18,20 @@ package android.webkit;
 
 import android.annotation.SystemApi;
 import android.content.res.Configuration;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Picture;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
-import android.net.Uri;
 import android.net.http.SslCertificate;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.Message;
 import android.print.PrintDocumentAdapter;
+import android.view.DragEvent;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -40,6 +43,8 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.webkit.WebView.HitTestResult;
 import android.webkit.WebView.PictureListener;
+import android.webkit.WebView.VisualStateCallback;
+
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -68,12 +73,16 @@ public interface WebViewProvider {
     public void init(Map<String, Object> javaScriptInterfaces,
             boolean privateBrowsing);
 
+    // Deprecated - should never be called
     public void setHorizontalScrollbarOverlay(boolean overlay);
 
+    // Deprecated - should never be called
     public void setVerticalScrollbarOverlay(boolean overlay);
 
+    // Deprecated - should never be called
     public boolean overlayHorizontalScrollbar();
 
+    // Deprecated - should never be called
     public boolean overlayVerticalScrollbar();
 
     public int getVisibleTitleHeight();
@@ -145,6 +154,8 @@ public interface WebViewProvider {
     public boolean pageUp(boolean top);
 
     public boolean pageDown(boolean bottom);
+
+    public void insertVisualStateCallback(long requestId, VisualStateCallback callback);
 
     public void clearView();
 
@@ -228,6 +239,10 @@ public interface WebViewProvider {
 
     public void removeJavascriptInterface(String interfaceName);
 
+    public WebMessagePort[] createWebMessageChannel();
+
+    public void postMessageToMainFrame(WebMessage message, Uri targetOrigin);
+
     public WebSettings getSettings();
 
     public void setMapTrackballToArrowKeys(boolean setMap);
@@ -290,6 +305,8 @@ public interface WebViewProvider {
     interface ViewDelegate {
         public boolean shouldDelayChildPressedState();
 
+        public void onProvideVirtualStructure(android.view.ViewStructure structure);
+
         public AccessibilityNodeProvider getAccessibilityNodeProvider();
 
         public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info);
@@ -318,6 +335,8 @@ public interface WebViewProvider {
         public void onConfigurationChanged(Configuration newConfig);
 
         public InputConnection onCreateInputConnection(EditorInfo outAttrs);
+
+        public boolean onDragEvent(DragEvent event);
 
         public boolean onKeyMultiple(int keyCode, int repeatCount, KeyEvent event);
 
@@ -366,6 +385,12 @@ public interface WebViewProvider {
         public void onStartTemporaryDetach();
 
         public void onFinishTemporaryDetach();
+
+        public void onActivityResult(int requestCode, int resultCode, Intent data);
+
+        public Handler getHandler(Handler originalHandler);
+
+        public View findFocus(View originalFocusedView);
     }
 
     interface ScrollDelegate {

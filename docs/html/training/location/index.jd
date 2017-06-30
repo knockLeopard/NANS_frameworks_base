@@ -29,6 +29,14 @@ startpage=true
 </div>
 </div>
 
+<a class="notice-developers-video wide"
+href="https://www.youtube.com/watch?v=S8sugXgUVEI">
+<div>
+    <h3>Video</h3>
+    <p>Activity Recognition</p>
+  </div>
+  </a>
+
 <p>
   One of the unique features of mobile applications is location awareness.
   Mobile users take their devices with them everywhere, and adding location
@@ -71,6 +79,10 @@ startpage=true
      Learn how to retrieve the last known location of an Android device, which
      is usually equivalent to the user's current location.
   </dd> <dt>
+    <b><a href="change-location-settings.html">Changing Location Settings</a></b>
+  <dt> <dd>
+    Learn how to detect and apply system settings for location features.
+  </dd> <dt>
     <b><a href="receive-location-updates.html">Receiving Location
     Updates</a></b>
   </dt> <dd>
@@ -80,5 +92,11 @@ startpage=true
   </dt> <dd>
     Learn how to convert a location's latitude and longitude into an address
     (reverse geocoding).
+  </dd>
+  <dt>
+    <b><a href="geofencing.html">Creating and Monitoring Geofences</a></b>
+  </dt> <dd>
+    Learn how to define one or more geographic areas as locations of interest,
+    called geofences, and detect when the user is close to or inside a geofence.
   </dd>
 </dl>

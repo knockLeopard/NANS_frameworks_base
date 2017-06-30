@@ -20,16 +20,22 @@ import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
 
+import android.content.pm.IntentFilterVerificationInfo;
+import android.content.pm.PackageManager;
 import android.content.pm.PackageUserState;
+import android.os.storage.VolumeInfo;
 import android.util.ArraySet;
 import android.util.SparseArray;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Settings base class for pending and resolved classes.
  */
-class PackageSettingBase extends GrantedPermissions {
+abstract class PackageSettingBase extends SettingBase {
     /**
      * Indicates the state of installation. Used by PackageManager to figure out
      * incomplete installations. Say a package is being installed (the state is
@@ -45,6 +51,9 @@ class PackageSettingBase extends GrantedPermissions {
 
     final String name;
     final String realName;
+
+    String parentPackageName;
+    List<String> childPackageNames;
 
     /**
      * Path where this package was found on disk. For monolithic packages
@@ -92,8 +101,7 @@ class PackageSettingBase extends GrantedPermissions {
 
     PackageSignatures signatures = new PackageSignatures();
 
-    boolean permissionsFixed;
-    boolean haveGids;
+    boolean installPermissionsFixed;
 
     PackageKeySetData keySetData = new PackageKeySetData();
 
@@ -105,17 +113,36 @@ class PackageSettingBase extends GrantedPermissions {
 
     int installStatus = PKG_INSTALL_COMPLETE;
 
+    /**
+     * Non-persisted value. During an "upgrade without restart", we need the set
+     * of all previous code paths so we can surgically add the new APKs to the
+     * active classloader. If at any point an application is upgraded with a
+     * restart, this field will be cleared since the classloader would be created
+     * using the full set of code paths when the package's process is started.
+     */
+    Set<String> oldCodePaths;
     PackageSettingBase origPackage;
 
-    /* package name of the app that installed this package */
+    /** Package name of the app that installed this package */
     String installerPackageName;
+    /** Indicates if the package that installed this app has been uninstalled */
+    boolean isOrphaned;
+    /** UUID of {@link VolumeInfo} hosting this app */
+    String volumeUuid;
+
+    IntentFilterVerificationInfo verificationInfo;
+
     PackageSettingBase(String name, String realName, File codePath, File resourcePath,
             String legacyNativeLibraryPathString, String primaryCpuAbiString,
             String secondaryCpuAbiString, String cpuAbiOverrideString,
-            int pVersionCode, int pkgFlags) {
-        super(pkgFlags);
+            int pVersionCode, int pkgFlags, int pkgPrivateFlags,
+            String parentPackageName, List<String> childPackageNames) {
+        super(pkgFlags, pkgPrivateFlags);
         this.name = name;
         this.realName = realName;
+        this.parentPackageName = parentPackageName;
+        this.childPackageNames = (childPackageNames != null)
+                ? new ArrayList<>(childPackageNames) : null;
         init(codePath, resourcePath, legacyNativeLibraryPathString, primaryCpuAbiString,
                 secondaryCpuAbiString, cpuAbiOverrideString, pVersionCode);
     }
@@ -146,8 +173,7 @@ class PackageSettingBase extends GrantedPermissions {
 
         signatures = new PackageSignatures(base.signatures);
 
-        permissionsFixed = base.permissionsFixed;
-        haveGids = base.haveGids;
+        installPermissionsFixed = base.installPermissionsFixed;
         userState.clear();
         for (int i=0; i<base.userState.size(); i++) {
             userState.put(base.userState.keyAt(i),
@@ -158,9 +184,14 @@ class PackageSettingBase extends GrantedPermissions {
         origPackage = base.origPackage;
 
         installerPackageName = base.installerPackageName;
+        isOrphaned = base.isOrphaned;
+        volumeUuid = base.volumeUuid;
 
         keySetData = new PackageKeySetData(base.keySetData);
 
+        parentPackageName = base.parentPackageName;
+        childPackageNames = (base.childPackageNames != null)
+                ? new ArrayList<>(base.childPackageNames) : null;
     }
 
     void init(File codePath, File resourcePath, String legacyNativeLibraryPathString,
@@ -181,8 +212,16 @@ class PackageSettingBase extends GrantedPermissions {
         installerPackageName = packageName;
     }
 
-    String getInstallerPackageName() {
+    public String getInstallerPackageName() {
         return installerPackageName;
+    }
+
+    public void setVolumeUuid(String volumeUuid) {
+        this.volumeUuid = volumeUuid;
+    }
+
+    public String getVolumeUuid() {
+        return volumeUuid;
     }
 
     public void setInstallStatus(int newStatus) {
@@ -201,9 +240,7 @@ class PackageSettingBase extends GrantedPermissions {
      * Make a shallow copy of this package settings.
      */
     public void copyFrom(PackageSettingBase base) {
-        grantedPermissions = base.grantedPermissions;
-        gids = base.gids;
-
+        mPermissionsState.copyFrom(base.mPermissionsState);
         primaryCpuAbiString = base.primaryCpuAbiString;
         secondaryCpuAbiString = base.secondaryCpuAbiString;
         cpuAbiOverrideString = base.cpuAbiOverrideString;
@@ -211,14 +248,16 @@ class PackageSettingBase extends GrantedPermissions {
         firstInstallTime = base.firstInstallTime;
         lastUpdateTime = base.lastUpdateTime;
         signatures = base.signatures;
-        permissionsFixed = base.permissionsFixed;
-        haveGids = base.haveGids;
+        installPermissionsFixed = base.installPermissionsFixed;
         userState.clear();
         for (int i=0; i<base.userState.size(); i++) {
             userState.put(base.userState.keyAt(i), base.userState.valueAt(i));
         }
         installStatus = base.installStatus;
         keySetData = base.keySetData;
+        verificationInfo = base.verificationInfo;
+        installerPackageName = base.installerPackageName;
+        volumeUuid = base.volumeUuid;
     }
 
     private PackageUserState modifyUserState(int userId) {
@@ -287,6 +326,14 @@ class PackageSettingBase extends GrantedPermissions {
         return res;
     }
 
+    long getCeDataInode(int userId) {
+        return readUserState(userId).ceDataInode;
+    }
+
+    void setCeDataInode(long ceDataInode, int userId) {
+        modifyUserState(userId).ceDataInode = ceDataInode;
+    }
+
     boolean getStopped(int userId) {
         return readUserState(userId).stopped;
     }
@@ -311,6 +358,14 @@ class PackageSettingBase extends GrantedPermissions {
         modifyUserState(userId).hidden = hidden;
     }
 
+    boolean getSuspended(int userId) {
+        return readUserState(userId).suspended;
+    }
+
+    void setSuspended(boolean suspended, int userId) {
+        modifyUserState(userId).suspended = suspended;
+    }
+
     boolean getBlockUninstall(int userId) {
         return readUserState(userId).blockUninstall;
     }
@@ -319,20 +374,25 @@ class PackageSettingBase extends GrantedPermissions {
         modifyUserState(userId).blockUninstall = blockUninstall;
     }
 
-    void setUserState(int userId, int enabled, boolean installed, boolean stopped,
-            boolean notLaunched, boolean hidden,
+    void setUserState(int userId, long ceDataInode, int enabled, boolean installed, boolean stopped,
+            boolean notLaunched, boolean hidden, boolean suspended,
             String lastDisableAppCaller, ArraySet<String> enabledComponents,
-            ArraySet<String> disabledComponents, boolean blockUninstall) {
+            ArraySet<String> disabledComponents, boolean blockUninstall, int domainVerifState,
+            int linkGeneration) {
         PackageUserState state = modifyUserState(userId);
+        state.ceDataInode = ceDataInode;
         state.enabled = enabled;
         state.installed = installed;
         state.stopped = stopped;
         state.notLaunched = notLaunched;
         state.hidden = hidden;
+        state.suspended = suspended;
         state.lastDisableAppCaller = lastDisableAppCaller;
         state.enabledComponents = enabledComponents;
         state.disabledComponents = disabledComponents;
         state.blockUninstall = blockUninstall;
+        state.domainVerificationStatus = domainVerifState;
+        state.appLinkGeneration = linkGeneration;
     }
 
     ArraySet<String> getEnabledComponents(int userId) {
@@ -419,5 +479,37 @@ class PackageSettingBase extends GrantedPermissions {
 
     void removeUser(int userId) {
         userState.delete(userId);
+    }
+
+    IntentFilterVerificationInfo getIntentFilterVerificationInfo() {
+        return verificationInfo;
+    }
+
+    void setIntentFilterVerificationInfo(IntentFilterVerificationInfo info) {
+        verificationInfo = info;
+    }
+
+    // Returns a packed value as a long:
+    //
+    // high 'int'-sized word: link status: undefined/ask/never/always.
+    // low 'int'-sized word: relative priority among 'always' results.
+    long getDomainVerificationStatusForUser(int userId) {
+        PackageUserState state = readUserState(userId);
+        long result = (long) state.appLinkGeneration;
+        result |= ((long) state.domainVerificationStatus) << 32;
+        return result;
+    }
+
+    void setDomainVerificationStatusForUser(final int status, int generation, int userId) {
+        PackageUserState state = modifyUserState(userId);
+        state.domainVerificationStatus = status;
+        if (status == PackageManager.INTENT_FILTER_DOMAIN_VERIFICATION_STATUS_ALWAYS) {
+            state.appLinkGeneration = generation;
+        }
+    }
+
+    void clearDomainVerificationStatusForUser(int userId) {
+        modifyUserState(userId).domainVerificationStatus =
+                PackageManager.INTENT_FILTER_DOMAIN_VERIFICATION_STATUS_UNDEFINED;
     }
 }

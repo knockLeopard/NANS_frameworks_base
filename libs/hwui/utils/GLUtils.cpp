@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "OpenGLRenderer"
-
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 
@@ -23,12 +21,23 @@
 
 #include "GLUtils.h"
 
+#if DEBUG_OPENGL >= DEBUG_LEVEL_HIGH && !defined(HWUI_GLES_WRAP_ENABLED)
+#error Setting DEBUG_OPENGL to HIGH requires setting HWUI_ENABLE_OPENGL_VALIDATION to true in the Android.mk!
+#endif
+
 namespace android {
 namespace uirenderer {
 
-void GLUtils::dumpGLErrors() {
+bool GLUtils::dumpGLErrors() {
+#if DEBUG_OPENGL >= DEBUG_LEVEL_HIGH
+    // If DEBUG_LEVEL_HIGH is set then every GLES call is already wrapped
+    // and asserts that there was no error. So this can just return success.
+    return false;
+#else
+    bool errorObserved = false;
     GLenum status = GL_NO_ERROR;
     while ((status = glGetError()) != GL_NO_ERROR) {
+        errorObserved = true;
         switch (status) {
         case GL_INVALID_ENUM:
             ALOGE("GL error:  GL_INVALID_ENUM");
@@ -46,6 +55,8 @@ void GLUtils::dumpGLErrors() {
             ALOGE("GL error: 0x%x", status);
         }
     }
+    return errorObserved;
+#endif
 }
 
 }; // namespace uirenderer

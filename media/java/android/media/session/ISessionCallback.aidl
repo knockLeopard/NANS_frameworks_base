@@ -15,8 +15,8 @@
 
 package android.media.session;
 
-import android.media.Rating;
 import android.content.Intent;
+import android.media.Rating;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.ResultReceiver;
@@ -29,9 +29,14 @@ oneway interface ISessionCallback {
     void onMediaButton(in Intent mediaButtonIntent, int sequenceNumber, in ResultReceiver cb);
 
     // These callbacks are for the TransportPerformer
+    void onPrepare();
+    void onPrepareFromMediaId(String mediaId, in Bundle extras);
+    void onPrepareFromSearch(String query, in Bundle extras);
+    void onPrepareFromUri(in Uri uri, in Bundle extras);
     void onPlay();
-    void onPlayFromMediaId(String uri, in Bundle extras);
+    void onPlayFromMediaId(String mediaId, in Bundle extras);
     void onPlayFromSearch(String query, in Bundle extras);
+    void onPlayFromUri(in Uri uri, in Bundle extras);
     void onSkipToTrack(long id);
     void onPause();
     void onStop();

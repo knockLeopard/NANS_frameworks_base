@@ -29,6 +29,8 @@ import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.android.internal.logging.MetricsLogger;
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 import com.android.systemui.qs.QSTile;
 
 import java.util.Arrays;
@@ -42,6 +44,9 @@ public class IntentTile extends QSTile<QSTile.State> {
     private PendingIntent mOnLongClick;
     private String mOnLongClickUri;
     private int mCurrentUserId;
+    private String mIntentPackage;
+
+    private Intent mLastIntent;
 
     private IntentTile(Host host, String action) {
         super(host);
@@ -70,7 +75,7 @@ public class IntentTile extends QSTile<QSTile.State> {
     }
 
     @Override
-    protected State newTileState() {
+    public State newTileState() {
         return new State();
     }
 
@@ -82,7 +87,13 @@ public class IntentTile extends QSTile<QSTile.State> {
 
     @Override
     protected void handleClick() {
+        MetricsLogger.action(mContext, getMetricsCategory(), mIntentPackage);
         sendIntent("click", mOnClick, mOnClickUri);
+    }
+
+    @Override
+    public Intent getLongClickIntent() {
+        return null;
     }
 
     @Override
@@ -93,7 +104,11 @@ public class IntentTile extends QSTile<QSTile.State> {
     private void sendIntent(String type, PendingIntent pi, String uri) {
         try {
             if (pi != null) {
-                pi.send();
+                if (pi.isActivity()) {
+                    getHost().startActivityDismissingKeyguard(pi);
+                } else {
+                    pi.send();
+                }
             } else if (uri != null) {
                 final Intent intent = Intent.parseUri(uri, Intent.URI_INTENT_SCHEME);
                 mContext.sendBroadcastAsUser(intent, new UserHandle(mCurrentUserId));
@@ -104,10 +119,22 @@ public class IntentTile extends QSTile<QSTile.State> {
     }
 
     @Override
+    public CharSequence getTileLabel() {
+        return getState().label;
+    }
+
+    @Override
     protected void handleUpdateState(State state, Object arg) {
-        if (!(arg instanceof Intent)) return;
-        final Intent intent = (Intent) arg;
-        state.visible = intent.getBooleanExtra("visible", true);
+        Intent intent = (Intent) arg;
+        if (intent == null) {
+            if (mLastIntent == null) {
+                return;
+            }
+            // No intent but need to refresh state, just use the last one.
+            intent = mLastIntent;
+        }
+        // Save the last one in case we need it later.
+        mLastIntent = intent;
         state.contentDescription = intent.getStringExtra("contentDescription");
         state.label = intent.getStringExtra("label");
         state.icon = null;
@@ -133,6 +160,13 @@ public class IntentTile extends QSTile<QSTile.State> {
         mOnClickUri = intent.getStringExtra("onClickUri");
         mOnLongClick = intent.getParcelableExtra("onLongClick");
         mOnLongClickUri = intent.getStringExtra("onLongClickUri");
+        mIntentPackage = intent.getStringExtra("package");
+        mIntentPackage = mIntentPackage == null ? "" : mIntentPackage;
+    }
+
+    @Override
+    public int getMetricsCategory() {
+        return MetricsEvent.QS_INTENT;
     }
 
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {

@@ -1,12 +1,13 @@
 #include "idmap.h"
 
-#include <UniquePtr.h>
+#include <memory>
 #include <androidfw/AssetManager.h>
 #include <androidfw/ResourceTypes.h>
 #include <androidfw/ZipFileRO.h>
 #include <utils/String8.h>
 
 #include <fcntl.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 
 using namespace android;
@@ -14,7 +15,7 @@ using namespace android;
 namespace {
     int get_zip_entry_crc(const char *zip_path, const char *entry_name, uint32_t *crc)
     {
-        UniquePtr<ZipFileRO> zip(ZipFileRO::open(zip_path));
+        std::unique_ptr<ZipFileRO> zip(ZipFileRO::open(zip_path));
         if (zip.get() == NULL) {
             return -1;
         }
@@ -22,7 +23,7 @@ namespace {
         if (entry == NULL) {
             return -1;
         }
-        if (!zip->getEntryInfo(entry, NULL, NULL, NULL, NULL, NULL, (long*)crc)) {
+        if (!zip->getEntryInfo(entry, NULL, NULL, NULL, NULL, NULL, crc)) {
             return -1;
         }
         zip->releaseEntry(entry);
@@ -40,7 +41,7 @@ namespace {
             ALOGD("error: fchmod %s: %s\n", path, strerror(errno));
             goto fail;
         }
-        if (TEMP_FAILURE_RETRY(flock(fd, LOCK_EX | LOCK_NB)) != 0) {
+        if (TEMP_FAILURE_RETRY(flock(fd, LOCK_EX)) != 0) {
             ALOGD("error: flock %s: %s\n", path, strerror(errno));
             goto fail;
         }
@@ -56,7 +57,7 @@ fail:
 
     int write_idmap(int fd, const uint32_t *data, size_t size)
     {
-        if (lseek(fd, SEEK_SET, 0) < 0) {
+        if (lseek(fd, 0, SEEK_SET) < 0) {
             return -1;
         }
         size_t bytesLeft = size;
@@ -66,7 +67,7 @@ fail:
                 fprintf(stderr, "error: write: %s\n", strerror(errno));
                 return -1;
             }
-            bytesLeft -= w;
+            bytesLeft -= static_cast<size_t>(w);
         }
         return 0;
     }
@@ -78,14 +79,14 @@ fail:
         if (fstat(idmap_fd, &st) == -1) {
             return true;
         }
-        if (st.st_size < N) {
+        if (st.st_size < static_cast<off_t>(N)) {
             // file is empty or corrupt
             return true;
         }
 
         char buf[N];
-        ssize_t bytesLeft = N;
-        if (lseek(idmap_fd, SEEK_SET, 0) < 0) {
+        size_t bytesLeft = N;
+        if (lseek(idmap_fd, 0, SEEK_SET) < 0) {
             return true;
         }
         for (;;) {
@@ -93,7 +94,7 @@ fail:
             if (r < 0) {
                 return true;
             }
-            bytesLeft -= r;
+            bytesLeft -= static_cast<size_t>(r);
             if (bytesLeft == 0) {
                 break;
             }

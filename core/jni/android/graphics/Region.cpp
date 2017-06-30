@@ -23,7 +23,7 @@
 #include "android_util_Binder.h"
 
 #include <jni.h>
-#include <android_runtime/AndroidRuntime.h>
+#include <core_jni_helpers.h>
 
 namespace android {
 
@@ -206,15 +206,23 @@ static jstring Region_toString(JNIEnv* env, jobject clazz, jlong regionHandle) {
 
 static jlong Region_createFromParcel(JNIEnv* env, jobject clazz, jobject parcel)
 {
-    if (parcel == NULL) {
-        return NULL;
+    if (parcel == nullptr) {
+        return 0;
     }
 
     android::Parcel* p = android::parcelForJavaObject(env, parcel);
 
+    std::vector<int32_t> rects;
+    p->readInt32Vector(&rects);
+
+    if ((rects.size() % 4) != 0) {
+        return 0;
+    }
+
     SkRegion* region = new SkRegion;
-    size_t size = p->readInt32();
-    region->readFromMemory(p->readInplace(size), size);
+    for (size_t x = 0; x + 4 <= rects.size(); x += 4) {
+        region->op(rects[x], rects[x+1], rects[x+2], rects[x+3], SkRegion::kUnion_Op);
+    }
 
     return reinterpret_cast<jlong>(region);
 }
@@ -222,16 +230,24 @@ static jlong Region_createFromParcel(JNIEnv* env, jobject clazz, jobject parcel)
 static jboolean Region_writeToParcel(JNIEnv* env, jobject clazz, jlong regionHandle, jobject parcel)
 {
     const SkRegion* region = reinterpret_cast<SkRegion*>(regionHandle);
-    if (parcel == NULL) {
+    if (parcel == nullptr) {
         return JNI_FALSE;
     }
 
     android::Parcel* p = android::parcelForJavaObject(env, parcel);
 
-    size_t size = region->writeToMemory(NULL);
-    p->writeInt32(size);
-    region->writeToMemory(p->writeInplace(size));
+    std::vector<int32_t> rects;
+    SkRegion::Iterator it(*region);
+    while (!it.done()) {
+        const SkIRect& r = it.rect();
+        rects.push_back(r.fLeft);
+        rects.push_back(r.fTop);
+        rects.push_back(r.fRight);
+        rects.push_back(r.fBottom);
+        it.next();
+    }
 
+    p->writeInt32Vector(rects);
     return JNI_TRUE;
 }
 
@@ -288,13 +304,13 @@ static jboolean RegionIter_next(JNIEnv* env, jobject, jlong pairHandle, jobject 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static JNINativeMethod gRegionIterMethods[] = {
+static const JNINativeMethod gRegionIterMethods[] = {
     { "nativeConstructor",  "(J)J",                         (void*)RegionIter_constructor   },
     { "nativeDestructor",   "(J)V",                         (void*)RegionIter_destructor    },
     { "nativeNext",         "(JLandroid/graphics/Rect;)Z",  (void*)RegionIter_next          }
 };
 
-static JNINativeMethod gRegionMethods[] = {
+static const JNINativeMethod gRegionMethods[] = {
     // these are static methods
     { "nativeConstructor",      "()J",                              (void*)Region_constructor       },
     { "nativeDestructor",       "(J)V",                             (void*)Region_destructor        },
@@ -325,19 +341,13 @@ static JNINativeMethod gRegionMethods[] = {
 
 int register_android_graphics_Region(JNIEnv* env)
 {
-    jclass clazz = env->FindClass("android/graphics/Region");
-    SkASSERT(clazz);
+    jclass clazz = FindClassOrDie(env, "android/graphics/Region");
 
-    gRegion_nativeInstanceFieldID = env->GetFieldID(clazz, "mNativeRegion", "J");
-    SkASSERT(gRegion_nativeInstanceFieldID);
+    gRegion_nativeInstanceFieldID = GetFieldIDOrDie(env, clazz, "mNativeRegion", "J");
 
-    int result = android::AndroidRuntime::registerNativeMethods(env, "android/graphics/Region",
-                                                             gRegionMethods, SK_ARRAY_COUNT(gRegionMethods));
-    if (result < 0)
-        return result;
-
-    return android::AndroidRuntime::registerNativeMethods(env, "android/graphics/RegionIterator",
-                                                       gRegionIterMethods, SK_ARRAY_COUNT(gRegionIterMethods));
+    RegisterMethodsOrDie(env, "android/graphics/Region", gRegionMethods, NELEM(gRegionMethods));
+    return RegisterMethodsOrDie(env, "android/graphics/RegionIterator", gRegionIterMethods,
+                                NELEM(gRegionIterMethods));
 }
 
 SkRegion* android_graphics_Region_getSkRegion(JNIEnv* env, jobject regionObj) {

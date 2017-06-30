@@ -16,21 +16,20 @@
 
 #include "RenderThread.h"
 
-#if defined(HAVE_PTHREADS)
-#include <sys/resource.h>
-#endif
-#include <gui/DisplayEventReceiver.h>
-#include <utils/Log.h>
-
-#include "../RenderState.h"
+#include "../renderstate/RenderState.h"
 #include "CanvasContext.h"
 #include "EglManager.h"
 #include "RenderProxy.h"
 
-namespace android {
-using namespace uirenderer::renderthread;
-ANDROID_SINGLETON_STATIC_INSTANCE(RenderThread);
+#include <gui/DisplayEventReceiver.h>
+#include <gui/ISurfaceComposer.h>
+#include <gui/SurfaceComposerClient.h>
+#include <sys/resource.h>
+#include <utils/Condition.h>
+#include <utils/Log.h>
+#include <utils/Mutex.h>
 
+namespace android {
 namespace uirenderer {
 namespace renderthread {
 
@@ -42,16 +41,16 @@ static const size_t EVENT_BUFFER_SIZE = 100;
 // Slight delay to give the UI time to push us a new frame before we replay
 static const nsecs_t DISPATCH_FRAME_CALLBACKS_DELAY = milliseconds_to_nanoseconds(4);
 
-TaskQueue::TaskQueue() : mHead(0), mTail(0) {}
+TaskQueue::TaskQueue() : mHead(nullptr), mTail(nullptr) {}
 
 RenderTask* TaskQueue::next() {
     RenderTask* ret = mHead;
     if (ret) {
         mHead = ret->mNext;
         if (!mHead) {
-            mTail = 0;
+            mTail = nullptr;
         }
-        ret->mNext = 0;
+        ret->mNext = nullptr;
     }
     return ret;
 }
@@ -71,7 +70,7 @@ void TaskQueue::queue(RenderTask* task) {
             mTail = task;
         } else {
             // Need to find the proper insertion point
-            RenderTask* previous = 0;
+            RenderTask* previous = nullptr;
             RenderTask* next = mHead;
             while (next && next->mRunAt <= task->mRunAt) {
                 previous = next;
@@ -131,19 +130,35 @@ private:
 public:
     DispatchFrameCallbacks(RenderThread* rt) : mRenderThread(rt) {}
 
-    virtual void run() {
+    virtual void run() override {
         mRenderThread->dispatchFrameCallbacks();
     }
 };
 
-RenderThread::RenderThread() : Thread(true), Singleton<RenderThread>()
+static bool gHasRenderThreadInstance = false;
+
+bool RenderThread::hasInstance() {
+    return gHasRenderThreadInstance;
+}
+
+RenderThread& RenderThread::getInstance() {
+    // This is a pointer because otherwise __cxa_finalize
+    // will try to delete it like a Good Citizen but that causes us to crash
+    // because we don't want to delete the RenderThread normally.
+    static RenderThread* sInstance = new RenderThread();
+    gHasRenderThreadInstance = true;
+    return *sInstance;
+}
+
+RenderThread::RenderThread() : Thread(true)
         , mNextWakeup(LLONG_MAX)
-        , mDisplayEventReceiver(0)
+        , mDisplayEventReceiver(nullptr)
         , mVsyncRequested(false)
         , mFrameCallbackTaskPending(false)
-        , mFrameCallbackTask(0)
-        , mRenderState(NULL)
-        , mEglManager(NULL) {
+        , mFrameCallbackTask(nullptr)
+        , mRenderState(nullptr)
+        , mEglManager(nullptr) {
+    Properties::load();
     mFrameCallbackTask = new DispatchFrameCallbacks(this);
     mLooper = new Looper(false);
     run("RenderThread");
@@ -166,9 +181,16 @@ void RenderThread::initializeDisplayEventReceiver() {
 }
 
 void RenderThread::initThreadLocals() {
+    sp<IBinder> dtoken(SurfaceComposerClient::getBuiltInDisplay(
+            ISurfaceComposer::eDisplayIdMain));
+    status_t status = SurfaceComposerClient::getDisplayInfo(dtoken, &mDisplayInfo);
+    LOG_ALWAYS_FATAL_IF(status, "Failed to get display info\n");
+    nsecs_t frameIntervalNanos = static_cast<nsecs_t>(1000000000 / mDisplayInfo.fps);
+    mTimeLord.setFrameInterval(frameIntervalNanos);
     initializeDisplayEventReceiver();
     mEglManager = new EglManager(*this);
     mRenderState = new RenderState(*this);
+    mJankTracker = new JankTracker(mDisplayInfo);
 }
 
 int RenderThread::displayEventReceiverCallback(int fd, int events, void* data) {
@@ -250,9 +272,7 @@ void RenderThread::requestVsync() {
 }
 
 bool RenderThread::threadLoop() {
-#if defined(HAVE_PTHREADS)
     setpriority(PRIO_PROCESS, 0, PRIORITY_DISPLAY);
-#endif
     initThreadLocals();
 
     int timeoutMillis = -1;
@@ -306,6 +326,19 @@ void RenderThread::queue(RenderTask* task) {
     }
 }
 
+void RenderThread::queueAndWait(RenderTask* task) {
+    // These need to be local to the thread to avoid the Condition
+    // signaling the wrong thread. The easiest way to achieve that is to just
+    // make this on the stack, although that has a slight cost to it
+    Mutex mutex;
+    Condition condition;
+    SignalingRenderTask syncTask(task, &mutex, &condition);
+
+    AutoMutex _lock(mutex);
+    queue(&syncTask);
+    condition.wait(mutex);
+}
+
 void RenderThread::queueAtFront(RenderTask* task) {
     AutoMutex _lock(mLock);
     mQueue.queueAtFront(task);
@@ -350,7 +383,7 @@ RenderTask* RenderThread::nextTask(nsecs_t* nextWakeup) {
         if (next->mRunAt <= 0 || next->mRunAt <= systemTime(SYSTEM_TIME_MONOTONIC)) {
             next = mQueue.next();
         } else {
-            next = 0;
+            next = nullptr;
         }
     }
     if (nextWakeup) {

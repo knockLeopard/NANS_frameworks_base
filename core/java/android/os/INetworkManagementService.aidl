@@ -18,6 +18,7 @@
 package android.os;
 
 import android.net.InterfaceConfiguration;
+import android.net.INetd;
 import android.net.INetworkManagementEventObserver;
 import android.net.Network;
 import android.net.NetworkStats;
@@ -36,7 +37,7 @@ interface INetworkManagementService
      **/
 
     /**
-     * Register an observer to receive events
+     * Register an observer to receive events.
      */
     void registerObserver(INetworkManagementEventObserver obs);
 
@@ -44,6 +45,11 @@ interface INetworkManagementService
      * Unregister an observer from receiving events.
      */
     void unregisterObserver(INetworkManagementEventObserver obs);
+
+    /**
+     * Retrieve an INetd to talk to netd.
+     */
+    INetd getNetdService();
 
     /**
      * Returns a list of currently known network interfaces
@@ -95,12 +101,6 @@ interface INetworkManagementService
      * Enables or enables IPv6 ND offload.
      */
     void setInterfaceIpv6NdOffload(String iface, boolean enable);
-
-    /**
-     * Retrieves the network routes currently configured on the specified
-     * interface
-     */
-    RouteInfo[] getRoutes(String iface);
 
     /**
      * Add the specified route to the interface.
@@ -176,6 +176,18 @@ interface INetworkManagementService
      * Returns the list of DNS forwarders (in order of priority)
      */
     String[] getDnsForwarders();
+
+    /**
+     * Enables unidirectional packet forwarding from {@code fromIface} to
+     * {@code toIface}.
+     */
+    void startInterfaceForwarding(String fromIface, String toIface);
+
+    /**
+     * Disables unidirectional packet forwarding from {@code fromIface} to
+     * {@code toIface}.
+     */
+    void stopInterfaceForwarding(String fromIface, String toIface);
 
     /**
      *  Enables Network Address Translation between two interfaces.
@@ -287,7 +299,11 @@ interface INetworkManagementService
     /**
      * Control network activity of a UID over interfaces with a quota limit.
      */
-    void setUidNetworkRules(int uid, boolean rejectOnQuotaInterfaces);
+    void setUidMeteredNetworkBlacklist(int uid, boolean enable);
+    void setUidMeteredNetworkWhitelist(int uid, boolean enable);
+    boolean setDataSaverModeEnabled(boolean enable);
+
+    void setUidCleartextNetworkPolicy(int uid, int policy);
 
     /**
      * Return status of bandwidth control module.
@@ -314,21 +330,23 @@ interface INetworkManagementService
     void removeIdleTimer(String iface);
 
     /**
+     * Configure name servers, search paths, and resolver parameters for the given network.
+     */
+    void setDnsConfigurationForNetwork(int netId, in String[] servers, String domains);
+
+    /**
      * Bind name servers to a network in the DNS resolver.
      */
     void setDnsServersForNetwork(int netId, in String[] servers, String domains);
-
-    /**
-     * Flush the DNS cache associated with the specified network.
-     */
-    void flushNetworkDnsCache(int netId);
 
     void setFirewallEnabled(boolean enabled);
     boolean isFirewallEnabled();
     void setFirewallInterfaceRule(String iface, boolean allow);
     void setFirewallEgressSourceRule(String addr, boolean allow);
     void setFirewallEgressDestRule(String addr, int port, boolean allow);
-    void setFirewallUidRule(int uid, boolean allow);
+    void setFirewallUidRule(int chain, int uid, int rule);
+    void setFirewallUidRules(int chain, in int[] uids, in int[] rules);
+    void setFirewallChainEnabled(int chain, boolean enable);
 
     /**
      * Set all packets from users in ranges to go through VPN specified by netId.
@@ -372,8 +390,10 @@ interface INetworkManagementService
 
     /**
      * Setup a new physical network.
+     * @param permission null if no permissions required to access this network.  PERMISSION_NETWORK
+     *                   or PERMISSION_SYSTEM to set respective permission.
      */
-    void createPhysicalNetwork(int netId);
+    void createPhysicalNetwork(int netId, String permission);
 
     /**
      * Setup a new VPN.
@@ -400,6 +420,13 @@ interface INetworkManagementService
     void setDefaultNetId(int netId);
     void clearDefaultNetId();
 
+    /**
+     * Set permission for a network.
+     * @param permission null to clear permissions. PERMISSION_NETWORK or PERMISSION_SYSTEM to set
+     *                   permission.
+     */
+    void setNetworkPermission(int netId, String permission);
+
     void setPermission(String permission, in int[] uids);
     void clearPermission(in int[] uids);
 
@@ -415,4 +442,7 @@ interface INetworkManagementService
 
     void addInterfaceToLocalNetwork(String iface, in List<RouteInfo> routes);
     void removeInterfaceFromLocalNetwork(String iface);
+    int removeRoutesFromLocalNetwork(in List<RouteInfo> routes);
+
+    void setAllowOnlyVpnForUids(boolean enable, in UidRange[] uidRanges);
 }

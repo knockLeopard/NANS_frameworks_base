@@ -17,6 +17,7 @@
 package android.telecom;
 
 import android.annotation.SystemApi;
+import android.os.Bundle;
 import android.util.ArrayMap;
 
 import java.util.Collections;
@@ -28,9 +29,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * A unified virtual device providing a means of voice (and other) communication on a device.
  *
- * {@hide}
+ * @hide
+ * @deprecated Use {@link InCallService} directly instead of using this class.
  */
 @SystemApi
+@Deprecated
 public final class Phone {
 
     public abstract static class Listener {
@@ -39,8 +42,19 @@ public final class Phone {
          *
          * @param phone The {@code Phone} calling this method.
          * @param audioState The new {@link AudioState}.
+         *
+         * @deprecated Use {@link #onCallAudioStateChanged(Phone, CallAudioState)} instead.
          */
+        @Deprecated
         public void onAudioStateChanged(Phone phone, AudioState audioState) { }
+
+        /**
+         * Called when the audio state changes.
+         *
+         * @param phone The {@code Phone} calling this method.
+         * @param callAudioState The new {@link CallAudioState}.
+         */
+        public void onCallAudioStateChanged(Phone phone, CallAudioState callAudioState) { }
 
         /**
          * Called to bring the in-call screen to the foreground. The in-call experience should
@@ -84,6 +98,13 @@ public final class Phone {
          * @param canAddCall Indicates whether an additional call can be added.
          */
         public void onCanAddCallChanged(Phone phone, boolean canAddCall) { }
+
+        /**
+         * Called to silence the ringer if a ringing call exists.
+         *
+         * @param phone The {@code Phone} calling this method.
+         */
+        public void onSilenceRinger(Phone phone) { }
     }
 
     // A Map allows us to track each Call by its Telecom-specified call ID
@@ -98,20 +119,19 @@ public final class Phone {
 
     private final InCallAdapter mInCallAdapter;
 
-    private AudioState mAudioState;
+    private CallAudioState mCallAudioState;
 
     private final List<Listener> mListeners = new CopyOnWriteArrayList<>();
 
     private boolean mCanAddCall = true;
 
-    /** {@hide} */
     Phone(InCallAdapter adapter) {
         mInCallAdapter = adapter;
     }
 
-    /** {@hide} */
     final void internalAddCall(ParcelableCall parcelableCall) {
-        Call call = new Call(this, parcelableCall.getId(), mInCallAdapter);
+        Call call = new Call(this, parcelableCall.getId(), mInCallAdapter,
+                parcelableCall.getState());
         mCallByTelecomCallId.put(parcelableCall.getId(), call);
         mCalls.add(call);
         checkCallTree(parcelableCall);
@@ -119,14 +139,17 @@ public final class Phone {
         fireCallAdded(call);
      }
 
-    /** {@hide} */
     final void internalRemoveCall(Call call) {
         mCallByTelecomCallId.remove(call.internalGetCallId());
         mCalls.remove(call);
+
+        InCallService.VideoCall videoCall = call.getVideoCall();
+        if (videoCall != null) {
+            videoCall.destroy();
+        }
         fireCallRemoved(call);
     }
 
-    /** {@hide} */
     final void internalUpdateCall(ParcelableCall parcelableCall) {
          Call call = mCallByTelecomCallId.get(parcelableCall.getId());
          if (call != null) {
@@ -135,7 +158,6 @@ public final class Phone {
          }
      }
 
-    /** {@hide} */
     final void internalSetPostDialWait(String telecomId, String remaining) {
         Call call = mCallByTelecomCallId.get(telecomId);
         if (call != null) {
@@ -143,25 +165,21 @@ public final class Phone {
         }
     }
 
-    /** {@hide} */
-    final void internalAudioStateChanged(AudioState audioState) {
-        if (!Objects.equals(mAudioState, audioState)) {
-            mAudioState = audioState;
-            fireAudioStateChanged(audioState);
+    final void internalCallAudioStateChanged(CallAudioState callAudioState) {
+        if (!Objects.equals(mCallAudioState, callAudioState)) {
+            mCallAudioState = callAudioState;
+            fireCallAudioStateChanged(callAudioState);
         }
     }
 
-    /** {@hide} */
     final Call internalGetCallByTelecomId(String telecomId) {
         return mCallByTelecomCallId.get(telecomId);
     }
 
-    /** {@hide} */
     final void internalBringToForeground(boolean showDialpad) {
         fireBringToForeground(showDialpad);
     }
 
-    /** {@hide} */
     final void internalSetCanAddCall(boolean canAddCall) {
         if (mCanAddCall != canAddCall) {
             mCanAddCall = canAddCall;
@@ -169,12 +187,26 @@ public final class Phone {
         }
     }
 
+    final void internalSilenceRinger() {
+        fireSilenceRinger();
+    }
+
+    final void internalOnConnectionEvent(String telecomId, String event, Bundle extras) {
+        Call call = mCallByTelecomCallId.get(telecomId);
+        if (call != null) {
+            call.internalOnConnectionEvent(event, extras);
+        }
+    }
+
     /**
      * Called to destroy the phone and cleanup any lingering calls.
-     * @hide
      */
     final void destroy() {
         for (Call call : mCalls) {
+            InCallService.VideoCall videoCall = call.getVideoCall();
+            if (videoCall != null) {
+                videoCall.destroy();
+            }
             if (call.getState() != Call.STATE_DISCONNECTED) {
                 call.internalSetDisconnected();
             }
@@ -244,6 +276,8 @@ public final class Phone {
      * become active, and the touch screen and display will be turned off when the user's face
      * is detected to be in close proximity to the screen. This operation is a no-op on devices
      * that do not have a proximity sensor.
+     *
+     * @hide
      */
     public final void setProximitySensorOn() {
         mInCallAdapter.turnProximitySensorOn();
@@ -257,6 +291,8 @@ public final class Phone {
      * @param screenOnImmediately If true, the screen will be turned on immediately if it was
      * previously off. Otherwise, the screen will only be turned on after the proximity sensor
      * is no longer triggered.
+     *
+     * @hide
      */
     public final void setProximitySensorOff(boolean screenOnImmediately) {
         mInCallAdapter.turnProximitySensorOff(screenOnImmediately);
@@ -266,9 +302,20 @@ public final class Phone {
      * Obtains the current phone call audio state of the {@code Phone}.
      *
      * @return An object encapsulating the audio state.
+     * @deprecated Use {@link #getCallAudioState()} instead.
      */
+    @Deprecated
     public final AudioState getAudioState() {
-        return mAudioState;
+        return new AudioState(mCallAudioState);
+    }
+
+    /**
+     * Obtains the current phone call audio state of the {@code Phone}.
+     *
+     * @return An object encapsulating the audio state.
+     */
+    public final CallAudioState getCallAudioState() {
+        return mCallAudioState;
     }
 
     private void fireCallAdded(Call call) {
@@ -283,9 +330,10 @@ public final class Phone {
         }
     }
 
-    private void fireAudioStateChanged(AudioState audioState) {
+    private void fireCallAudioStateChanged(CallAudioState audioState) {
         for (Listener listener : mListeners) {
-            listener.onAudioStateChanged(this, audioState);
+            listener.onCallAudioStateChanged(this, audioState);
+            listener.onAudioStateChanged(this, new AudioState(audioState));
         }
     }
 
@@ -301,12 +349,13 @@ public final class Phone {
         }
     }
 
-    private void checkCallTree(ParcelableCall parcelableCall) {
-        if (parcelableCall.getParentCallId() != null &&
-                !mCallByTelecomCallId.containsKey(parcelableCall.getParentCallId())) {
-            Log.wtf(this, "ParcelableCall %s has nonexistent parent %s",
-                    parcelableCall.getId(), parcelableCall.getParentCallId());
+    private void fireSilenceRinger() {
+        for (Listener listener : mListeners) {
+            listener.onSilenceRinger(this);
         }
+    }
+
+    private void checkCallTree(ParcelableCall parcelableCall) {
         if (parcelableCall.getChildCallIds() != null) {
             for (int i = 0; i < parcelableCall.getChildCallIds().size(); i++) {
                 if (!mCallByTelecomCallId.containsKey(parcelableCall.getChildCallIds().get(i))) {

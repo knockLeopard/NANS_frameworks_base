@@ -15,6 +15,9 @@
  */
 package com.android.server.notification;
 
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+
 import android.app.Notification;
 import android.os.UserHandle;
 import android.service.notification.StatusBarNotification;
@@ -24,6 +27,8 @@ import android.test.suitebuilder.annotation.SmallTest;
 import java.util.ArrayList;
 
 public class RankingHelperTest extends AndroidTestCase {
+    @Mock NotificationUsageStats mUsageStats;
+    @Mock RankingHandler handler;
 
     private Notification mNotiGroupGSortA;
     private Notification mNotiGroupGSortB;
@@ -39,9 +44,11 @@ public class RankingHelperTest extends AndroidTestCase {
 
     @Override
     public void setUp() {
+        MockitoAnnotations.initMocks(this);
         UserHandle user = UserHandle.ALL;
 
-        mHelper = new RankingHelper(getContext(), null, new String[0]);
+        mHelper = new RankingHelper(getContext(), handler, mUsageStats,
+                new String[] {ImportanceExtractor.class.getName()});
 
         mNotiGroupGSortA = new Notification.Builder(getContext())
                 .setContentTitle("A")
@@ -49,8 +56,8 @@ public class RankingHelperTest extends AndroidTestCase {
                 .setSortKey("A")
                 .setWhen(1205)
                 .build();
-        mRecordGroupGSortA = new NotificationRecord(new StatusBarNotification(
-                "package", "package", 1, null, 0, 0, 0, mNotiGroupGSortA, user), 0);
+        mRecordGroupGSortA = new NotificationRecord(getContext(), new StatusBarNotification(
+                "package", "package", 1, null, 0, 0, 0, mNotiGroupGSortA, user));
 
         mNotiGroupGSortB = new Notification.Builder(getContext())
                 .setContentTitle("B")
@@ -58,30 +65,30 @@ public class RankingHelperTest extends AndroidTestCase {
                 .setSortKey("B")
                 .setWhen(1200)
                 .build();
-        mRecordGroupGSortB = new NotificationRecord(new StatusBarNotification(
-                "package", "package", 1, null, 0, 0, 0, mNotiGroupGSortB, user), 0);
+        mRecordGroupGSortB = new NotificationRecord(getContext(), new StatusBarNotification(
+                "package", "package", 1, null, 0, 0, 0, mNotiGroupGSortB, user));
 
         mNotiNoGroup = new Notification.Builder(getContext())
                 .setContentTitle("C")
                 .setWhen(1201)
                 .build();
-        mRecordNoGroup = new NotificationRecord(new StatusBarNotification(
-                "package", "package", 1, null, 0, 0, 0, mNotiNoGroup, user), 0);
+        mRecordNoGroup = new NotificationRecord(getContext(), new StatusBarNotification(
+                "package", "package", 1, null, 0, 0, 0, mNotiNoGroup, user));
 
         mNotiNoGroup2 = new Notification.Builder(getContext())
                 .setContentTitle("D")
                 .setWhen(1202)
                 .build();
-        mRecordNoGroup2 = new NotificationRecord(new StatusBarNotification(
-                "package", "package", 1, null, 0, 0, 0, mNotiNoGroup2, user), 0);
+        mRecordNoGroup2 = new NotificationRecord(getContext(), new StatusBarNotification(
+                "package", "package", 1, null, 0, 0, 0, mNotiNoGroup2, user));
 
         mNotiNoGroupSortA = new Notification.Builder(getContext())
                 .setContentTitle("E")
                 .setWhen(1201)
                 .setSortKey("A")
                 .build();
-        mRecordNoGroupSortA = new NotificationRecord(new StatusBarNotification(
-                "package", "package", 1, null, 0, 0, 0, mNotiNoGroupSortA, user), 0);
+        mRecordNoGroupSortA = new NotificationRecord(getContext(), new StatusBarNotification(
+                "package", "package", 1, null, 0, 0, 0, mNotiNoGroupSortA, user));
     }
 
     @SmallTest

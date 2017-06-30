@@ -19,6 +19,7 @@ import com.android.internal.R;
 
 import android.util.TypedValue;
 import android.view.ContextThemeWrapper;
+import android.view.MotionEvent;
 import android.widget.ActionMenuPresenter;
 import android.widget.ActionMenuView;
 
@@ -52,6 +53,9 @@ public abstract class AbsActionBarView extends ViewGroup {
     protected int mContentHeight;
 
     protected Animator mVisibilityAnim;
+
+    private boolean mEatingTouch;
+    private boolean mEatingHover;
 
     public AbsActionBarView(Context context) {
         this(context, null);
@@ -97,6 +101,57 @@ public abstract class AbsActionBarView extends ViewGroup {
         }
     }
 
+    @Override
+    public boolean onTouchEvent(MotionEvent ev) {
+        // ActionBarViews always eat touch events, but should still respect the touch event dispatch
+        // contract. If the normal View implementation doesn't want the events, we'll just silently
+        // eat the rest of the gesture without reporting the events to the default implementation
+        // since that's what it expects.
+
+        final int action = ev.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            mEatingTouch = false;
+        }
+
+        if (!mEatingTouch) {
+            final boolean handled = super.onTouchEvent(ev);
+            if (action == MotionEvent.ACTION_DOWN && !handled) {
+                mEatingTouch = true;
+            }
+        }
+
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            mEatingTouch = false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public boolean onHoverEvent(MotionEvent ev) {
+        // Same deal as onTouchEvent() above. Eat all hover events, but still
+        // respect the touch event dispatch contract.
+
+        final int action = ev.getActionMasked();
+        if (action == MotionEvent.ACTION_HOVER_ENTER) {
+            mEatingHover = false;
+        }
+
+        if (!mEatingHover) {
+            final boolean handled = super.onHoverEvent(ev);
+            if (action == MotionEvent.ACTION_HOVER_ENTER && !handled) {
+                mEatingHover = true;
+            }
+        }
+
+        if (action == MotionEvent.ACTION_HOVER_EXIT
+                || action == MotionEvent.ACTION_CANCEL) {
+            mEatingHover = false;
+        }
+
+        return true;
+    }
+
     /**
      * Sets whether the bar should be split right now, no questions asked.
      * @param split true if the bar should split
@@ -136,10 +191,11 @@ public abstract class AbsActionBarView extends ViewGroup {
         return getVisibility();
     }
 
-    public void animateToVisibility(int visibility) {
+    public Animator setupAnimatorToVisibility(int visibility, long duration) {
         if (mVisibilityAnim != null) {
             mVisibilityAnim.cancel();
         }
+
         if (visibility == VISIBLE) {
             if (getVisibility() != VISIBLE) {
                 setAlpha(0);
@@ -147,36 +203,41 @@ public abstract class AbsActionBarView extends ViewGroup {
                     mMenuView.setAlpha(0);
                 }
             }
-            ObjectAnimator anim = ObjectAnimator.ofFloat(this, "alpha", 1);
-            anim.setDuration(FADE_DURATION);
+            ObjectAnimator anim = ObjectAnimator.ofFloat(this, View.ALPHA, 1);
+            anim.setDuration(duration);
             anim.setInterpolator(sAlphaInterpolator);
             if (mSplitView != null && mMenuView != null) {
                 AnimatorSet set = new AnimatorSet();
-                ObjectAnimator splitAnim = ObjectAnimator.ofFloat(mMenuView, "alpha", 1);
-                splitAnim.setDuration(FADE_DURATION);
+                ObjectAnimator splitAnim = ObjectAnimator.ofFloat(mMenuView, View.ALPHA, 1);
+                splitAnim.setDuration(duration);
                 set.addListener(mVisAnimListener.withFinalVisibility(visibility));
                 set.play(anim).with(splitAnim);
-                set.start();
+                return set;
             } else {
                 anim.addListener(mVisAnimListener.withFinalVisibility(visibility));
-                anim.start();
+                return anim;
             }
         } else {
-            ObjectAnimator anim = ObjectAnimator.ofFloat(this, "alpha", 0);
-            anim.setDuration(FADE_DURATION);
+            ObjectAnimator anim = ObjectAnimator.ofFloat(this, View.ALPHA, 0);
+            anim.setDuration(duration);
             anim.setInterpolator(sAlphaInterpolator);
             if (mSplitView != null && mMenuView != null) {
                 AnimatorSet set = new AnimatorSet();
-                ObjectAnimator splitAnim = ObjectAnimator.ofFloat(mMenuView, "alpha", 0);
-                splitAnim.setDuration(FADE_DURATION);
+                ObjectAnimator splitAnim = ObjectAnimator.ofFloat(mMenuView, View.ALPHA, 0);
+                splitAnim.setDuration(duration);
                 set.addListener(mVisAnimListener.withFinalVisibility(visibility));
                 set.play(anim).with(splitAnim);
-                set.start();
+                return set;
             } else {
                 anim.addListener(mVisAnimListener.withFinalVisibility(visibility));
-                anim.start();
+                return anim;
             }
         }
+    }
+
+    public void animateToVisibility(int visibility) {
+        Animator anim = setupAnimatorToVisibility(visibility, FADE_DURATION);
+        anim.start();
     }
 
     @Override

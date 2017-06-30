@@ -87,6 +87,12 @@ public class LockSettingsStorageTests extends AndroidTestCase {
                 return new File(mStorageDir,
                         super.getLockPasswordFilename(userId).replace('/', '-')).getAbsolutePath();
             }
+
+            @Override
+            String getChildProfileLockFile(int userId) {
+                return new File(mStorageDir,
+                        super.getChildProfileLockFile(userId).replace('/', '-')).getAbsolutePath();
+            }
         };
     }
 
@@ -219,31 +225,52 @@ public class LockSettingsStorageTests extends AndroidTestCase {
     public void testPassword_Write() {
         mStorage.writePasswordHash("thepassword".getBytes(), 0);
 
-        assertArrayEquals("thepassword".getBytes(), mStorage.readPasswordHash(0));
+        assertArrayEquals("thepassword".getBytes(), mStorage.readPasswordHash(0).hash);
         mStorage.clearCache();
-        assertArrayEquals("thepassword".getBytes(), mStorage.readPasswordHash(0));
+        assertArrayEquals("thepassword".getBytes(), mStorage.readPasswordHash(0).hash);
     }
 
     public void testPassword_WriteProfileWritesParent() {
         mStorage.writePasswordHash("parentpasswordd".getBytes(), 1);
         mStorage.writePasswordHash("profilepassword".getBytes(), 2);
 
-        assertArrayEquals("profilepassword".getBytes(), mStorage.readPasswordHash(1));
-        assertArrayEquals("profilepassword".getBytes(), mStorage.readPasswordHash(2));
+        assertArrayEquals("profilepassword".getBytes(), mStorage.readPasswordHash(1).hash);
+        assertArrayEquals("profilepassword".getBytes(), mStorage.readPasswordHash(2).hash);
         mStorage.clearCache();
-        assertArrayEquals("profilepassword".getBytes(), mStorage.readPasswordHash(1));
-        assertArrayEquals("profilepassword".getBytes(), mStorage.readPasswordHash(2));
+        assertArrayEquals("profilepassword".getBytes(), mStorage.readPasswordHash(1).hash);
+        assertArrayEquals("profilepassword".getBytes(), mStorage.readPasswordHash(2).hash);
+    }
+
+    public void testLockType_WriteProfileWritesParent() {
+        mStorage.writePasswordHash("parentpassword".getBytes(), 10);
+        mStorage.writePatternHash("12345678".getBytes(), 20);
+
+        assertEquals(2, mStorage.getStoredCredentialType(10));
+        assertEquals(1, mStorage.getStoredCredentialType(20));
+        mStorage.clearCache();
+        assertEquals(2, mStorage.getStoredCredentialType(10));
+        assertEquals(1, mStorage.getStoredCredentialType(20));
+    }
+
+    public void testProfileLock_ReadWriteChildProfileLock() {
+        assertFalse(mStorage.hasChildProfileLock(20));
+        mStorage.writeChildProfileLock(20, "profilepassword".getBytes());
+        assertArrayEquals("profilepassword".getBytes(), mStorage.readChildProfileLock(20));
+        assertTrue(mStorage.hasChildProfileLock(20));
+        mStorage.clearCache();
+        assertArrayEquals("profilepassword".getBytes(), mStorage.readChildProfileLock(20));
+        assertTrue(mStorage.hasChildProfileLock(20));
     }
 
     public void testPassword_WriteParentWritesProfile() {
         mStorage.writePasswordHash("profilepassword".getBytes(), 2);
         mStorage.writePasswordHash("parentpasswordd".getBytes(), 1);
 
-        assertArrayEquals("parentpasswordd".getBytes(), mStorage.readPasswordHash(1));
-        assertArrayEquals("parentpasswordd".getBytes(), mStorage.readPasswordHash(2));
+        assertArrayEquals("parentpasswordd".getBytes(), mStorage.readPasswordHash(1).hash);
+        assertArrayEquals("parentpasswordd".getBytes(), mStorage.readPasswordHash(2).hash);
         mStorage.clearCache();
-        assertArrayEquals("parentpasswordd".getBytes(), mStorage.readPasswordHash(1));
-        assertArrayEquals("parentpasswordd".getBytes(), mStorage.readPasswordHash(2));
+        assertArrayEquals("parentpasswordd".getBytes(), mStorage.readPasswordHash(1).hash);
+        assertArrayEquals("parentpasswordd".getBytes(), mStorage.readPasswordHash(2).hash);
     }
 
     public void testPattern_Default() {
@@ -253,31 +280,31 @@ public class LockSettingsStorageTests extends AndroidTestCase {
     public void testPattern_Write() {
         mStorage.writePatternHash("thepattern".getBytes(), 0);
 
-        assertArrayEquals("thepattern".getBytes(), mStorage.readPatternHash(0));
+        assertArrayEquals("thepattern".getBytes(), mStorage.readPatternHash(0).hash);
         mStorage.clearCache();
-        assertArrayEquals("thepattern".getBytes(), mStorage.readPatternHash(0));
+        assertArrayEquals("thepattern".getBytes(), mStorage.readPatternHash(0).hash);
     }
 
     public void testPattern_WriteProfileWritesParent() {
         mStorage.writePatternHash("parentpatternn".getBytes(), 1);
         mStorage.writePatternHash("profilepattern".getBytes(), 2);
 
-        assertArrayEquals("profilepattern".getBytes(), mStorage.readPatternHash(1));
-        assertArrayEquals("profilepattern".getBytes(), mStorage.readPatternHash(2));
+        assertArrayEquals("profilepattern".getBytes(), mStorage.readPatternHash(1).hash);
+        assertArrayEquals("profilepattern".getBytes(), mStorage.readPatternHash(2).hash);
         mStorage.clearCache();
-        assertArrayEquals("profilepattern".getBytes(), mStorage.readPatternHash(1));
-        assertArrayEquals("profilepattern".getBytes(), mStorage.readPatternHash(2));
+        assertArrayEquals("profilepattern".getBytes(), mStorage.readPatternHash(1).hash);
+        assertArrayEquals("profilepattern".getBytes(), mStorage.readPatternHash(2).hash);
     }
 
     public void testPattern_WriteParentWritesProfile() {
         mStorage.writePatternHash("profilepattern".getBytes(), 2);
         mStorage.writePatternHash("parentpatternn".getBytes(), 1);
 
-        assertArrayEquals("parentpatternn".getBytes(), mStorage.readPatternHash(1));
-        assertArrayEquals("parentpatternn".getBytes(), mStorage.readPatternHash(2));
+        assertArrayEquals("parentpatternn".getBytes(), mStorage.readPatternHash(1).hash);
+        assertArrayEquals("parentpatternn".getBytes(), mStorage.readPatternHash(2).hash);
         mStorage.clearCache();
-        assertArrayEquals("parentpatternn".getBytes(), mStorage.readPatternHash(1));
-        assertArrayEquals("parentpatternn".getBytes(), mStorage.readPatternHash(2));
+        assertArrayEquals("parentpatternn".getBytes(), mStorage.readPatternHash(1).hash);
+        assertArrayEquals("parentpatternn".getBytes(), mStorage.readPatternHash(2).hash);
     }
 
     public void testPrefetch() {
@@ -289,8 +316,8 @@ public class LockSettingsStorageTests extends AndroidTestCase {
         mStorage.prefetchUser(0);
 
         assertEquals("toBeFetched", mStorage.readKeyValue("key", "default", 0));
-        assertArrayEquals("pattern".getBytes(), mStorage.readPatternHash(0));
-        assertArrayEquals("password".getBytes(), mStorage.readPasswordHash(0));
+        assertArrayEquals("pattern".getBytes(), mStorage.readPatternHash(0).hash);
+        assertArrayEquals("password".getBytes(), mStorage.readPasswordHash(0).hash);
     }
 
     public void testFileLocation_Owner() {

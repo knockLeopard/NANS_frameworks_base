@@ -15,9 +15,9 @@
  */
 package android.service.dreams;
 
-import java.io.FileDescriptor;
-import java.io.PrintWriter;
-
+import android.annotation.IdRes;
+import android.annotation.LayoutRes;
+import android.annotation.Nullable;
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
 import android.app.AlarmManager;
@@ -27,9 +27,11 @@ import android.graphics.PixelFormat;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.IRemoteCallback;
 import android.os.PowerManager;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.util.MathUtils;
 import android.util.Slog;
 import android.view.ActionMode;
 import android.view.Display;
@@ -37,18 +39,22 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
+import android.view.SearchEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
-import android.view.WindowManagerGlobal;
 import android.view.WindowManager.LayoutParams;
+import android.view.WindowManagerGlobal;
 import android.view.accessibility.AccessibilityEvent;
-import android.util.MathUtils;
 
-import com.android.internal.policy.PolicyManager;
+import com.android.internal.policy.PhoneWindow;
 import com.android.internal.util.DumpUtils;
 import com.android.internal.util.DumpUtils.Dump;
+
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
+import java.util.List;
 
 /**
  * Extend this class to implement a custom dream (available to the user as a "Daydream").
@@ -94,7 +100,7 @@ import com.android.internal.util.DumpUtils.Dump;
  * &lt;/service>
  * </pre>
  *
- * <p>If specified with the {@code &lt;meta-data&gt;} element,
+ * <p>If specified with the {@code <meta-data>} element,
  * additional information for the dream is defined using the
  * {@link android.R.styleable#Dream &lt;dream&gt;} element in a separate XML file.
  * Currently, the only addtional
@@ -329,6 +335,12 @@ public class DreamService extends Service implements Window.Callback {
 
     /** {@inheritDoc} */
     @Override
+    public boolean onSearchRequested(SearchEvent event) {
+        return onSearchRequested();
+    }
+
+    /** {@inheritDoc} */
+    @Override
     public boolean onSearchRequested() {
         return false;
     }
@@ -336,6 +348,13 @@ public class DreamService extends Service implements Window.Callback {
     /** {@inheritDoc} */
     @Override
     public ActionMode onWindowStartingActionMode(android.view.ActionMode.Callback callback) {
+        return null;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public ActionMode onWindowStartingActionMode(
+            android.view.ActionMode.Callback callback, int type) {
         return null;
     }
 
@@ -382,7 +401,7 @@ public class DreamService extends Service implements Window.Callback {
      * @see #setContentView(android.view.View)
      * @see #setContentView(android.view.View, android.view.ViewGroup.LayoutParams)
      */
-    public void setContentView(int layoutResID) {
+    public void setContentView(@LayoutRes int layoutResID) {
         getWindow().setContentView(layoutResID);
     }
 
@@ -442,7 +461,8 @@ public class DreamService extends Service implements Window.Callback {
      *
      * @return The view if found or null otherwise.
      */
-    public View findViewById(int id) {
+    @Nullable
+    public View findViewById(@IdRes int id) {
         return getWindow().findViewById(id);
     }
 
@@ -923,8 +943,9 @@ public class DreamService extends Service implements Window.Callback {
      * Must run on mHandler.
      *
      * @param windowToken A window token that will allow a window to be created in the correct layer.
+     * @param started A callback that will be invoked once onDreamingStarted has completed.
      */
-    private final void attach(IBinder windowToken, boolean canDoze) {
+    private final void attach(IBinder windowToken, boolean canDoze, IRemoteCallback started) {
         if (mWindowToken != null) {
             Slog.e(TAG, "attach() called when already attached with token=" + mWindowToken);
             return;
@@ -945,7 +966,7 @@ public class DreamService extends Service implements Window.Callback {
             throw new IllegalStateException("Only doze dreams can be windowless");
         }
         if (!mWindowless) {
-            mWindow = PolicyManager.makeNewWindow(this);
+            mWindow = new PhoneWindow(this);
             mWindow.setCallback(this);
             mWindow.requestFeature(Window.FEATURE_NO_TITLE);
             mWindow.setBackgroundDrawable(new ColorDrawable(0xFF000000));
@@ -998,7 +1019,15 @@ public class DreamService extends Service implements Window.Callback {
                 if (mWindow != null || mWindowless) {
                     if (mDebug) Slog.v(TAG, "Calling onDreamingStarted()");
                     mStarted = true;
-                    onDreamingStarted();
+                    try {
+                        onDreamingStarted();
+                    } finally {
+                        try {
+                            started.sendResult(null);
+                        } catch (RemoteException e) {
+                            throw e.rethrowFromSystemServer();
+                        }
+                    }
                 }
             }
         });
@@ -1037,10 +1066,10 @@ public class DreamService extends Service implements Window.Callback {
     protected void dump(final FileDescriptor fd, PrintWriter pw, final String[] args) {
         DumpUtils.dumpAsync(mHandler, new Dump() {
             @Override
-            public void dump(PrintWriter pw) {
+            public void dump(PrintWriter pw, String prefix) {
                 dumpOnHandler(fd, pw, args);
             }
-        }, pw, 1000);
+        }, pw, "", 1000);
     }
 
     /** @hide */
@@ -1073,11 +1102,12 @@ public class DreamService extends Service implements Window.Callback {
 
     private final class DreamServiceWrapper extends IDreamService.Stub {
         @Override
-        public void attach(final IBinder windowToken, final boolean canDoze) {
+        public void attach(final IBinder windowToken, final boolean canDoze,
+                IRemoteCallback started) {
             mHandler.post(new Runnable() {
                 @Override
                 public void run() {
-                    DreamService.this.attach(windowToken, canDoze);
+                    DreamService.this.attach(windowToken, canDoze, started);
                 }
             });
         }

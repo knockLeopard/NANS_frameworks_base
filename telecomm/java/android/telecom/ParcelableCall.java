@@ -39,6 +39,7 @@ public final class ParcelableCall implements Parcelable {
     private final List<String> mCannedSmsResponses;
     private final int mCapabilities;
     private final int mProperties;
+    private final int mSupportedAudioRoutes;
     private final long mConnectTimeMillis;
     private final Uri mHandle;
     private final int mHandlePresentation;
@@ -46,13 +47,15 @@ public final class ParcelableCall implements Parcelable {
     private final int mCallerDisplayNamePresentation;
     private final GatewayInfo mGatewayInfo;
     private final PhoneAccountHandle mAccountHandle;
+    private final boolean mIsVideoCallProviderChanged;
     private final IVideoProvider mVideoCallProvider;
-    private InCallService.VideoCall mVideoCall;
+    private VideoCallImpl mVideoCall;
     private final String mParentCallId;
     private final List<String> mChildCallIds;
     private final StatusHints mStatusHints;
     private final int mVideoState;
     private final List<String> mConferenceableCallIds;
+    private final Bundle mIntentExtras;
     private final Bundle mExtras;
 
     public ParcelableCall(
@@ -62,6 +65,7 @@ public final class ParcelableCall implements Parcelable {
             List<String> cannedSmsResponses,
             int capabilities,
             int properties,
+            int supportedAudioRoutes,
             long connectTimeMillis,
             Uri handle,
             int handlePresentation,
@@ -69,12 +73,14 @@ public final class ParcelableCall implements Parcelable {
             int callerDisplayNamePresentation,
             GatewayInfo gatewayInfo,
             PhoneAccountHandle accountHandle,
+            boolean isVideoCallProviderChanged,
             IVideoProvider videoCallProvider,
             String parentCallId,
             List<String> childCallIds,
             StatusHints statusHints,
             int videoState,
             List<String> conferenceableCallIds,
+            Bundle intentExtras,
             Bundle extras) {
         mId = id;
         mState = state;
@@ -82,6 +88,7 @@ public final class ParcelableCall implements Parcelable {
         mCannedSmsResponses = cannedSmsResponses;
         mCapabilities = capabilities;
         mProperties = properties;
+        mSupportedAudioRoutes = supportedAudioRoutes;
         mConnectTimeMillis = connectTimeMillis;
         mHandle = handle;
         mHandlePresentation = handlePresentation;
@@ -89,12 +96,14 @@ public final class ParcelableCall implements Parcelable {
         mCallerDisplayNamePresentation = callerDisplayNamePresentation;
         mGatewayInfo = gatewayInfo;
         mAccountHandle = accountHandle;
+        mIsVideoCallProviderChanged = isVideoCallProviderChanged;
         mVideoCallProvider = videoCallProvider;
         mParentCallId = parentCallId;
         mChildCallIds = childCallIds;
         mStatusHints = statusHints;
         mVideoState = videoState;
         mConferenceableCallIds = Collections.unmodifiableList(conferenceableCallIds);
+        mIntentExtras = intentExtras;
         mExtras = extras;
     }
 
@@ -130,6 +139,11 @@ public final class ParcelableCall implements Parcelable {
 
     /** Bitmask of properties of the call. */
     public int getProperties() { return mProperties; }
+
+    /** Bitmask of supported routes of the call */
+    public int getSupportedAudioRoutes() {
+        return mSupportedAudioRoutes;
+    }
 
     /** The time that the call switched to the active state. */
     public long getConnectTimeMillis() {
@@ -173,9 +187,10 @@ public final class ParcelableCall implements Parcelable {
 
     /**
      * Returns an object for remotely communicating through the video call provider's binder.
+
      * @return The video call.
      */
-    public InCallService.VideoCall getVideoCall() {
+    public VideoCallImpl getVideoCallImpl() {
         if (mVideoCall == null && mVideoCallProvider != null) {
             try {
                 mVideoCall = new VideoCallImpl(mVideoCallProvider);
@@ -224,12 +239,33 @@ public final class ParcelableCall implements Parcelable {
     }
 
     /**
-     * Any extras to pass with the call
+     * Any extras associated with this call.
      *
      * @return a bundle of extras
      */
     public Bundle getExtras() {
         return mExtras;
+    }
+
+    /**
+     * Extras passed in as part of the original call intent.
+     *
+     * @return The intent extras.
+     */
+    public Bundle getIntentExtras() {
+        return mIntentExtras;
+    }
+
+    /**
+     * Indicates to the receiver of the {@link ParcelableCall} whether a change has occurred in the
+     * {@link android.telecom.InCallService.VideoCall} associated with this call.  Since
+     * {@link #getVideoCall()} creates a new {@link VideoCallImpl}, it is useful to know whether
+     * the provider has changed (which can influence whether it is accessed).
+     *
+     * @return {@code true} if the video call changed, {@code false} otherwise.
+     */
+    public boolean isVideoCallProviderChanged() {
+        return mIsVideoCallProviderChanged;
     }
 
     /** Responsible for creating ParcelableCall objects for deserialized Parcels. */
@@ -252,6 +288,7 @@ public final class ParcelableCall implements Parcelable {
             int callerDisplayNamePresentation = source.readInt();
             GatewayInfo gatewayInfo = source.readParcelable(classLoader);
             PhoneAccountHandle accountHandle = source.readParcelable(classLoader);
+            boolean isVideoCallProviderChanged = source.readByte() == 1;
             IVideoProvider videoCallProvider =
                     IVideoProvider.Stub.asInterface(source.readStrongBinder());
             String parentCallId = source.readString();
@@ -261,7 +298,9 @@ public final class ParcelableCall implements Parcelable {
             int videoState = source.readInt();
             List<String> conferenceableCallIds = new ArrayList<>();
             source.readList(conferenceableCallIds, classLoader);
-            Bundle extras = source.readParcelable(classLoader);
+            Bundle intentExtras = source.readBundle(classLoader);
+            Bundle extras = source.readBundle(classLoader);
+            int supportedAudioRoutes = source.readInt();
             return new ParcelableCall(
                     id,
                     state,
@@ -269,6 +308,7 @@ public final class ParcelableCall implements Parcelable {
                     cannedSmsResponses,
                     capabilities,
                     properties,
+                    supportedAudioRoutes,
                     connectTimeMillis,
                     handle,
                     handlePresentation,
@@ -276,12 +316,14 @@ public final class ParcelableCall implements Parcelable {
                     callerDisplayNamePresentation,
                     gatewayInfo,
                     accountHandle,
+                    isVideoCallProviderChanged,
                     videoCallProvider,
                     parentCallId,
                     childCallIds,
                     statusHints,
                     videoState,
                     conferenceableCallIds,
+                    intentExtras,
                     extras);
         }
 
@@ -313,6 +355,7 @@ public final class ParcelableCall implements Parcelable {
         destination.writeInt(mCallerDisplayNamePresentation);
         destination.writeParcelable(mGatewayInfo, 0);
         destination.writeParcelable(mAccountHandle, 0);
+        destination.writeByte((byte) (mIsVideoCallProviderChanged ? 1 : 0));
         destination.writeStrongBinder(
                 mVideoCallProvider != null ? mVideoCallProvider.asBinder() : null);
         destination.writeString(mParentCallId);
@@ -320,7 +363,9 @@ public final class ParcelableCall implements Parcelable {
         destination.writeParcelable(mStatusHints, 0);
         destination.writeInt(mVideoState);
         destination.writeList(mConferenceableCallIds);
-        destination.writeParcelable(mExtras, 0);
+        destination.writeBundle(mIntentExtras);
+        destination.writeBundle(mExtras);
+        destination.writeInt(mSupportedAudioRoutes);
     }
 
     @Override

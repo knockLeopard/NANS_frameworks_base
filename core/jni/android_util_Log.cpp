@@ -18,18 +18,18 @@
 #define LOG_NAMESPACE "log.tag."
 #define LOG_TAG "Log_println"
 
+#include <android-base/macros.h>
 #include <assert.h>
 #include <cutils/properties.h>
+#include <log/logger.h>               // For LOGGER_ENTRY_MAX_PAYLOAD.
 #include <utils/Log.h>
 #include <utils/String8.h>
 
 #include "jni.h"
 #include "JNIHelp.h"
 #include "utils/misc.h"
-#include "android_runtime/AndroidRuntime.h"
+#include "core_jni_helpers.h"
 #include "android_util_Log.h"
-
-#define MIN(a,b) ((a<b)?a:b)
 
 namespace android {
 
@@ -43,32 +43,8 @@ struct levels_t {
 };
 static levels_t levels;
 
-static int toLevel(const char* value)
-{
-    switch (value[0]) {
-        case 'V': return levels.verbose;
-        case 'D': return levels.debug;
-        case 'I': return levels.info;
-        case 'W': return levels.warn;
-        case 'E': return levels.error;
-        case 'A': return levels.assert;
-        case 'S': return -1; // SUPPRESS
-    }
-    return levels.info;
-}
-
 static jboolean isLoggable(const char* tag, jint level) {
-    String8 key;
-    key.append(LOG_NAMESPACE);
-    key.append(tag);
-
-    char buf[PROPERTY_VALUE_MAX];
-    if (property_get(key.string(), buf, "") <= 0) {
-        buf[0] = '\0';
-    }
-
-    int logLevel = toLevel(buf);
-    return logLevel >= 0 && level >= logLevel;
+    return __android_log_is_loggable(level, tag, ANDROID_LOG_INFO);
 }
 
 static jboolean android_util_Log_isLoggable(JNIEnv* env, jobject clazz, jstring tag, jint level)
@@ -135,31 +111,37 @@ static jint android_util_Log_println_native(JNIEnv* env, jobject clazz,
 }
 
 /*
+ * In class android.util.Log:
+ *  private static native int logger_entry_max_payload_native()
+ */
+static jint android_util_Log_logger_entry_max_payload_native(JNIEnv* env ATTRIBUTE_UNUSED,
+                                                             jobject clazz ATTRIBUTE_UNUSED)
+{
+    return static_cast<jint>(LOGGER_ENTRY_MAX_PAYLOAD);
+}
+
+/*
  * JNI registration.
  */
-static JNINativeMethod gMethods[] = {
+static const JNINativeMethod gMethods[] = {
     /* name, signature, funcPtr */
     { "isLoggable",      "(Ljava/lang/String;I)Z", (void*) android_util_Log_isLoggable },
     { "println_native",  "(IILjava/lang/String;Ljava/lang/String;)I", (void*) android_util_Log_println_native },
+    { "logger_entry_max_payload_native",  "()I", (void*) android_util_Log_logger_entry_max_payload_native },
 };
 
 int register_android_util_Log(JNIEnv* env)
 {
-    jclass clazz = env->FindClass("android/util/Log");
+    jclass clazz = FindClassOrDie(env, "android/util/Log");
 
-    if (clazz == NULL) {
-        ALOGE("Can't find android/util/Log");
-        return -1;
-    }
+    levels.verbose = env->GetStaticIntField(clazz, GetStaticFieldIDOrDie(env, clazz, "VERBOSE", "I"));
+    levels.debug = env->GetStaticIntField(clazz, GetStaticFieldIDOrDie(env, clazz, "DEBUG", "I"));
+    levels.info = env->GetStaticIntField(clazz, GetStaticFieldIDOrDie(env, clazz, "INFO", "I"));
+    levels.warn = env->GetStaticIntField(clazz, GetStaticFieldIDOrDie(env, clazz, "WARN", "I"));
+    levels.error = env->GetStaticIntField(clazz, GetStaticFieldIDOrDie(env, clazz, "ERROR", "I"));
+    levels.assert = env->GetStaticIntField(clazz, GetStaticFieldIDOrDie(env, clazz, "ASSERT", "I"));
 
-    levels.verbose = env->GetStaticIntField(clazz, env->GetStaticFieldID(clazz, "VERBOSE", "I"));
-    levels.debug = env->GetStaticIntField(clazz, env->GetStaticFieldID(clazz, "DEBUG", "I"));
-    levels.info = env->GetStaticIntField(clazz, env->GetStaticFieldID(clazz, "INFO", "I"));
-    levels.warn = env->GetStaticIntField(clazz, env->GetStaticFieldID(clazz, "WARN", "I"));
-    levels.error = env->GetStaticIntField(clazz, env->GetStaticFieldID(clazz, "ERROR", "I"));
-    levels.assert = env->GetStaticIntField(clazz, env->GetStaticFieldID(clazz, "ASSERT", "I"));
-
-    return AndroidRuntime::registerNativeMethods(env, "android/util/Log", gMethods, NELEM(gMethods));
+    return RegisterMethodsOrDie(env, "android/util/Log", gMethods, NELEM(gMethods));
 }
 
 }; // namespace android

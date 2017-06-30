@@ -153,17 +153,17 @@ public class DisconnectCause {
     /**
      * The outgoing call failed with an unknown cause.
      */
-    public static final int OUTGOING_FAILURE = 43;
+    public static final int OUTGOING_FAILURE               = 43;
 
     /**
      * The outgoing call was canceled by the {@link android.telecom.ConnectionService}.
      */
-    public static final int OUTGOING_CANCELED = 44;
+    public static final int OUTGOING_CANCELED              = 44;
 
     /**
      * The call, which was an IMS call, disconnected because it merged with another call.
      */
-    public static final int IMS_MERGED_SUCCESSFULLY = 45;
+    public static final int IMS_MERGED_SUCCESSFULLY        = 45;
 
     /**
      * Stk Call Control modified DIAL request to USSD request.
@@ -181,6 +181,65 @@ public class DisconnectCause {
      */
     public static final int DIAL_MODIFIED_TO_DIAL          = 48;
 
+    /**
+     * The call was terminated because CDMA phone service and roaming have already been activated.
+     * {@hide}
+     */
+    public static final int CDMA_ALREADY_ACTIVATED         = 49;
+
+    /**
+     * The call was terminated because it is not possible to place a video call while TTY is
+     * enabled.
+     * {@hide}
+     */
+    public static final int VIDEO_CALL_NOT_ALLOWED_WHILE_TTY_ENABLED = 50;
+
+    /**
+     * The call was terminated because it was pulled to another device.
+     * {@hide}
+     */
+    public static final int CALL_PULLED = 51;
+
+    /**
+     * The call was terminated because it was answered on another device.
+     * {@hide}
+     */
+    public static final int ANSWERED_ELSEWHERE = 52;
+
+    /**
+     * The call was terminated because the maximum allowable number of calls has been reached.
+     * {@hide}
+     */
+    public static final int MAXIMUM_NUMBER_OF_CALLS_REACHED = 53;
+
+    /**
+     * The call was terminated because cellular data has been disabled.
+     * Used when in a video call and the user disables cellular data via the settings.
+     * {@hide}
+     */
+    public static final int DATA_DISABLED = 54;
+
+    /**
+     * The call was terminated because the data policy has disabled cellular data.
+     * Used when in a video call and the user has exceeded the device data limit.
+     * {@hide}
+     */
+    public static final int DATA_LIMIT_REACHED = 55;
+
+    /**
+     * The emergency call was terminated because it was dialed on the wrong SIM slot.
+     * The call needs to be redialed the other slot.
+     * {@hide}
+     */
+    public static final int DIALED_ON_WRONG_SLOT = 56;
+
+    /**
+     * The call being placed was detected as a call forwarding number and was being dialed while
+     * roaming on a carrier that does not allow this.
+     * @hide
+     */
+    public static final int DIALED_CALL_FORWARDING_WHILE_ROAMING = 57;
+
     //*********************************************************************************************
     // When adding a disconnect type:
     // 1) Please assign the new type the next id value below.
@@ -189,14 +248,14 @@ public class DisconnectCause {
     // 4) Update toString() with the newly added disconnect type.
     // 5) Update android.telecom.DisconnectCauseUtil with any mappings to a telecom.DisconnectCause.
     //
-    // NextId: 49
+    // NextId: 58
     //*********************************************************************************************
 
     /** Smallest valid value for call disconnect codes. */
     public static final int MINIMUM_VALID_VALUE = NOT_DISCONNECTED;
 
     /** Largest valid value for call disconnect codes. */
-    public static final int MAXIMUM_VALID_VALUE = DIAL_MODIFIED_TO_DIAL;
+    public static final int MAXIMUM_VALID_VALUE = DIALED_CALL_FORWARDING_WHILE_ROAMING;
 
     /** Private constructor to avoid class instantiation. */
     private DisconnectCause() {
@@ -302,6 +361,24 @@ public class DisconnectCause {
             return "OUTGOING_CANCELED";
         case IMS_MERGED_SUCCESSFULLY:
             return "IMS_MERGED_SUCCESSFULLY";
+        case CDMA_ALREADY_ACTIVATED:
+            return "CDMA_ALREADY_ACTIVATED";
+        case VIDEO_CALL_NOT_ALLOWED_WHILE_TTY_ENABLED:
+            return "VIDEO_CALL_NOT_ALLOWED_WHILE_TTY_ENABLED";
+        case CALL_PULLED:
+            return "CALL_PULLED";
+        case ANSWERED_ELSEWHERE:
+            return "ANSWERED_ELSEWHERE";
+        case MAXIMUM_NUMBER_OF_CALLS_REACHED:
+            return "MAXIMUM_NUMER_OF_CALLS_REACHED";
+        case DATA_DISABLED:
+            return "DATA_DISABLED";
+        case DATA_LIMIT_REACHED:
+            return "DATA_LIMIT_REACHED";
+        case DIALED_ON_WRONG_SLOT:
+            return "DIALED_ON_WRONG_SLOT";
+        case DIALED_CALL_FORWARDING_WHILE_ROAMING:
+            return "DIALED_CALL_FORWARDING_WHILE_ROAMING";
         default:
             return "INVALID: " + cause;
         }

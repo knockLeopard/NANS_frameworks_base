@@ -16,12 +16,12 @@ page.image=auto/images/assets/icons/auto_app_in_simulator.png
   <ol>
     <li><a href="#dev-project">Set Up an Auto Project</a></li>
     <li><a href="#build-it">Build Auto Apps</a></li>
-    <li><a href="#test-it">Run and Test Auto Apps</a></li>
   </ol>
 
  <h2>You should also read</h2>
  <ul>
    <li><a href="{@docRoot}design/auto/index.html">Designing for Auto</a></li>
+   <li><a href="{@docRoot}distribute/googleplay/auto.html">Distribute to Android Auto</a></li>
    <li><a href="{@docRoot}training/auto/audio/index.html">Providing Audio Playback with Auto</a></li>
    <li><a href="{@docRoot}training/auto/messaging/index.html">Providing Messaging for Auto</a></li>
  </ul>
@@ -55,14 +55,6 @@ messaging services. </p>
 setting up your development environment and meeting the the minimum requirements
 to enable an app to communicate with Auto.</p>
 
-<p class="note"><strong>Important:</strong> If you are planning to develop
-apps for Auto, you are encouraged to begin enabling and testing your
-apps now. However, Auto-enabled apps cannot be published at this time.
-Join the
-<a href="http://g.co/AndroidAutoDev" class="external-link">Auto
-Developers Google+ community</a> for updates on when you will be able to submit
-your Auto-enabled apps.</p>
-
 <h2 id="dev-project">Set Up an Auto Project</h2>
 <p>This section describes how to create a new app or modify an existing app to
 communicate with Auto.</p>
@@ -71,7 +63,7 @@ communicate with Auto.</p>
 <p>Before you begin building apps for Auto, you must:</p>
 
 <ul>
-<li><strong><a href="{@docRoot}sdk/installing/create-project.html">Create or
+<li><strong><a href="{@docRoot}studio/projects/create-project.html">Create or
 update your app project</a></strong> - Android 5.0 (API level 21) provides new
 APIs for implementing audio playback and messaging that is compatible with Auto.
 To access the new APIs, create a project or modify an existing project to target
@@ -106,8 +98,8 @@ following metadata:</p>
    &lt;uses name="media" /&gt;
 &lt;/automotiveApp&gt;
 </pre>
-<p>The {@code &lt;uses&gt;} element declares the Auto capability your app
-intends to use. Multiple {@code &lt;uses&gt;} tags can be added if your
+<p>The {@code <uses>} element declares the Auto capability your app
+intends to use. Multiple {@code <uses>} tags can be added if your
 application uses multiple car capabilities. The {@code name} attribute indicates
 the specific capability your app uses. The values supported are:</p>
 <ul>
@@ -123,7 +115,7 @@ app for Auto.
 <p>In your app’s manifest ({@code AndroidManifest.xml}), provide a reference to
 the Auto XML configuration file you created in the previous section. Add a
 {@code "com.google.android.gms.car.application"} metadata entry under the
-<a href="{@docRoot}guide/topics/manifest/application-element.html">{@code &lt;application&gt;}</a>
+<a href="{@docRoot}guide/topics/manifest/application-element.html">{@code <application>}</a>
 element that references your Auto XML configuration file. Omit the {@code .xml}
 file extension when specifying the configuration filename.</p>
 <p>The following code snippet shows how to include this reference in your
@@ -157,57 +149,6 @@ requirements, you can reduce the effort for building and testing your app. For
 more information, see
 <a href="{@docRoot}distribute/essentials/quality/auto.html">Auto App Quality</a>.</p>
 
-<h2 id="test-it">Run and Test Auto Apps</h2>
 
-<p>As you prepare to publish your app, make sure that your app looks correct
-when projected on the Auto user interface. Use the Android Media Browser
-simulator and Android Messaging simulators to view and test your audio or
-messaging apps in a screen that looks similar to what is projected on Auto.</p>
 
-<p>To get the simulators, open the
-<a href="{@docRoot}tools/help/sdk-manager.html">SDK Manager</a> and download
-them from <strong>Extras &gt; Android Auto API Simulators</strong>.</p>
 
-<p>Before you begin testing, compile your app in your development environment.
-Install your app and the Android simulator for the features you want to test
-(that is, audio or messaging) on a physical or virtual device running Android
-5.0 (API level 21) or higher. To check the version of Android on the device, go
-to <strong>Settings &gt; About &gt; Android Version</strong>.</p>
-
-<h3 id="testing-audio-apps">Testing audio apps</h3>
-<p>To run and test audio apps:</p>
-
-<ol>
-<li>Install the Android Media Browser simulator
-({@code &lt;sdk&gt;/extras/google/simulators/media-browser-simulator.apk}) on
-the test device. You can do this using
-the <a href="{@docRoot}tools/help/adb.html#move">adb</a> command line tool.</li>
-<li>Enable <a href="{@docRoot}tools/device.html#device-developer-options">
-developer options</a> on the test device.</li>
-<li>Install your app on the test device.</li>
-<li>Launch the Android Media Browser simulator to see how your audio app
-appears in Auto. If your app does not appear, stop the simulator from
-<strong>Settings &gt; Apps</strong> then restart it.</li>
-</ol>
-
-<h3 id="testing-messaging-apps">Testing messaging apps</h3>
-<p>To run and test messaging apps:</p>
-
-<ol>
-<li>Install the Android Messaging simulator
-  ({@code &lt;sdk&gt;/extras/google/simulators/messaging-simulator.apk})
-on the test device. You can do this using the
-<a href="{@docRoot}tools/help/adb.html#move">adb</a> command line tool.</li>
-<li>Enable the simulator to read notifications posted on the system:
-<ol type="a">
-	<li>Enable <a href="{@docRoot}tools/device.html#device-developer-options">
-developer options</a> on the test device.</li>
-	<li>Click <strong>Settings &gt; Sounds &amp; Notifications &gt; Notification
-	Access</strong> and check the box labeled
-	<strong>Messaging Simulator</strong>.</li>
-</ol>
-<li>Install your app on the test device.</li>
-<li>Launch the Android Messaging Simulator to see how your messaging app appears
-in Auto. If your app does not appear, stop the simulator from
-<strong>Settings &gt; Apps</strong> then restart it.</li>
-</ol>

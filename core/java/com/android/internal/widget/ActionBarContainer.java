@@ -23,7 +23,6 @@ import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Outline;
 import android.graphics.PixelFormat;
-import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.view.ActionMode;
@@ -31,8 +30,6 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-
-import java.util.List;
 
 /**
  * This class acts as a container for the action bar view and action mode context views.
@@ -150,7 +147,7 @@ public class ActionBarContainer extends FrameLayout {
     }
 
     @Override
-    protected boolean verifyDrawable(Drawable who) {
+    protected boolean verifyDrawable(@NonNull Drawable who) {
         return (who == mBackground && !mIsSplit) || (who == mStackedBackground && mIsStacked) ||
                 (who == mSplitBackground && mIsSplit) || super.verifyDrawable(who);
     }
@@ -158,14 +155,27 @@ public class ActionBarContainer extends FrameLayout {
     @Override
     protected void drawableStateChanged() {
         super.drawableStateChanged();
-        if (mBackground != null && mBackground.isStateful()) {
-            mBackground.setState(getDrawableState());
+
+        final int[] state = getDrawableState();
+        boolean changed = false;
+
+        final Drawable background = mBackground;
+        if (background != null && background.isStateful()) {
+            changed |= background.setState(state);
         }
-        if (mStackedBackground != null && mStackedBackground.isStateful()) {
-            mStackedBackground.setState(getDrawableState());
+
+        final Drawable stackedBackground = mStackedBackground;
+        if (stackedBackground != null && stackedBackground.isStateful()) {
+            changed |= stackedBackground.setState(state);
         }
-        if (mSplitBackground != null && mSplitBackground.isStateful()) {
-            mSplitBackground.setState(getDrawableState());
+
+        final Drawable splitBackground = mSplitBackground;
+        if (splitBackground != null && splitBackground.isStateful()) {
+            changed |= splitBackground.setState(state);
+        }
+
+        if (changed) {
+            invalidate();
         }
     }
 
@@ -254,8 +264,11 @@ public class ActionBarContainer extends FrameLayout {
     }
 
     @Override
-    public ActionMode startActionModeForChild(View child, ActionMode.Callback callback) {
-        // No starting an action mode for an action bar child! (Where would it go?)
+    public ActionMode startActionModeForChild(
+            View child, ActionMode.Callback callback, int type) {
+        if (type != ActionMode.TYPE_PRIMARY) {
+            return super.startActionModeForChild(child, callback, type);
+        }
         return null;
     }
 
@@ -387,7 +400,7 @@ public class ActionBarContainer extends FrameLayout {
         }
 
         @Override
-        public void setColorFilter(ColorFilter cf) {
+        public void setColorFilter(ColorFilter colorFilter) {
         }
 
         @Override

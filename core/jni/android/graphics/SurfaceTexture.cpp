@@ -18,13 +18,15 @@
 
 #include <stdio.h>
 
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 
 #include <gui/GLConsumer.h>
 #include <gui/Surface.h>
 
-#include <android_runtime/AndroidRuntime.h>
+#include "core_jni_helpers.h"
 
 #include <utils/Log.h>
 #include <utils/misc.h>
@@ -33,6 +35,8 @@
 #include "JNIHelp.h"
 
 // ----------------------------------------------------------------------------
+
+#define EGL_PROTECTED_CONTENT_EXT 0x32C0
 
 namespace android {
 
@@ -48,6 +52,27 @@ struct fields_t {
     jmethodID postEvent;
 };
 static fields_t fields;
+
+// Get an ID that's unique within this process.
+static int32_t createProcessUniqueId() {
+    static volatile int32_t globalCounter = 0;
+    return android_atomic_inc(&globalCounter);
+}
+
+// Check whether the current EGL context is protected.
+static bool isProtectedContext() {
+    EGLDisplay dpy = eglGetCurrentDisplay();
+    EGLContext ctx = eglGetCurrentContext();
+
+    if (dpy == EGL_NO_DISPLAY || ctx == EGL_NO_CONTEXT) {
+        return false;
+    }
+
+    EGLint isProtected = EGL_FALSE;
+    eglQueryContext(dpy, ctx, EGL_PROTECTED_CONTENT_EXT, &isProtected);
+
+    return isProtected;
+}
 
 // ----------------------------------------------------------------------------
 
@@ -235,17 +260,16 @@ static void SurfaceTexture_init(JNIEnv* env, jobject thiz, jboolean isDetached,
     BufferQueue::createBufferQueue(&producer, &consumer);
 
     if (singleBufferMode) {
-        consumer->disableAsyncBuffer();
-        consumer->setDefaultMaxBufferCount(1);
+        consumer->setMaxBufferCount(1);
     }
 
     sp<GLConsumer> surfaceTexture;
     if (isDetached) {
         surfaceTexture = new GLConsumer(consumer, GL_TEXTURE_EXTERNAL_OES,
-                true, true);
+                true, !singleBufferMode);
     } else {
         surfaceTexture = new GLConsumer(consumer, texName,
-                GL_TEXTURE_EXTERNAL_OES, true, true);
+                GL_TEXTURE_EXTERNAL_OES, true, !singleBufferMode);
     }
 
     if (surfaceTexture == 0) {
@@ -253,6 +277,16 @@ static void SurfaceTexture_init(JNIEnv* env, jobject thiz, jboolean isDetached,
                 "Unable to create native SurfaceTexture");
         return;
     }
+    surfaceTexture->setName(String8::format("SurfaceTexture-%d-%d-%d",
+            (isDetached ? 0 : texName),
+            getpid(),
+            createProcessUniqueId()));
+
+    // If the current context is protected, inform the producer.
+    if (isProtectedContext()) {
+        consumer->setConsumerUsageBits(GRALLOC_USAGE_PROTECTED);
+    }
+
     SurfaceTexture_setSurfaceTexture(env, thiz, surfaceTexture);
     SurfaceTexture_setProducer(env, thiz, producer);
 
@@ -341,9 +375,15 @@ static void SurfaceTexture_release(JNIEnv* env, jobject thiz)
     surfaceTexture->abandon();
 }
 
+static jboolean SurfaceTexture_isReleased(JNIEnv* env, jobject thiz)
+{
+    sp<GLConsumer> surfaceTexture(SurfaceTexture_getSurfaceTexture(env, thiz));
+    return surfaceTexture->isAbandoned();
+}
+
 // ----------------------------------------------------------------------------
 
-static JNINativeMethod gSurfaceTextureMethods[] = {
+static const JNINativeMethod gSurfaceTextureMethods[] = {
     {"nativeClassInit",            "()V",   (void*)SurfaceTexture_classInit },
     {"nativeInit",                 "(ZIZLjava/lang/ref/WeakReference;)V", (void*)SurfaceTexture_init },
     {"nativeFinalize",             "()V",   (void*)SurfaceTexture_finalize },
@@ -355,14 +395,13 @@ static JNINativeMethod gSurfaceTextureMethods[] = {
     {"nativeGetTransformMatrix",   "([F)V", (void*)SurfaceTexture_getTransformMatrix },
     {"nativeGetTimestamp",         "()J",   (void*)SurfaceTexture_getTimestamp },
     {"nativeRelease",              "()V",   (void*)SurfaceTexture_release },
+    {"nativeIsReleased",           "()Z",   (void*)SurfaceTexture_isReleased },
 };
 
 int register_android_graphics_SurfaceTexture(JNIEnv* env)
 {
-    int err = 0;
-    err = AndroidRuntime::registerNativeMethods(env, kSurfaceTextureClassPathName,
-            gSurfaceTextureMethods, NELEM(gSurfaceTextureMethods));
-    return err;
+    return RegisterMethodsOrDie(env, kSurfaceTextureClassPathName, gSurfaceTextureMethods,
+                                NELEM(gSurfaceTextureMethods));
 }
 
 } // namespace android

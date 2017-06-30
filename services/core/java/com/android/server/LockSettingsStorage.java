@@ -29,6 +29,7 @@ import android.os.UserManager;
 import android.util.ArrayMap;
 import android.util.Log;
 import android.util.Slog;
+import android.util.SparseArray;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,6 +44,7 @@ class LockSettingsStorage {
 
     private static final String TAG = "LockSettingsStorage";
     private static final String TABLE = "locksettings";
+    private static final boolean DEBUG = false;
 
     private static final String COLUMN_KEY = "name";
     private static final String COLUMN_USERID = "user";
@@ -56,8 +58,12 @@ class LockSettingsStorage {
     };
 
     private static final String SYSTEM_DIRECTORY = "/system/";
-    private static final String LOCK_PATTERN_FILE = "gesture.key";
-    private static final String LOCK_PASSWORD_FILE = "password.key";
+    private static final String LOCK_PATTERN_FILE = "gatekeeper.pattern.key";
+    private static final String BASE_ZERO_LOCK_PATTERN_FILE = "gatekeeper.gesture.key";
+    private static final String LEGACY_LOCK_PATTERN_FILE = "gesture.key";
+    private static final String LOCK_PASSWORD_FILE = "gatekeeper.password.key";
+    private static final String LEGACY_LOCK_PASSWORD_FILE = "password.key";
+    private static final String CHILD_PROFILE_LOCK_FILE = "gatekeeper.profile.key";
 
     private static final Object DEFAULT = new Object();
 
@@ -66,9 +72,37 @@ class LockSettingsStorage {
     private final Cache mCache = new Cache();
     private final Object mFileWriteLock = new Object();
 
+    private SparseArray<Integer> mStoredCredentialType;
+
+    static class CredentialHash {
+        static final int TYPE_NONE = -1;
+        static final int TYPE_PATTERN = 1;
+        static final int TYPE_PASSWORD = 2;
+
+        static final int VERSION_LEGACY = 0;
+        static final int VERSION_GATEKEEPER = 1;
+
+        CredentialHash(byte[] hash, int version) {
+            this.hash = hash;
+            this.version = version;
+            this.isBaseZeroPattern = false;
+        }
+
+        CredentialHash(byte[] hash, boolean isBaseZeroPattern) {
+            this.hash = hash;
+            this.version = VERSION_GATEKEEPER;
+            this.isBaseZeroPattern = isBaseZeroPattern;
+        }
+
+        byte[] hash;
+        int version;
+        boolean isBaseZeroPattern;
+    }
+
     public LockSettingsStorage(Context context, Callback callback) {
         mContext = context;
         mOpenHelper = new DatabaseHelper(context, callback);
+        mStoredCredentialType = new SparseArray<Integer>();
     }
 
     public void writeKeyValue(String key, String value, int userId) {
@@ -148,28 +182,102 @@ class LockSettingsStorage {
         readPatternHash(userId);
     }
 
-    public byte[] readPasswordHash(int userId) {
-        final byte[] stored = readFile(getLockPasswordFilename(userId));
-        if (stored != null && stored.length > 0) {
-            return stored;
+    public int getStoredCredentialType(int userId) {
+        final Integer cachedStoredCredentialType = mStoredCredentialType.get(userId);
+        if (cachedStoredCredentialType != null) {
+            return cachedStoredCredentialType.intValue();
         }
+
+        int storedCredentialType;
+        CredentialHash pattern = readPatternHash(userId);
+        if (pattern == null) {
+            if (readPasswordHash(userId) != null) {
+                storedCredentialType = CredentialHash.TYPE_PASSWORD;
+            } else {
+                storedCredentialType = CredentialHash.TYPE_NONE;
+            }
+        } else {
+            CredentialHash password = readPasswordHash(userId);
+            if (password != null) {
+                // Both will never be GateKeeper
+                if (password.version == CredentialHash.VERSION_GATEKEEPER) {
+                    storedCredentialType = CredentialHash.TYPE_PASSWORD;
+                } else {
+                    storedCredentialType = CredentialHash.TYPE_PATTERN;
+                }
+            } else {
+                storedCredentialType = CredentialHash.TYPE_PATTERN;
+            }
+        }
+        mStoredCredentialType.put(userId, storedCredentialType);
+        return storedCredentialType;
+    }
+
+
+    public CredentialHash readPasswordHash(int userId) {
+        byte[] stored = readFile(getLockPasswordFilename(userId));
+        if (stored != null && stored.length > 0) {
+            return new CredentialHash(stored, CredentialHash.VERSION_GATEKEEPER);
+        }
+
+        stored = readFile(getLegacyLockPasswordFilename(userId));
+        if (stored != null && stored.length > 0) {
+            return new CredentialHash(stored, CredentialHash.VERSION_LEGACY);
+        }
+
         return null;
     }
 
-    public byte[] readPatternHash(int userId) {
-        final byte[] stored = readFile(getLockPatternFilename(userId));
+    public CredentialHash readPatternHash(int userId) {
+        byte[] stored = readFile(getLockPatternFilename(userId));
         if (stored != null && stored.length > 0) {
-            return stored;
+            return new CredentialHash(stored, CredentialHash.VERSION_GATEKEEPER);
         }
+
+        stored = readFile(getBaseZeroLockPatternFilename(userId));
+        if (stored != null && stored.length > 0) {
+            return new CredentialHash(stored, true);
+        }
+
+        stored = readFile(getLegacyLockPatternFilename(userId));
+        if (stored != null && stored.length > 0) {
+            return new CredentialHash(stored, CredentialHash.VERSION_LEGACY);
+        }
+
         return null;
+    }
+
+    public void removeChildProfileLock(int userId) {
+        if (DEBUG)
+            Slog.e(TAG, "Remove child profile lock for user: " + userId);
+        try {
+            deleteFile(getChildProfileLockFile(userId));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void writeChildProfileLock(int userId, byte[] lock) {
+        writeFile(getChildProfileLockFile(userId), lock);
+    }
+
+    public byte[] readChildProfileLock(int userId) {
+        return readFile(getChildProfileLockFile(userId));
+    }
+
+    public boolean hasChildProfileLock(int userId) {
+        return hasFile(getChildProfileLockFile(userId));
     }
 
     public boolean hasPassword(int userId) {
-        return hasFile(getLockPasswordFilename(userId));
+        return hasFile(getLockPasswordFilename(userId)) ||
+            hasFile(getLegacyLockPasswordFilename(userId));
     }
 
     public boolean hasPattern(int userId) {
-        return hasFile(getLockPatternFilename(userId));
+        return hasFile(getLockPatternFilename(userId)) ||
+            hasFile(getBaseZeroLockPatternFilename(userId)) ||
+            hasFile(getLegacyLockPatternFilename(userId));
     }
 
     private boolean hasFile(String name) {
@@ -236,14 +344,38 @@ class LockSettingsStorage {
         }
     }
 
+    private void deleteFile(String name) {
+        if (DEBUG) Slog.e(TAG, "Delete file " + name);
+        synchronized (mFileWriteLock) {
+            File file = new File(name);
+            if (file.exists()) {
+                file.delete();
+                mCache.putFile(name, null);
+            }
+        }
+    }
+
     public void writePatternHash(byte[] hash, int userId) {
+        mStoredCredentialType.put(userId, hash == null ? CredentialHash.TYPE_NONE
+                : CredentialHash.TYPE_PATTERN);
         writeFile(getLockPatternFilename(userId), hash);
+        clearPasswordHash(userId);
+    }
+
+    private void clearPatternHash(int userId) {
+        writeFile(getLockPatternFilename(userId), null);
     }
 
     public void writePasswordHash(byte[] hash, int userId) {
+        mStoredCredentialType.put(userId, hash == null ? CredentialHash.TYPE_NONE
+                : CredentialHash.TYPE_PASSWORD);
         writeFile(getLockPasswordFilename(userId), hash);
+        clearPatternHash(userId);
     }
 
+    private void clearPasswordHash(int userId) {
+        writeFile(getLockPasswordFilename(userId), null);
+    }
 
     @VisibleForTesting
     String getLockPatternFilename(int userId) {
@@ -255,8 +387,26 @@ class LockSettingsStorage {
         return getLockCredentialFilePathForUser(userId, LOCK_PASSWORD_FILE);
     }
 
+    @VisibleForTesting
+    String getLegacyLockPatternFilename(int userId) {
+        return getLockCredentialFilePathForUser(userId, LEGACY_LOCK_PATTERN_FILE);
+    }
+
+    @VisibleForTesting
+    String getLegacyLockPasswordFilename(int userId) {
+        return getLockCredentialFilePathForUser(userId, LEGACY_LOCK_PASSWORD_FILE);
+    }
+
+    private String getBaseZeroLockPatternFilename(int userId) {
+        return getLockCredentialFilePathForUser(userId, BASE_ZERO_LOCK_PATTERN_FILE);
+    }
+
+    @VisibleForTesting
+    String getChildProfileLockFile(int userId) {
+        return getLockCredentialFilePathForUser(userId, CHILD_PROFILE_LOCK_FILE);
+    }
+
     private String getLockCredentialFilePathForUser(int userId, String basename) {
-        userId = getUserParentOrSelfId(userId);
         String dataSystemDirectory =
                 android.os.Environment.getDataDirectory().getAbsolutePath() +
                         SYSTEM_DIRECTORY;
@@ -268,27 +418,15 @@ class LockSettingsStorage {
         }
     }
 
-    private int getUserParentOrSelfId(int userId) {
-        if (userId != 0) {
-            final UserManager um = (UserManager) mContext.getSystemService(USER_SERVICE);
-            final UserInfo pi = um.getProfileParent(userId);
-            if (pi != null) {
-                return pi.id;
-            }
-        }
-        return userId;
-    }
-
-
     public void removeUser(int userId) {
         SQLiteDatabase db = mOpenHelper.getWritableDatabase();
 
         final UserManager um = (UserManager) mContext.getSystemService(USER_SERVICE);
         final UserInfo parentInfo = um.getProfileParent(userId);
 
-        synchronized (mFileWriteLock) {
-            if (parentInfo == null) {
-                // This user owns its lock settings files - safe to delete them
+        if (parentInfo == null) {
+            // This user owns its lock settings files - safe to delete them
+            synchronized (mFileWriteLock) {
                 String name = getLockPasswordFilename(userId);
                 File file = new File(name);
                 if (file.exists()) {
@@ -302,6 +440,9 @@ class LockSettingsStorage {
                     mCache.putFile(name, null);
                 }
             }
+        } else {
+            // Manged profile
+            removeChildProfileLock(userId);
         }
 
         try {

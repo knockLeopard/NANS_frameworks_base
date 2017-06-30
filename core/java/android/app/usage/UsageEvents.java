@@ -68,6 +68,24 @@ public final class UsageEvents implements Parcelable {
         public static final int CONFIGURATION_CHANGE = 5;
 
         /**
+         * An event type denoting that a package was interacted with in some way by the system.
+         * @hide
+         */
+        public static final int SYSTEM_INTERACTION = 6;
+
+        /**
+         * An event type denoting that a package was interacted with in some way by the user.
+         */
+        public static final int USER_INTERACTION = 7;
+
+        /**
+         * An event type denoting that an action equivalent to a ShortcutInfo is taken by the user.
+         *
+         * @see android.content.pm.ShortcutManager#reportShortcutUsed(String)
+         */
+        public static final int SHORTCUT_INVOCATION = 8;
+
+        /**
          * {@hide}
          */
         public String mPackage;
@@ -92,6 +110,13 @@ public final class UsageEvents implements Parcelable {
          * {@hide}
          */
         public Configuration mConfiguration;
+
+        /**
+         * ID of the shortcut.
+         * Only present for {@link #SHORTCUT_INVOCATION} event types.
+         * {@hide}
+         */
+        public String mShortcutId;
 
         /**
          * The package name of the source of this event.
@@ -133,6 +158,16 @@ public final class UsageEvents implements Parcelable {
          */
         public Configuration getConfiguration() {
             return mConfiguration;
+        }
+
+        /**
+         * Returns the ID of a {@link android.content.pm.ShortcutInfo} for this event
+         * if the event is of type {@link #SHORTCUT_INVOCATION}, otherwise it returns null.
+         *
+         * @see android.content.pm.ShortcutManager#reportShortcutUsed(String)
+         */
+        public String getShortcutId() {
+            return mShortcutId;
         }
     }
 
@@ -265,8 +300,13 @@ public final class UsageEvents implements Parcelable {
         p.writeInt(event.mEventType);
         p.writeLong(event.mTimeStamp);
 
-        if (event.mEventType == Event.CONFIGURATION_CHANGE) {
-            event.mConfiguration.writeToParcel(p, flags);
+        switch (event.mEventType) {
+            case Event.CONFIGURATION_CHANGE:
+                event.mConfiguration.writeToParcel(p, flags);
+                break;
+            case Event.SHORTCUT_INVOCATION:
+                p.writeString(event.mShortcutId);
+                break;
         }
     }
 
@@ -290,11 +330,18 @@ public final class UsageEvents implements Parcelable {
         eventOut.mEventType = p.readInt();
         eventOut.mTimeStamp = p.readLong();
 
-        // Extract the configuration for configuration change events.
-        if (eventOut.mEventType == Event.CONFIGURATION_CHANGE) {
-            eventOut.mConfiguration = Configuration.CREATOR.createFromParcel(p);
-        } else {
-            eventOut.mConfiguration = null;
+        // Fill out the event-dependant fields.
+        eventOut.mConfiguration = null;
+        eventOut.mShortcutId = null;
+
+        switch (eventOut.mEventType) {
+            case Event.CONFIGURATION_CHANGE:
+                // Extract the configuration for configuration change events.
+                eventOut.mConfiguration = Configuration.CREATOR.createFromParcel(p);
+                break;
+            case Event.SHORTCUT_INVOCATION:
+                eventOut.mShortcutId = p.readString();
+                break;
         }
     }
 
@@ -361,13 +408,4 @@ public final class UsageEvents implements Parcelable {
             return new UsageEvents[size];
         }
     };
-
-    @Override
-    protected void finalize() throws Throwable {
-        super.finalize();
-        if (mParcel != null) {
-            mParcel.recycle();
-            mParcel = null;
-        }
-    }
 }

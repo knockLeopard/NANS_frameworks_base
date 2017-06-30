@@ -21,7 +21,7 @@ import java.io.InputStream;
 import java.io.FileInputStream;
 
 public class Movie {
-    private final long mNativeMovie;
+    private long mNativeMovie;
 
     private Movie(long nativeMovie) {
         if (nativeMovie == 0) {
@@ -35,12 +35,17 @@ public class Movie {
     public native boolean isOpaque();
     public native int duration();
 
-    public native boolean setTime(int relativeMilliseconds);    
+    public native boolean setTime(int relativeMilliseconds);
 
-    public native void draw(Canvas canvas, float x, float y, Paint paint);
-    
+    private native void nDraw(long nativeCanvas, float x, float y, long paintHandle);
+
+    public void draw(Canvas canvas, float x, float y, Paint paint) {
+        nDraw(canvas.getNativeCanvasWrapper(), x, y,
+                paint != null ? paint.getNativeInstance() : 0);
+    }
+
     public void draw(Canvas canvas, float x, float y) {
-        draw(canvas, x, y, null);
+        nDraw(canvas.getNativeCanvasWrapper(), x, y, 0);
     }
 
     public static Movie decodeStream(InputStream is) {
@@ -77,6 +82,7 @@ public class Movie {
     protected void finalize() throws Throwable {
         try {
             nativeDestructor(mNativeMovie);
+            mNativeMovie = 0;
         } finally {
             super.finalize();
         }

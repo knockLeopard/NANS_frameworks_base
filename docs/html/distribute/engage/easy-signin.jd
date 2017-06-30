@@ -1,105 +1,70 @@
-page.title=Make Signing In Easy
+page.title=Add Quick and Secure Google Sign-In
 page.metaDescription=Increase conversion rates while helping users minimize typing by letting users sign in with Google+.
-page.tags="google+"
-page.image=/images/google/gps-googleplus.png
-
+page.tags="google", "identity", "signin"
+page.image=images/cards/google-sign-in_2x.png
 
 @jd:body
 
-<div class="sidebox-wrapper" style="float:right;">
-  <div class="sidebox" style="width:360px;">
-    <p>
-      <strong>Tip:</strong> For game developers, Google+ signin is already
-      included as part of Google Play game services.
-    </p>
-  </div>
+<div class="figure">
+  <img src="{@docRoot}images/distribute/google-sign-in-banner.png" style="width:512px;">
 </div>
-
 <p>
-  Increase conversion rates while helping users minimize typing by letting
-  users sign in with Google+. The <a href=
-  "{@docRoot}google/play-services/plus.html">Google+ platform for Android</a>
-  authenticates users with their Google credentials safely and securely. With
-  your <a href="https://developers.google.com/+/mobile/android/sign-in">users
-  signing in with Google</a>, you can create more engaging experiences and
-  drive the use of your apps .
+  Get customers into your apps quickly and securely using a registration system that they
+  already use and trust &ndash; their Google account. With minimal effort, you can increase
+  registration and sign-in conversion by adding a trusted registration system that's familiar
+  to users, consistent across devices, and quick and easy to use.
 </p>
 
-<div style="width:450px;">
-  <img src="{@docRoot}images/google/gps-googleplus.png" style="padding-top:1em;">
-</div>
+<h2 id="tips">Benefits</h2>
 
-<p>
-  Use the Google+ social graph to welcome users by name, display their
-  pictures, connect them with friends and more. Users authenticate once and
-  then are signed-in automatically when they come back, eliminating the need to
-  remember and type names and passwords.
-</p>
-
-<div class="headerLine">
-  <h2>
-    And Spreading the Word a Snap
-  </h2>
-
-
-</div>
-
-
-<div class="figure" style="float:right;">
-  <img src="{@docRoot}images/gp-engage-share-plus.png" style=
-  "width:160px;padding-top:1em;">
-  <p class="img-caption">
-    Easy sharing through Google+
-  </p>
-</div>
-
-
-<p>
-  Using Google+ can help users spread the word about your apps to their
-  friends, attracting them to your apps, right from within your apps:
-</p>
-
-<p>
-  Google+ is also a great way to build a community of loyal fans that will help
-  you with <a href=
-  "https://support.google.com/googleplay/android-developer/answer/3131213">beta
-  testing</a>.
-</p>
+<p>These are some of the ways Sign-In can improve your app:</p>
 
 <ul>
-  <li>Using a <a href=
-  "https://developers.google.com/+/mobile/android/recommend">native +1
-  button</a> to let users make a recommendation for your apps or their content.
+  <li>
+    <strong>Quick and secure app access</strong>: Google Sign-In is a secure authentication
+    system that makes sign-in easy for your users by letting them use their Google account,
+    which they already use with Gmail, Google Play, Google+, and other Google services.
   </li>
 
   <li>
-    <a href="https://developers.google.com/+/mobile/android/share/">Share rich
-    content</a> to the Google+ stream, including text, photos, URL attachments,
-    and location.
+    <strong>Seamless experience across screens</strong>: Keep your users engaged, no matter
+    what device they choose. Offer a secure and seamless app experience across devices and
+    into your website, from a one-time consent.
   </li>
 
-  <li>Create <a href=
-  "https://developers.google.com/+/mobile/android/share/interactive-post">Interactive
-  posts</a> to share your website or apps, users can even invite friends to
-  "listen," "RSVP," "check-in," or one of over 100 actions.
+  <li>
+    <strong>Convenient access to Google services</strong>: Securely connect users with
+    Google services and let them pay with Google Wallet, share with Google Contacts, save files
+    to Google Drive, and add events to Google Calendar.
   </li>
 </ul>
 
-<p style="clear:both">
-</p>
-  <div class="headerLine">
-    <h2 id="related-resources">
-      Related Resources
-    </h2>
+<p>Get started integrating<a href="https://developers.google.com/identity/sign-in/">
+Google Sign-In</a> into your apps and games.</p>
 
+<h2 id="tips">Tips</h2>
 
-  </div>
+<p>Here are some suggestions for enhancing the Sign-In user experience:</p>
 
-  <div class="resource-widget resource-flow-layout col-13"
+<ul>
+  <li>
+    Add <strong>over-the-air installs</strong> to your website. After signing in with Google
+    on the web, users have the option to send your Android app to their device instantly,
+    without ever leaving your website.
+  </li>
+
+  <li>
+    With Google Sign-In, you can take advantage of other <strong>Google+ platform
+    features</strong>, like adding a +1 button so users can make recommendations and have
+    the ability to share rich content to their Google+ streams.
+  </li>
+</ul>
+
+<h2 style="clear:both" id="related-resources">Related resources</h2>
+
+<div class="resource-widget resource-flow-layout col-13"
   data-query="collection:distribute/engage/gplus"
   data-sortorder="-timestamp"
   data-cardsizes="9x3"
-  data-maxresults="6">
-  </div>
+  data-maxresults="4">
 </div>
-

@@ -16,7 +16,6 @@
 
 package android.telecom;
 
-import android.annotation.SystemApi;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.media.ToneGenerator;
@@ -30,9 +29,7 @@ import java.util.Objects;
  * user. It is the responsibility of the {@link ConnectionService} to provide localized versions of
  * the label and description. It also may contain a reason for the disconnect, which is intended for
  * logging and not for display to the user.
- * @hide
  */
-@SystemApi
 public final class DisconnectCause implements Parcelable {
 
     /** Disconnected because of an unknown or unspecified reason. */
@@ -67,6 +64,25 @@ public final class DisconnectCause implements Parcelable {
      */
     public static final int CONNECTION_MANAGER_NOT_SUPPORTED = 10;
 
+    /**
+     * Disconnected because the user did not locally answer the incoming call, but it was answered
+     * on another device where the call was ringing.
+     */
+    public static final int ANSWERED_ELSEWHERE = 11;
+
+    /**
+     * Disconnected because the call was pulled from the current device to another device.
+     */
+    public static final int CALL_PULLED = 12;
+
+    /**
+     * Reason code (returned via {@link #getReason()}) which indicates that a call could not be
+     * completed because the cellular radio is off or out of service, the device is connected to
+     * a wifi network, but the user has not enabled wifi calling.
+     * @hide
+     */
+    public static final String REASON_WIFI_ON_BUT_WFC_OFF = "REASON_WIFI_ON_BUT_WFC_OFF";
+
     private int mDisconnectCode;
     private CharSequence mDisconnectLabel;
     private CharSequence mDisconnectDescription;
@@ -95,8 +111,8 @@ public final class DisconnectCause implements Parcelable {
     /**
      * Creates a new DisconnectCause.
      *
-     * @param label The localized label to show to the user to explain the disconnect.
      * @param code The code for the disconnect cause.
+     * @param label The localized label to show to the user to explain the disconnect.
      * @param description The localized description to show to the user to explain the disconnect.
      * @param reason The reason for the disconnect.
      */
@@ -133,8 +149,10 @@ public final class DisconnectCause implements Parcelable {
 
     /**
      * Returns a short label which explains the reason for the disconnect cause and is for display
-     * in the user interface. The {@link ConnectionService } is responsible for providing and
-     * localizing this label. If there is no string provided, returns null.
+     * in the user interface. If not null, it is expected that the In-Call UI should display this
+     * text where it would normally display the call state ("Dialing", "Disconnected") and is
+     * therefore expected to be relatively small. The {@link ConnectionService } is responsible for
+     * providing and localizing this label. If there is no string provided, returns null.
      *
      * @return The disconnect label.
      */
@@ -144,8 +162,11 @@ public final class DisconnectCause implements Parcelable {
 
     /**
      * Returns a description which explains the reason for the disconnect cause and is for display
-     * in the user interface. The {@link ConnectionService } is responsible for providing and
-     * localizing this message. If there is no string provided, returns null.
+     * in the user interface. This optional text is generally a longer and more descriptive version
+     * of {@link #getLabel}, however it can exist even if {@link #getLabel} is empty. The In-Call UI
+     * should display this relatively prominently; the traditional implementation displays this as
+     * an alert dialog. The {@link ConnectionService} is responsible for providing and localizing
+     * this message. If there is no string provided, returns null.
      *
      * @return The disconnect description.
      */
@@ -261,6 +282,12 @@ public final class DisconnectCause implements Parcelable {
                 break;
             case CONNECTION_MANAGER_NOT_SUPPORTED:
                 code = "CONNECTION_MANAGER_NOT_SUPPORTED";
+                break;
+            case CALL_PULLED:
+                code = "CALL_PULLED";
+                break;
+            case ANSWERED_ELSEWHERE:
+                code = "ANSWERED_ELSEWHERE";
                 break;
             default:
                 code = "invalid code: " + mDisconnectCode;

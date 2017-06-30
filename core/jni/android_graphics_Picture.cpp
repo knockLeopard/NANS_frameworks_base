@@ -14,16 +14,14 @@
  * limitations under the License.
  */
 
-#include "jni.h"
+#include "CreateJavaOutputStreamAdaptor.h"
 #include "GraphicsJNI.h"
-#include <android_runtime/AndroidRuntime.h>
-
 #include "Picture.h"
-
 #include "SkCanvas.h"
 #include "SkStream.h"
-#include "SkTemplates.h"
-#include "CreateJavaOutputStreamAdaptor.h"
+#include "core_jni_helpers.h"
+
+#include <jni.h>
 
 namespace android {
 
@@ -93,7 +91,7 @@ static void android_graphics_Picture_endRecording(JNIEnv* env, jobject, jlong pi
     pict->endRecording();
 }
 
-static JNINativeMethod gMethods[] = {
+static const JNINativeMethod gMethods[] = {
     {"nativeGetWidth", "(J)I", (void*) android_graphics_Picture_getWidth},
     {"nativeGetHeight", "(J)I", (void*) android_graphics_Picture_getHeight},
     {"nativeConstructor", "(J)J", (void*) android_graphics_Picture_newPicture},
@@ -106,7 +104,7 @@ static JNINativeMethod gMethods[] = {
 };
 
 int register_android_graphics_Picture(JNIEnv* env) {
-    return AndroidRuntime::registerNativeMethods(env, "android/graphics/Picture", gMethods, NELEM(gMethods));
+    return RegisterMethodsOrDie(env, "android/graphics/Picture", gMethods, NELEM(gMethods));
 }
 
 }; // namespace android

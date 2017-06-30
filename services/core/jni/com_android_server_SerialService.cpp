@@ -34,7 +34,7 @@ static struct parcel_file_descriptor_offsets_t
     jmethodID mConstructor;
 } gParcelFileDescriptorOffsets;
 
-static jobject android_server_SerialService_open(JNIEnv *env, jobject thiz, jstring path)
+static jobject android_server_SerialService_open(JNIEnv *env, jobject /* thiz */, jstring path)
 {
     const char *pathStr = env->GetStringUTFChars(path, NULL);
 
@@ -55,7 +55,7 @@ static jobject android_server_SerialService_open(JNIEnv *env, jobject thiz, jstr
 }
 
 
-static JNINativeMethod method_table[] = {
+static const JNINativeMethod method_table[] = {
     { "native_open",                "(Ljava/lang/String;)Landroid/os/ParcelFileDescriptor;",
                                     (void*)android_server_SerialService_open },
 };

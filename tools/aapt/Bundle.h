@@ -54,17 +54,19 @@ public:
           mWantUTF16(false), mValues(false), mIncludeMetaData(false),
           mCompressionMethod(0), mJunkPath(false), mOutputAPKFile(NULL),
           mManifestPackageNameOverride(NULL), mInstrumentationPackageNameOverride(NULL),
-          mAutoAddOverlay(false), mGenDependencies(false),
-          mCrunchedOutputDir(NULL), mProguardFile(NULL),
+          mAutoAddOverlay(false), mGenDependencies(false), mNoVersionVectors(false),
+          mCrunchedOutputDir(NULL), mProguardFile(NULL), mMainDexProguardFile(NULL),
           mAndroidManifestFile(NULL), mPublicOutputFile(NULL),
           mRClassDir(NULL), mResourceIntermediatesDir(NULL), mManifestMinSdkVersion(NULL),
           mMinSdkVersion(NULL), mTargetSdkVersion(NULL), mMaxSdkVersion(NULL),
           mVersionCode(NULL), mVersionName(NULL), mReplaceVersion(false), mCustomPackage(NULL),
           mExtraPackages(NULL), mMaxResVersion(NULL), mDebugMode(false), mNonConstantId(false),
+          mSkipSymbolsWithoutDefaultLocalization(false),
           mProduct(NULL), mUseCrunchCache(false), mErrorOnFailedInsert(false),
           mErrorOnMissingConfigEntry(false), mOutputTextSymbols(NULL),
           mSingleCrunchInputFile(NULL), mSingleCrunchOutputFile(NULL),
           mBuildSharedLibrary(false),
+          mBuildAppAsSharedLibrary(false),
           mArgc(0), mArgv(NULL)
         {}
     ~Bundle(void) {}
@@ -125,6 +127,12 @@ public:
     const android::String8& getPlatformBuildVersionName() { return mPlatformVersionName; }
     void setPlatformBuildVersionName(const android::String8& name) { mPlatformVersionName = name; }
 
+    const android::String8& getPrivateSymbolsPackage() const { return mPrivateSymbolsPackage; }
+
+    void setPrivateSymbolsPackage(const android::String8& package) {
+        mPrivateSymbolsPackage = package;
+    }
+
     bool getUTF16StringsOption() {
         return mWantUTF16 || !isMinSdkAtLeast(SDK_FROYO);
     }
@@ -138,6 +146,8 @@ public:
     void setCrunchedOutputDir(const char* dir) { mCrunchedOutputDir = dir; }
     const char* getProguardFile() const { return mProguardFile; }
     void setProguardFile(const char* file) { mProguardFile = file; }
+    const char* getMainDexProguardFile() const { return mMainDexProguardFile; }
+    void setMainDexProguardFile(const char* file) { mMainDexProguardFile = file; }
     const android::Vector<const char*>& getResourceSourceDirs() const { return mResourceSourceDirs; }
     void addResourceSourceDir(const char* dir) { mResourceSourceDirs.insertAt(dir,0); }
     const char* getAndroidManifestFile() const { return mAndroidManifestFile; }
@@ -191,6 +201,8 @@ public:
     void setDebugMode(bool val) { mDebugMode = val; }
     bool getNonConstantId() const { return mNonConstantId; }
     void setNonConstantId(bool val) { mNonConstantId = val; }
+    bool getSkipSymbolsWithoutDefaultLocalization() const { return mSkipSymbolsWithoutDefaultLocalization; }
+    void setSkipSymbolsWithoutDefaultLocalization(bool val) { mSkipSymbolsWithoutDefaultLocalization = val; }
     const char* getProduct() const { return mProduct; }
     void setProduct(const char * val) { mProduct = val; }
     void setUseCrunchCache(bool val) { mUseCrunchCache = val; }
@@ -203,6 +215,10 @@ public:
     void setSingleCrunchOutputFile(const char* val) { mSingleCrunchOutputFile = val; }
     bool getBuildSharedLibrary() const { return mBuildSharedLibrary; }
     void setBuildSharedLibrary(bool val) { mBuildSharedLibrary = val; }
+    bool getBuildAppAsSharedLibrary() const { return mBuildAppAsSharedLibrary; }
+    void setBuildAppAsSharedLibrary(bool val) { mBuildAppAsSharedLibrary = val; }
+    void setNoVersionVectors(bool val) { mNoVersionVectors = val; }
+    bool getNoVersionVectors() const { return mNoVersionVectors; }
 
     /*
      * Set and get the file specification.
@@ -235,7 +251,7 @@ public:
      * above. SDK levels that have a non-numeric identifier are assumed
      * to be newer than any SDK level that has a number designated.
      */
-    bool isMinSdkAtLeast(int desired) {
+    bool isMinSdkAtLeast(int desired) const {
         /* If the application specifies a minSdkVersion in the manifest
          * then use that. Otherwise, check what the user specified on
          * the command line. If neither, it's not available since
@@ -282,8 +298,10 @@ private:
     const char* mInstrumentationPackageNameOverride;
     bool        mAutoAddOverlay;
     bool        mGenDependencies;
+    bool        mNoVersionVectors;
     const char* mCrunchedOutputDir;
     const char* mProguardFile;
+    const char* mMainDexProguardFile;
     const char* mAndroidManifestFile;
     const char* mPublicOutputFile;
     const char* mRClassDir;
@@ -312,6 +330,7 @@ private:
     const char* mMaxResVersion;
     bool        mDebugMode;
     bool        mNonConstantId;
+    bool        mSkipSymbolsWithoutDefaultLocalization;
     const char* mProduct;
     bool        mUseCrunchCache;
     bool        mErrorOnFailedInsert;
@@ -320,8 +339,10 @@ private:
     const char* mSingleCrunchInputFile;
     const char* mSingleCrunchOutputFile;
     bool        mBuildSharedLibrary;
+    bool        mBuildAppAsSharedLibrary;
     android::String8 mPlatformVersionCode;
     android::String8 mPlatformVersionName;
+    android::String8 mPrivateSymbolsPackage;
 
     /* file specification */
     int         mArgc;

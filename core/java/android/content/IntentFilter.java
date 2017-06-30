@@ -20,6 +20,7 @@ import android.net.Uri;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.PatternMatcher;
+import android.text.TextUtils;
 import android.util.AndroidException;
 import android.util.Log;
 import android.util.Printer;
@@ -123,7 +124,7 @@ import java.util.Set;
  * <em>Note that authority matching here is <b>case sensitive</b>, unlike
  * formal RFC host names!</em>  You should thus always use lower case letters
  * for your authority.
- * 
+ *
  * <p><strong>Data Path</strong> matches if any of the given values match the
  * Intent's data path <em>and</em> both a scheme and authority in the filter
  * has matched against the Intent, <em>or</em> no paths were supplied in the
@@ -150,6 +151,7 @@ public class IntentFilter implements Parcelable {
     private static final String CAT_STR = "cat";
     private static final String NAME_STR = "name";
     private static final String ACTION_STR = "action";
+    private static final String AUTO_VERIFY_STR = "autoVerify";
 
     /**
      * The filter {@link #setPriority} value at which system high-priority
@@ -247,7 +249,23 @@ public class IntentFilter implements Parcelable {
      */
     public static final int NO_MATCH_CATEGORY = -4;
 
+    /**
+     * HTTP scheme.
+     *
+     * @see #addDataScheme(String)
+     * @hide
+     */
+    public static final String SCHEME_HTTP = "http";
+    /**
+     * HTTPS scheme.
+     *
+     * @see #addDataScheme(String)
+     * @hide
+     */
+    public static final String SCHEME_HTTPS = "https";
+
     private int mPriority;
+    private int mOrder;
     private final ArrayList<String> mActions;
     private ArrayList<String> mCategories = null;
     private ArrayList<String> mDataSchemes = null;
@@ -256,6 +274,13 @@ public class IntentFilter implements Parcelable {
     private ArrayList<PatternMatcher> mDataPaths = null;
     private ArrayList<String> mDataTypes = null;
     private boolean mHasPartialTypes = false;
+
+    private static final int STATE_VERIFY_AUTO         = 0x00000001;
+    private static final int STATE_NEED_VERIFY         = 0x00000010;
+    private static final int STATE_NEED_VERIFY_CHECKED = 0x00000100;
+    private static final int STATE_VERIFIED            = 0x00001000;
+
+    private int mVerifyState;
 
     // These functions are the start of more optimized code for managing
     // the string sets...  not yet implemented.
@@ -326,7 +351,7 @@ public class IntentFilter implements Parcelable {
         public MalformedMimeTypeException(String name) {
             super(name);
         }
-    };
+    }
 
     /**
      * Create a new IntentFilter instance with a specified action and MIME
@@ -334,8 +359,8 @@ public class IntentFilter implements Parcelable {
      * the {@link MalformedMimeTypeException} exception that the constructor
      * can call and turns it into a runtime exception.
      *
-     * @param action The action to match, i.e. Intent.ACTION_VIEW.
-     * @param dataType The type to match, i.e. "vnd.android.cursor.dir/person".
+     * @param action The action to match, such as Intent.ACTION_VIEW.
+     * @param dataType The type to match, such as "vnd.android.cursor.dir/person".
      *
      * @return A new IntentFilter for the given action and type.
      *
@@ -362,7 +387,7 @@ public class IntentFilter implements Parcelable {
      * no data characteristics are subsequently specified, then the
      * filter will only match intents that contain no data.
      *
-     * @param action The action to match, i.e. Intent.ACTION_MAIN.
+     * @param action The action to match, such as Intent.ACTION_MAIN.
      */
     public IntentFilter(String action) {
         mPriority = 0;
@@ -382,8 +407,8 @@ public class IntentFilter implements Parcelable {
      * <p>Throws {@link MalformedMimeTypeException} if the given MIME type is
      * not syntactically correct.
      *
-     * @param action The action to match, i.e. Intent.ACTION_VIEW.
-     * @param dataType The type to match, i.e. "vnd.android.cursor.dir/person".
+     * @param action The action to match, such as Intent.ACTION_VIEW.
+     * @param dataType The type to match, such as "vnd.android.cursor.dir/person".
      *
      */
     public IntentFilter(String action, String dataType)
@@ -401,6 +426,7 @@ public class IntentFilter implements Parcelable {
      */
     public IntentFilter(IntentFilter o) {
         mPriority = o.mPriority;
+        mOrder = o.mOrder;
         mActions = new ArrayList<String>(o.mActions);
         if (o.mCategories != null) {
             mCategories = new ArrayList<String>(o.mCategories);
@@ -421,14 +447,16 @@ public class IntentFilter implements Parcelable {
             mDataPaths = new ArrayList<PatternMatcher>(o.mDataPaths);
         }
         mHasPartialTypes = o.mHasPartialTypes;
+        mVerifyState = o.mVerifyState;
     }
 
     /**
-     * Modify priority of this filter.  The default priority is 0. Positive
-     * values will be before the default, lower values will be after it.
-     * Applications must use a value that is larger than
-     * {@link #SYSTEM_LOW_PRIORITY} and smaller than
-     * {@link #SYSTEM_HIGH_PRIORITY} .
+     * Modify priority of this filter.  This only affects receiver filters.
+     * The priority of activity filters are set in XML and cannot be changed
+     * programatically. The default priority is 0. Positive values will be
+     * before the default, lower values will be after it. Applications should
+     * use a value that is larger than {@link #SYSTEM_LOW_PRIORITY} and
+     * smaller than {@link #SYSTEM_HIGH_PRIORITY} .
      *
      * @param priority The new priority value.
      *
@@ -451,12 +479,180 @@ public class IntentFilter implements Parcelable {
         return mPriority;
     }
 
+    /** @hide */
+    public final void setOrder(int order) {
+        mOrder = order;
+    }
+
+    /** @hide */
+    public final int getOrder() {
+        return mOrder;
+    }
+
+    /**
+     * Set whether this filter will needs to be automatically verified against its data URIs or not.
+     * The default is false.
+     *
+     * The verification would need to happen only and only if the Intent action is
+     * {@link android.content.Intent#ACTION_VIEW} and the Intent category is
+     * {@link android.content.Intent#CATEGORY_BROWSABLE} and the Intent data scheme
+     * is "http" or "https".
+     *
+     * True means that the filter will need to use its data URIs to be verified.
+     *
+     * @param autoVerify The new autoVerify value.
+     *
+     * @see #getAutoVerify()
+     * @see #addAction(String)
+     * @see #getAction(int)
+     * @see #addCategory(String)
+     * @see #getCategory(int)
+     * @see #addDataScheme(String)
+     * @see #getDataScheme(int)
+     *
+     * @hide
+     */
+    public final void setAutoVerify(boolean autoVerify) {
+        mVerifyState &= ~STATE_VERIFY_AUTO;
+        if (autoVerify) mVerifyState |= STATE_VERIFY_AUTO;
+    }
+
+    /**
+     * Return if this filter will needs to be automatically verified again its data URIs or not.
+     *
+     * @return True if the filter will needs to be automatically verified. False otherwise.
+     *
+     * @see #setAutoVerify(boolean)
+     *
+     * @hide
+     */
+    public final boolean getAutoVerify() {
+        return ((mVerifyState & STATE_VERIFY_AUTO) == 1);
+    }
+
+    /**
+     * Return if this filter handle all HTTP or HTTPS data URI or not.  This is the
+     * core check for whether a given activity qualifies as a "browser".
+     *
+     * @return True if the filter handle all HTTP or HTTPS data URI. False otherwise.
+     *
+     * This will check if:
+     *
+     * - either the Intent category is {@link android.content.Intent#CATEGORY_APP_BROWSER}
+     * - either the Intent action is {@link android.content.Intent#ACTION_VIEW} and
+     * the Intent category is {@link android.content.Intent#CATEGORY_BROWSABLE} and the Intent
+     * data scheme is "http" or "https" and that there is no specific host defined.
+     *
+     * @hide
+     */
+    public final boolean handleAllWebDataURI() {
+        return hasCategory(Intent.CATEGORY_APP_BROWSER) ||
+                (handlesWebUris(false) && countDataAuthorities() == 0);
+    }
+
+    /**
+     * Return if this filter handles HTTP or HTTPS data URIs.
+     *
+     * @return True if the filter handles ACTION_VIEW/CATEGORY_BROWSABLE,
+     * has at least one HTTP or HTTPS data URI pattern defined, and optionally
+     * does not define any non-http/https data URI patterns.
+     *
+     * This will check if if the Intent action is {@link android.content.Intent#ACTION_VIEW} and
+     * the Intent category is {@link android.content.Intent#CATEGORY_BROWSABLE} and the Intent
+     * data scheme is "http" or "https".
+     *
+     * @param onlyWebSchemes When true, requires that the intent filter declare
+     *     that it handles *only* http: or https: schemes.  This is a requirement for
+     *     the intent filter's domain linkage being verifiable.
+     * @hide
+     */
+    public final boolean handlesWebUris(boolean onlyWebSchemes) {
+        // Require ACTION_VIEW, CATEGORY_BROWSEABLE, and at least one scheme
+        if (!hasAction(Intent.ACTION_VIEW)
+            || !hasCategory(Intent.CATEGORY_BROWSABLE)
+            || mDataSchemes == null
+            || mDataSchemes.size() == 0) {
+            return false;
+        }
+
+        // Now allow only the schemes "http" and "https"
+        final int N = mDataSchemes.size();
+        for (int i = 0; i < N; i++) {
+            final String scheme = mDataSchemes.get(i);
+            final boolean isWebScheme =
+                    SCHEME_HTTP.equals(scheme) || SCHEME_HTTPS.equals(scheme);
+            if (onlyWebSchemes) {
+                // If we're specifically trying to ensure that there are no non-web schemes
+                // declared in this filter, then if we ever see a non-http/https scheme then
+                // we know it's a failure.
+                if (!isWebScheme) {
+                    return false;
+                }
+            } else {
+                // If we see any http/https scheme declaration in this case then the
+                // filter matches what we're looking for.
+                if (isWebScheme) {
+                    return true;
+                }
+            }
+        }
+
+        // We get here if:
+        //   1) onlyWebSchemes and no non-web schemes were found, i.e success; or
+        //   2) !onlyWebSchemes and no http/https schemes were found, i.e. failure.
+        return onlyWebSchemes;
+    }
+
+    /**
+     * Return if this filter needs to be automatically verified again its data URIs or not.
+     *
+     * @return True if the filter needs to be automatically verified. False otherwise.
+     *
+     * This will check if if the Intent action is {@link android.content.Intent#ACTION_VIEW} and
+     * the Intent category is {@link android.content.Intent#CATEGORY_BROWSABLE} and the Intent
+     * data scheme is "http" or "https".
+     *
+     * @see #setAutoVerify(boolean)
+     *
+     * @hide
+     */
+    public final boolean needsVerification() {
+        return getAutoVerify() && handlesWebUris(true);
+    }
+
+    /**
+     * Return if this filter has been verified
+     *
+     * @return true if the filter has been verified or if autoVerify is false.
+     *
+     * @hide
+     */
+    public final boolean isVerified() {
+        if ((mVerifyState & STATE_NEED_VERIFY_CHECKED) == STATE_NEED_VERIFY_CHECKED) {
+            return ((mVerifyState & STATE_NEED_VERIFY) == STATE_NEED_VERIFY);
+        }
+        return false;
+    }
+
+    /**
+     * Set if this filter has been verified
+     *
+     * @param verified true if this filter has been verified. False otherwise.
+     *
+     * @hide
+     */
+    public void setVerified(boolean verified) {
+        mVerifyState |= STATE_NEED_VERIFY_CHECKED;
+        mVerifyState &= ~STATE_VERIFIED;
+        if (verified) mVerifyState |= STATE_VERIFIED;
+    }
+
     /**
      * Add a new Intent action to match against.  If any actions are included
      * in the filter, then an Intent's action must be one of those values for
      * it to match.  If no actions are included, the Intent action is ignored.
      *
-     * @param action Name of the action to match, i.e. Intent.ACTION_VIEW.
+     * @param action Name of the action to match, such as Intent.ACTION_VIEW.
      */
     public final void addAction(String action) {
         if (!mActions.contains(action)) {
@@ -525,7 +721,7 @@ public class IntentFilter implements Parcelable {
      * <p>Throws {@link MalformedMimeTypeException} if the given MIME type is
      * not syntactically correct.
      *
-     * @param type Name of the data type to match, i.e. "vnd.android.cursor.dir/person".
+     * @param type Name of the data type to match, such as "vnd.android.cursor.dir/person".
      *
      * @see #matchData
      */
@@ -602,7 +798,7 @@ public class IntentFilter implements Parcelable {
      * and any schemes you receive from outside of Android should be
      * converted to lower case before supplying them here.</em></p>
      *
-     * @param scheme Name of the scheme to match, i.e. "http".
+     * @param scheme Name of the scheme to match, such as "http".
      *
      * @see #matchData
      */
@@ -700,11 +896,20 @@ public class IntentFilter implements Parcelable {
             return true;
         }
 
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof AuthorityEntry) {
+                final AuthorityEntry other = (AuthorityEntry)obj;
+                return match(other);
+            }
+            return false;
+        }
+
         /**
          * Determine whether this AuthorityEntry matches the given data Uri.
          * <em>Note that this comparison is case-sensitive, unlike formal
          * RFC host names.  You thus should always normalize to lower-case.</em>
-         * 
+         *
          * @param data The Uri to match.
          * @return Returns either {@link IntentFilter#NO_MATCH_DATA},
          * {@link IntentFilter#MATCH_CATEGORY_PORT}, or
@@ -734,7 +939,7 @@ public class IntentFilter implements Parcelable {
             }
             return MATCH_CATEGORY_HOST;
         }
-    };
+    }
 
     /**
      * Add a new Intent data "scheme specific part" to match against.  The filter must
@@ -1023,7 +1228,7 @@ public class IntentFilter implements Parcelable {
      * {@link #MATCH_CATEGORY_PORT}, {@link #NO_MATCH_DATA}.
      */
     public final int matchDataAuthority(Uri data) {
-        if (mDataAuthorities == null) {
+        if (mDataAuthorities == null || data == null) {
             return NO_MATCH_DATA;
         }
         final int numDataAuthorities = mDataAuthorities.size();
@@ -1094,7 +1299,7 @@ public class IntentFilter implements Parcelable {
             }
 
             final ArrayList<PatternMatcher> schemeSpecificParts = mDataSchemeSpecificParts;
-            if (schemeSpecificParts != null) {
+            if (schemeSpecificParts != null && data != null) {
                 match = hasDataSchemeSpecificPart(data.getSchemeSpecificPart())
                         ? MATCH_CATEGORY_SCHEME_SPECIFIC_PART : NO_MATCH_DATA;
             }
@@ -1159,7 +1364,7 @@ public class IntentFilter implements Parcelable {
      * filter has no impact on matching unless that category is specified in
      * the intent.
      *
-     * @param category Name of category to match, i.e. Intent.CATEGORY_EMBED.
+     * @param category Name of category to match, such as Intent.CATEGORY_EMBED.
      */
     public final void addCategory(String category) {
         if (mCategories == null) mCategories = new ArrayList<String>();
@@ -1333,6 +1538,11 @@ public class IntentFilter implements Parcelable {
      * Write the contents of the IntentFilter as an XML stream.
      */
     public void writeToXml(XmlSerializer serializer) throws IOException {
+
+        if (getAutoVerify()) {
+            serializer.attribute(null, AUTO_VERIFY_STR, Boolean.toString(true));
+        }
+
         int N = countActions();
         for (int i=0; i<N; i++) {
             serializer.startTag(null, ACTION_STR);
@@ -1407,6 +1617,9 @@ public class IntentFilter implements Parcelable {
 
     public void readFromXml(XmlPullParser parser) throws XmlPullParserException,
             IOException {
+        String autoVerify = parser.getAttributeValue(null, AUTO_VERIFY_STR);
+        setAutoVerify(TextUtils.isEmpty(autoVerify) ? false : Boolean.getBoolean(autoVerify));
+
         int outerDepth = parser.getDepth();
         int type;
         while ((type=parser.next()) != XmlPullParser.END_DOCUMENT
@@ -1548,6 +1761,11 @@ public class IntentFilter implements Parcelable {
                     sb.append(", mHasPartialTypes="); sb.append(mHasPartialTypes);
             du.println(sb.toString());
         }
+        {
+            sb.setLength(0);
+            sb.append(prefix); sb.append("AutoVerify="); sb.append(getAutoVerify());
+            du.println(sb.toString());
+        }
     }
 
     public static final Parcelable.Creator<IntentFilter> CREATOR
@@ -1614,6 +1832,7 @@ public class IntentFilter implements Parcelable {
         }
         dest.writeInt(mPriority);
         dest.writeInt(mHasPartialTypes ? 1 : 0);
+        dest.writeInt(getAutoVerify() ? 1 : 0);
     }
 
     /**
@@ -1680,6 +1899,7 @@ public class IntentFilter implements Parcelable {
         }
         mPriority = source.readInt();
         mHasPartialTypes = source.readInt() > 0;
+        setAutoVerify(source.readInt() > 0);
     }
 
     private final boolean findMimeType(String type) {
@@ -1723,5 +1943,28 @@ public class IntentFilter implements Parcelable {
         }
 
         return false;
+    }
+
+    /**
+     * @hide
+     */
+    public ArrayList<String> getHostsList() {
+        ArrayList<String> result = new ArrayList<>();
+        Iterator<IntentFilter.AuthorityEntry> it = authoritiesIterator();
+        if (it != null) {
+            while (it.hasNext()) {
+                IntentFilter.AuthorityEntry entry = it.next();
+                result.add(entry.getHost());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * @hide
+     */
+    public String[] getHosts() {
+        ArrayList<String> list = getHostsList();
+        return list.toArray(new String[list.size()]);
     }
 }

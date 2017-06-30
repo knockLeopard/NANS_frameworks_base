@@ -22,9 +22,9 @@
 
 #include "jni.h"
 #include "GraphicsJNI.h"
-#include <android_runtime/AndroidRuntime.h>
+#include "core_jni_helpers.h"
 
-#include "SkPorterDuff.h"
+#include "SkXfermode.h"
 
 namespace android {
 
@@ -32,21 +32,38 @@ class SkPorterDuffGlue {
 public:
 
     static jlong CreateXfermode(JNIEnv* env, jobject, jint modeHandle) {
-        SkPorterDuff::Mode mode = static_cast<SkPorterDuff::Mode>(modeHandle);
-        return reinterpret_cast<jlong>(SkPorterDuff::CreateXfermode(mode));
+        // validate that the Java enum values match our expectations
+        static_assert(0  == SkXfermode::kClear_Mode,    "xfermode_mismatch");
+        static_assert(1  == SkXfermode::kSrc_Mode,      "xfermode_mismatch");
+        static_assert(2  == SkXfermode::kDst_Mode,      "xfermode_mismatch");
+        static_assert(3  == SkXfermode::kSrcOver_Mode,  "xfermode_mismatch");
+        static_assert(4  == SkXfermode::kDstOver_Mode,  "xfermode_mismatch");
+        static_assert(5  == SkXfermode::kSrcIn_Mode,    "xfermode_mismatch");
+        static_assert(6  == SkXfermode::kDstIn_Mode,    "xfermode_mismatch");
+        static_assert(7  == SkXfermode::kSrcOut_Mode,   "xfermode_mismatch");
+        static_assert(8  == SkXfermode::kDstOut_Mode,   "xfermode_mismatch");
+        static_assert(9  == SkXfermode::kSrcATop_Mode,  "xfermode_mismatch");
+        static_assert(10 == SkXfermode::kDstATop_Mode,  "xfermode_mismatch");
+        static_assert(11 == SkXfermode::kXor_Mode,      "xfermode_mismatch");
+        static_assert(16 == SkXfermode::kDarken_Mode,   "xfermode_mismatch");
+        static_assert(17 == SkXfermode::kLighten_Mode,  "xfermode_mismatch");
+        static_assert(13 == SkXfermode::kModulate_Mode, "xfermode_mismatch");
+        static_assert(14 == SkXfermode::kScreen_Mode,   "xfermode_mismatch");
+        static_assert(12 == SkXfermode::kPlus_Mode,     "xfermode_mismatch");
+        static_assert(15 == SkXfermode::kOverlay_Mode,  "xfermode_mismatch");
+
+        SkXfermode::Mode mode = static_cast<SkXfermode::Mode>(modeHandle);
+        return reinterpret_cast<jlong>(SkXfermode::Create(mode));
     }
- 
+
 };
 
-static JNINativeMethod methods[] = {
+static const JNINativeMethod methods[] = {
     {"nativeCreateXfermode","(I)J", (void*) SkPorterDuffGlue::CreateXfermode},
 };
 
 int register_android_graphics_PorterDuff(JNIEnv* env) {
-    int result = AndroidRuntime::registerNativeMethods(env,
-                                "android/graphics/PorterDuffXfermode", methods,
-                                        sizeof(methods) / sizeof(methods[0]));
-    return result;
+    return RegisterMethodsOrDie(env, "android/graphics/PorterDuffXfermode", methods, NELEM(methods));
 }
 
 }

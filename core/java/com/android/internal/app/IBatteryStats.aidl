@@ -18,9 +18,13 @@ package com.android.internal.app;
 
 import com.android.internal.os.BatteryStatsImpl;
 
+import android.bluetooth.BluetoothActivityEnergyInfo;
+import android.net.wifi.WifiActivityEnergyInfo;
 import android.os.ParcelFileDescriptor;
 import android.os.WorkSource;
+import android.os.health.HealthStatsParceler;
 import android.telephony.DataConnectionRealTimeInfo;
+import android.telephony.ModemActivityInfo;
 import android.telephony.SignalStrength;
 
 interface IBatteryStats {
@@ -34,11 +38,20 @@ interface IBatteryStats {
     void noteStopAudio(int uid);
     void noteResetVideo();
     void noteResetAudio();
+    void noteFlashlightOn(int uid);
+    void noteFlashlightOff(int uid);
+    void noteStartCamera(int uid);
+    void noteStopCamera(int uid);
+    void noteResetCamera();
+    void noteResetFlashlight();
 
     // Remaining methods are only used in Java.
     byte[] getStatistics();
 
     ParcelFileDescriptor getStatisticsStream();
+
+    // Return true if we see the battery as currently charging.
+    boolean isCharging();
 
     // Return the computed amount of time remaining on battery, in milliseconds.
     // Returns -1 if nothing could be computed.
@@ -66,19 +79,20 @@ interface IBatteryStats {
             String newHistoryName, int newType, boolean newUnimportantForLogging);
     void noteStopWakelockFromSource(in WorkSource ws, int pid, String name, String historyName,
             int type);
+    void noteLongPartialWakelockStart(String name, String historyName, int uid);
+    void noteLongPartialWakelockFinish(String name, String historyName, int uid);
 
     void noteVibratorOn(int uid, long durationMillis);
     void noteVibratorOff(int uid);
-    void noteFlashlightOn();
-    void noteFlashlightOff();
     void noteStartGps(int uid);
     void noteStopGps(int uid);
     void noteScreenState(int state);
     void noteScreenBrightness(int brightness);
     void noteUserActivity(int uid, int event);
+    void noteWakeUp(String reason, int reasonUid);
     void noteInteractive(boolean interactive);
     void noteConnectivityChanged(int type, String extra);
-    void noteMobileRadioPowerState(int powerState, long timestampNs);
+    void noteMobileRadioPowerState(int powerState, long timestampNs, int uid);
     void notePhoneOn();
     void notePhoneOff();
     void notePhoneSignalStrength(in SignalStrength signalStrength);
@@ -92,9 +106,6 @@ interface IBatteryStats {
     void noteWifiState(int wifiState, String accessPoint);
     void noteWifiSupplicantStateChanged(int supplState, boolean failedAuth);
     void noteWifiRssiChanged(int newRssi);
-    void noteBluetoothOn();
-    void noteBluetoothOff();
-    void noteBluetoothState(int bluetoothState);
     void noteFullWifiLockAcquired(int uid);
     void noteFullWifiLockReleased(int uid);
     void noteWifiScanStarted(int uid);
@@ -109,9 +120,23 @@ interface IBatteryStats {
     void noteWifiBatchedScanStoppedFromSource(in WorkSource ws);
     void noteWifiMulticastEnabledFromSource(in WorkSource ws);
     void noteWifiMulticastDisabledFromSource(in WorkSource ws);
+    void noteWifiRadioPowerState(int powerState, long timestampNs, int uid);
     void noteNetworkInterfaceType(String iface, int type);
     void noteNetworkStatsEnabled();
-    void setBatteryState(int status, int health, int plugType, int level, int temp, int volt);
+    void noteDeviceIdleMode(int mode, String activeReason, int activeUid);
+    void setBatteryState(int status, int health, int plugType, int level, int temp, int volt,
+            int chargeUAh);
     long getAwakeTimeBattery();
     long getAwakeTimePlugged();
+
+    void noteBleScanStarted(in WorkSource ws);
+    void noteBleScanStopped(in WorkSource ws);
+    void noteResetBleScan();
+
+    HealthStatsParceler takeUidSnapshot(int uid);
+    HealthStatsParceler[] takeUidSnapshots(in int[] uid);
+
+    oneway void noteBluetoothControllerActivity(in BluetoothActivityEnergyInfo info);
+    oneway void noteModemControllerActivity(in ModemActivityInfo info);
+    oneway void noteWifiControllerActivity(in WifiActivityEnergyInfo info);
 }

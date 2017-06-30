@@ -16,10 +16,10 @@
 
 package com.android.tools.layoutlib.create;
 
+import org.objectweb.asm.Opcodes;
+
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -54,13 +54,15 @@ public class Main {
         public boolean listOnlyMissingDeps = false;
     }
 
+    public static final int ASM_VERSION = Opcodes.ASM5;
+
     public static final Options sOptions = new Options();
 
     public static void main(String[] args) {
 
         Log log = new Log();
 
-        ArrayList<String> osJarPath = new ArrayList<String>();
+        ArrayList<String> osJarPath = new ArrayList<>();
         String[] osDestJar = { null };
 
         if (!processArgs(log, args, osJarPath, osDestJar)) {
@@ -105,7 +107,7 @@ public class Main {
                         "com.android.internal.widget.*",
                         "android.text.**",
                         "android.graphics.*",
-                        "android.graphics.drawable.*",
+                        "android.graphics.drawable.**",
                         "android.content.*",
                         "android.content.res.*",
                         "android.preference.*",
@@ -118,10 +120,15 @@ public class Main {
                         "android.app.DatePickerDialog",     // b.android.com/28318
                         "android.app.TimePickerDialog",     // b.android.com/61515
                         "com.android.internal.view.menu.ActionMenu",
+                        "android.icu.**",                   // needed by LayoutLib
+                        "android.annotation.NonNull",       // annotations
+                        "android.annotation.Nullable",      // annotations
+                        "com.android.internal.transition.EpicenterTranslateClipReveal",
                     },
                     excludeClasses,
                     new String[] {
                         "com/android/i18n/phonenumbers/data/*",
+                        "android/icu/impl/data/**"
                     });
             aa.analyze();
             agen.generate();

@@ -1,8 +1,7 @@
-page.title=Devices
-page.viewport_width=970
+page.title=Android devices
 section.landing=true
-header.hide=1
 footer.hide=1
+page.image=images/cards/android-devices_2x.jpg
 @jd:body
 
 <style>

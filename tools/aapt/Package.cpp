@@ -33,7 +33,7 @@ static const char* kNoCompressExt[] = {
     ".mpg", ".mpeg", ".mid", ".midi", ".smf", ".jet",
     ".rtttl", ".imy", ".xmf", ".mp4", ".m4a",
     ".m4v", ".3gp", ".3gpp", ".3g2", ".3gpp2",
-    ".amr", ".awb", ".wma", ".wmv"
+    ".amr", ".awb", ".wma", ".wmv", ".webm", ".mkv"
 };
 
 /* fwd decls, so I can write this downward */
@@ -402,7 +402,6 @@ bool endsWith(const char* haystack, const char* needle)
 
 ssize_t processJarFile(ZipFile* jar, ZipFile* out)
 {
-    status_t err;
     size_t N = jar->getNumEntries();
     size_t count = 0;
     for (size_t i=0; i<N; i++) {

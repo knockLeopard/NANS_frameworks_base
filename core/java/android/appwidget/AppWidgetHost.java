@@ -16,8 +16,8 @@
 
 package android.appwidget;
 
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.lang.ref.WeakReference;
+import java.util.List;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -35,6 +35,7 @@ import android.os.Process;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.util.DisplayMetrics;
+import android.util.SparseArray;
 import android.util.TypedValue;
 import android.widget.RemoteViews;
 import android.widget.RemoteViews.OnClickHandler;
@@ -58,18 +59,28 @@ public class AppWidgetHost {
     private DisplayMetrics mDisplayMetrics;
 
     private String mContextOpPackageName;
-    Handler mHandler;
-    int mHostId;
-    Callbacks mCallbacks = new Callbacks();
-    final HashMap<Integer,AppWidgetHostView> mViews = new HashMap<Integer, AppWidgetHostView>();
+    private final Handler mHandler;
+    private final int mHostId;
+    private final Callbacks mCallbacks;
+    private final SparseArray<AppWidgetHostView> mViews = new SparseArray<>();
     private OnClickHandler mOnClickHandler;
 
-    class Callbacks extends IAppWidgetHost.Stub {
+    static class Callbacks extends IAppWidgetHost.Stub {
+        private final WeakReference<Handler> mWeakHandler;
+
+        public Callbacks(Handler handler) {
+            mWeakHandler = new WeakReference<>(handler);
+        }
+
         public void updateAppWidget(int appWidgetId, RemoteViews views) {
             if (isLocalBinder() && views != null) {
                 views = views.clone();
             }
-            Message msg = mHandler.obtainMessage(HANDLE_UPDATE, appWidgetId, 0, views);
+            Handler handler = mWeakHandler.get();
+            if (handler == null) {
+                return;
+            }
+            Message msg = handler.obtainMessage(HANDLE_UPDATE, appWidgetId, 0, views);
             msg.sendToTarget();
         }
 
@@ -77,19 +88,35 @@ public class AppWidgetHost {
             if (isLocalBinder() && info != null) {
                 info = info.clone();
             }
-            Message msg = mHandler.obtainMessage(HANDLE_PROVIDER_CHANGED,
+            Handler handler = mWeakHandler.get();
+            if (handler == null) {
+                return;
+            }
+            Message msg = handler.obtainMessage(HANDLE_PROVIDER_CHANGED,
                     appWidgetId, 0, info);
             msg.sendToTarget();
         }
 
         public void providersChanged() {
-            mHandler.obtainMessage(HANDLE_PROVIDERS_CHANGED).sendToTarget();
+            Handler handler = mWeakHandler.get();
+            if (handler == null) {
+                return;
+            }
+            handler.obtainMessage(HANDLE_PROVIDERS_CHANGED).sendToTarget();
         }
 
         public void viewDataChanged(int appWidgetId, int viewId) {
-            Message msg = mHandler.obtainMessage(HANDLE_VIEW_DATA_CHANGED,
+            Handler handler = mWeakHandler.get();
+            if (handler == null) {
+                return;
+            }
+            Message msg = handler.obtainMessage(HANDLE_VIEW_DATA_CHANGED,
                     appWidgetId, viewId);
             msg.sendToTarget();
+        }
+
+        private static boolean isLocalBinder() {
+            return Process.myPid() == Binder.getCallingPid();
         }
     }
 
@@ -132,10 +159,10 @@ public class AppWidgetHost {
         mHostId = hostId;
         mOnClickHandler = handler;
         mHandler = new UpdateHandler(looper);
+        mCallbacks = new Callbacks(mHandler);
         mDisplayMetrics = context.getResources().getDisplayMetrics();
         bindService();
     }
-
 
     private static void bindService() {
         synchronized (sServiceLock) {
@@ -151,19 +178,36 @@ public class AppWidgetHost {
      * becomes visible, i.e. from onStart() in your Activity.
      */
     public void startListening() {
-        int[] updatedIds;
-        ArrayList<RemoteViews> updatedViews = new ArrayList<RemoteViews>();
+        final int[] idsToUpdate;
+        synchronized (mViews) {
+            int N = mViews.size();
+            idsToUpdate = new int[N];
+            for (int i = 0; i < N; i++) {
+                idsToUpdate[i] = mViews.keyAt(i);
+            }
+        }
+        List<PendingHostUpdate> updates;
         try {
-            updatedIds = sService.startListening(mCallbacks, mContextOpPackageName, mHostId,
-                    updatedViews);
+            updates = sService.startListening(
+                    mCallbacks, mContextOpPackageName, mHostId, idsToUpdate).getList();
         }
         catch (RemoteException e) {
             throw new RuntimeException("system server dead?", e);
         }
 
-        final int N = updatedIds.length;
+        int N = updates.size();
         for (int i = 0; i < N; i++) {
-            updateAppWidgetView(updatedIds[i], updatedViews.get(i));
+            PendingHostUpdate update = updates.get(i);
+            switch (update.type) {
+                case PendingHostUpdate.TYPE_VIEWS_UPDATE:
+                    updateAppWidgetView(update.appWidgetId, update.views);
+                    break;
+                case PendingHostUpdate.TYPE_PROVIDER_CHANGED:
+                    onProviderChanged(update.appWidgetId, update.widgetInfo);
+                    break;
+                case PendingHostUpdate.TYPE_VIEW_DATA_CHANGED:
+                    viewDataChanged(update.appWidgetId, update.viewId);
+            }
         }
     }
 
@@ -178,10 +222,6 @@ public class AppWidgetHost {
         catch (RemoteException e) {
             throw new RuntimeException("system server dead?", e);
         }
-
-        // This is here because keyguard needs it since it'll be switching users after this call.
-        // If it turns out other apps need to call this often, we should re-think how this works.
-        clearViews();
     }
 
     /**
@@ -221,10 +261,10 @@ public class AppWidgetHost {
             int appWidgetId, int intentFlags, int requestCode, @Nullable Bundle options) {
         try {
             IntentSender intentSender = sService.createAppWidgetConfigIntentSender(
-                    mContextOpPackageName, appWidgetId);
+                    mContextOpPackageName, appWidgetId, intentFlags);
             if (intentSender != null) {
-                activity.startIntentSenderForResult(intentSender, requestCode, null, 0,
-                        intentFlags, intentFlags, options);
+                activity.startIntentSenderForResult(intentSender, requestCode, null, 0, 0, 0,
+                        options);
             } else {
                 throw new ActivityNotFoundException();
             }
@@ -249,10 +289,6 @@ public class AppWidgetHost {
         } catch (RemoteException e) {
             throw new RuntimeException("system server dead?", e);
         }
-    }
-
-    private boolean isLocalBinder() {
-        return Process.myPid() == Binder.getCallingPid();
     }
 
     /**
@@ -394,7 +430,9 @@ public class AppWidgetHost {
      * Clear the list of Views that have been created by this AppWidgetHost.
      */
     protected void clearViews() {
-        mViews.clear();
+        synchronized (mViews) {
+            mViews.clear();
+        }
     }
 }
 

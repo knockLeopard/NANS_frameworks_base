@@ -16,18 +16,24 @@
 
 package com.android.layoutlib.bridge.bars;
 
-import com.android.annotations.NonNull;
-import com.android.annotations.Nullable;
+import com.android.ide.common.rendering.api.LayoutLog;
+import com.android.ide.common.rendering.api.LayoutlibCallback;
 import com.android.ide.common.rendering.api.RenderResources;
 import com.android.ide.common.rendering.api.ResourceValue;
 import com.android.ide.common.rendering.api.SessionParams;
+import com.android.ide.common.rendering.api.StyleResourceValue;
+import com.android.layoutlib.bridge.Bridge;
 import com.android.layoutlib.bridge.android.BridgeContext;
 import com.android.layoutlib.bridge.impl.ResourceHelper;
 import com.android.resources.ResourceType;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.content.Context;
 import android.graphics.drawable.Drawable;
+import android.view.ContextThemeWrapper;
+import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import java.lang.reflect.InvocationTargetException;
@@ -42,38 +48,52 @@ public class AppCompatActionBar extends BridgeActionBar {
 
     private Object mWindowDecorActionBar;
     private static final String WINDOW_ACTION_BAR_CLASS = "android.support.v7.internal.app.WindowDecorActionBar";
+    // This is used on v23.1.1 and later.
+    private static final String WINDOW_ACTION_BAR_CLASS_NEW = "android.support.v7.app.WindowDecorActionBar";
     private Class<?> mWindowActionBarClass;
 
     /**
      * Inflate the action bar and attach it to {@code parentView}
      */
-    public AppCompatActionBar(@NonNull BridgeContext context, @NonNull SessionParams params,
-            @NonNull ViewGroup parentView) {
-        super(context, params, parentView);
+    public AppCompatActionBar(@NonNull BridgeContext context, @NonNull SessionParams params) {
+        super(context, params);
         int contentRootId = context.getProjectResourceValue(ResourceType.ID,
                 "action_bar_activity_content", 0);
         View contentView = getDecorContent().findViewById(contentRootId);
         if (contentView != null) {
             assert contentView instanceof FrameLayout;
-            setContentRoot(((FrameLayout) contentView));
+            setContentRoot((FrameLayout) contentView);
         } else {
             // Something went wrong. Create a new FrameLayout in the enclosing layout.
             FrameLayout contentRoot = new FrameLayout(context);
             setMatchParent(contentRoot);
-            mEnclosingLayout.addView(contentRoot);
+            if (mEnclosingLayout != null) {
+                mEnclosingLayout.addView(contentRoot);
+            }
             setContentRoot(contentRoot);
         }
         try {
             Class[] constructorParams = {View.class};
             Object[] constructorArgs = {getDecorContent()};
-            mWindowDecorActionBar = params.getProjectCallback().loadView(WINDOW_ACTION_BAR_CLASS,
-                    constructorParams, constructorArgs);
+            LayoutlibCallback callback = params.getLayoutlibCallback();
 
+            // Check if the old action bar class is present.
+            String actionBarClass = WINDOW_ACTION_BAR_CLASS;
+            try {
+                callback.findClass(actionBarClass);
+            } catch (ClassNotFoundException expected) {
+                // Failed to find the old class, use the newer one.
+                actionBarClass = WINDOW_ACTION_BAR_CLASS_NEW;
+            }
+
+            mWindowDecorActionBar = callback.loadView(actionBarClass,
+                    constructorParams, constructorArgs);
             mWindowActionBarClass = mWindowDecorActionBar == null ? null :
                     mWindowDecorActionBar.getClass();
             setupActionBar();
         } catch (Exception e) {
-            e.printStackTrace();
+            Bridge.getLog().warning(LayoutLog.TAG_BROKEN,
+                    "Failed to load AppCompat ActionBar with unknown error.", e);
         }
     }
 
@@ -82,6 +102,27 @@ public class AppCompatActionBar extends BridgeActionBar {
         // We always assume that the app has requested the action bar.
         return context.getRenderResources().getProjectResource(ResourceType.LAYOUT,
                 "abc_screen_toolbar");
+    }
+
+    @Override
+    protected LayoutInflater getInflater(BridgeContext context) {
+        // Other than the resource resolution part, the code has been taken from the support
+        // library. see code from line 269 onwards in
+        // https://android.googlesource.com/platform/frameworks/support/+/android-5.1.0_r1/v7/appcompat/src/android/support/v7/app/ActionBarActivityDelegateBase.java
+        Context themedContext = context;
+        RenderResources resources = context.getRenderResources();
+        ResourceValue actionBarTheme = resources.findItemInTheme("actionBarTheme", false);
+        if (actionBarTheme != null) {
+            // resolve it, if needed.
+            actionBarTheme = resources.resolveResValue(actionBarTheme);
+        }
+        if (actionBarTheme instanceof StyleResourceValue) {
+            int styleId = context.getDynamicIdByStyle(((StyleResourceValue) actionBarTheme));
+            if (styleId != 0) {
+                themedContext = new ContextThemeWrapper(context, styleId);
+            }
+        }
+        return LayoutInflater.from(themedContext);
     }
 
     @Override
@@ -104,8 +145,8 @@ public class AppCompatActionBar extends BridgeActionBar {
     protected void setIcon(String icon) {
         // Do this only if the action bar doesn't already have an icon.
         if (icon != null && !icon.isEmpty() && mWindowDecorActionBar != null) {
-            if (((Boolean) invoke(getMethod(mWindowActionBarClass, "hasIcon"), mWindowDecorActionBar)
-            )) {
+            if (invoke(getMethod(mWindowActionBarClass, "hasIcon"), mWindowDecorActionBar)
+                    == Boolean.TRUE) {
                 Drawable iconDrawable = getDrawable(icon, false);
                 if (iconDrawable != null) {
                     Method setIcon = getMethod(mWindowActionBarClass, "setIcon", Drawable.class);
@@ -126,7 +167,7 @@ public class AppCompatActionBar extends BridgeActionBar {
 
     @Override
     public void createMenuPopup() {
-        // it's hard to addd menus to appcompat's actionbar, since it'll use a lot of reflection.
+        // it's hard to add menus to appcompat's actionbar, since it'll use a lot of reflection.
         // so we skip it for now.
     }
 

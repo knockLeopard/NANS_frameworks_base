@@ -40,7 +40,7 @@ interface IWindowSession {
             out InputChannel outInputChannel);
     int addToDisplay(IWindow window, int seq, in WindowManager.LayoutParams attrs,
             in int viewVisibility, in int layerStackId, out Rect outContentInsets,
-            out Rect outStableInsets, out InputChannel outInputChannel);
+            out Rect outStableInsets, out Rect outOutsets, out InputChannel outInputChannel);
     int addWithoutInputChannel(IWindow window, int seq, in WindowManager.LayoutParams attrs,
             in int viewVisibility, out Rect outContentInsets, out Rect outStableInsets);
     int addToDisplayWithoutInputChannel(IWindow window, int seq, in WindowManager.LayoutParams attrs,
@@ -79,11 +79,15 @@ interface IWindowSession {
      * contents to make sure the user can see it.  This is different than
      * <var>outContentInsets</var> in that these insets change transiently,
      * so complex relayout of the window should not happen based on them.
+     * @param outOutsets Rect in which is placed the dead area of the screen that we would like to
+     * treat as real display. Example of such area is a chin in some models of wearable devices.
+     * @param outBackdropFrame Rect which is used draw the resizing background during a resize
+     * operation.
      * @param outConfiguration New configuration of window, if it is now
      * becoming visible and the global configuration has changed since it
      * was last displayed.
      * @param outSurface Object in which is placed the new display surface.
-     * 
+     *
      * @return int Result flags: {@link WindowManagerGlobal#RELAYOUT_SHOW_FOCUS},
      * {@link WindowManagerGlobal#RELAYOUT_FIRST_TIME}.
      */
@@ -91,7 +95,43 @@ interface IWindowSession {
             int requestedWidth, int requestedHeight, int viewVisibility,
             int flags, out Rect outFrame, out Rect outOverscanInsets,
             out Rect outContentInsets, out Rect outVisibleInsets, out Rect outStableInsets,
-            out Configuration outConfig, out Surface outSurface);
+            out Rect outOutsets, out Rect outBackdropFrame, out Configuration outConfig,
+            out Surface outSurface);
+
+    /**
+     *  Position a window relative to it's parent (attached) window without triggering
+     *  a full relayout. This action may be deferred until a given frame number
+     *  for the parent window appears. This allows for synchronizing movement of a child
+     *  to repainting the contents of the parent.
+     *
+     *  "width" and "height" correspond to the width and height members of
+     *  WindowManager.LayoutParams in the {@link #relayout relayout()} case.
+     *  This may differ from the surface buffer size in the
+     *  case of {@link LayoutParams#FLAG_SCALED} and {@link #relayout relayout()}
+     *  must be used with requestedWidth/height if this must be changed.
+     *
+     *  @param window The window being modified. Must be attached to a parent window
+     *  or this call will fail.
+     *  @param left The new left position
+     *  @param top The new top position
+     *  @param right The new right position
+     *  @param bottom The new bottom position
+     *  @param deferTransactionUntilFrame Frame number from our parent (attached) to
+     *  defer this action until.
+     *  @param outFrame Rect in which is placed the new position/size on screen.
+     */
+    void repositionChild(IWindow childWindow, int left, int top, int right, int bottom,
+            long deferTransactionUntilFrame, out Rect outFrame);
+
+    /*
+     * Notify the window manager that an application is relaunching and
+     * windows should be prepared for replacement.
+     *
+     * @param appToken The application
+     * @param childrenOnly Whether to only prepare child windows for replacement
+     * (for example when main windows are being reused via preservation).
+     */
+    void prepareToReplaceWindows(IBinder appToken, boolean childrenOnly);
 
     /**
      * If a call to relayout() asked to have the surface destroy deferred,
@@ -148,8 +188,8 @@ interface IWindowSession {
     /**
      * Initiate the drag operation itself
      */
-    boolean performDrag(IWindow window, IBinder dragToken, float touchX, float touchY,
-            float thumbCenterX, float thumbCenterY, in ClipData data);
+    boolean performDrag(IWindow window, IBinder dragToken, int touchSource,
+            float touchX, float touchY, float thumbCenterX, float thumbCenterY, in ClipData data);
 
    /**
      * Report the result of a drop action targeted to the given window.
@@ -157,6 +197,11 @@ interface IWindowSession {
      * 'false' otherwise.
      */
 	void reportDropResult(IWindow window, boolean consumed);
+
+    /**
+     * Cancel the current drag operation.
+     */
+    void cancelDragAndDrop(IBinder dragToken);
 
     /**
      * Tell the OS that we've just dragged into a View that is willing to accept the drop
@@ -188,13 +233,35 @@ interface IWindowSession {
 
     void wallpaperCommandComplete(IBinder window, in Bundle result);
 
-    void setUniverseTransform(IBinder window, float alpha, float offx, float offy,
-            float dsdx, float dtdx, float dsdy, float dtdy);
-
     /**
      * Notifies that a rectangle on the screen has been requested.
      */
     void onRectangleOnScreenRequested(IBinder token, in Rect rectangle);
 
     IWindowId getWindowId(IBinder window);
+
+    /**
+     * When the system is dozing in a low-power partially suspended state, pokes a short
+     * lived wake lock and ensures that the display is ready to accept the next frame
+     * of content drawn in the window.
+     *
+     * This mechanism is bound to the window rather than to the display manager or the
+     * power manager so that the system can ensure that the window is actually visible
+     * and prevent runaway applications from draining the battery.  This is similar to how
+     * FLAG_KEEP_SCREEN_ON works.
+     *
+     * This method is synchronous because it may need to acquire a wake lock before returning.
+     * The assumption is that this method will be called rather infrequently.
+     */
+    void pokeDrawLock(IBinder window);
+
+    /**
+     * Starts a task window move with {startX, startY} as starting point. The amount of move
+     * will be the offset between {startX, startY} and the new cursor position.
+     *
+     * Returns true if the move started successfully; false otherwise.
+     */
+    boolean startMovingTask(IWindow window, float startX, float startY);
+
+    void updatePointerIcon(IWindow window);
 }

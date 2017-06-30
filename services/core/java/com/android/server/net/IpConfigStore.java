@@ -24,29 +24,23 @@ import android.net.NetworkUtils;
 import android.net.ProxyInfo;
 import android.net.RouteInfo;
 import android.net.StaticIpConfiguration;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.text.TextUtils;
 import android.util.Log;
 import android.util.SparseArray;
 
 import com.android.server.net.DelayedDiskWrite;
 
 import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Inet4Address;
-import java.util.Map;
 
 public class IpConfigStore {
     private static final String TAG = "IpConfigStore";
-    private static final boolean DBG = true;
+    private static final boolean DBG = false;
 
     protected final DelayedDiskWrite mWriter;
 
@@ -65,8 +59,12 @@ public class IpConfigStore {
 
     protected static final int IPCONFIG_FILE_VERSION = 2;
 
+    public IpConfigStore(DelayedDiskWrite writer) {
+        mWriter = writer;
+    }
+
     public IpConfigStore() {
-        mWriter = new DelayedDiskWrite();
+        this(new DelayedDiskWrite());
     }
 
     private boolean writeConfig(DataOutputStream out, int configKey,

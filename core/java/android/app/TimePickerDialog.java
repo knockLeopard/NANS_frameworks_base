@@ -16,6 +16,7 @@
 
 package android.app;
 
+import android.annotation.TestApi;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
@@ -23,28 +24,27 @@ import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.widget.Button;
 import android.widget.TimePicker;
 import android.widget.TimePicker.OnTimeChangedListener;
-import android.widget.TimePicker.ValidationCallback;
 
 import com.android.internal.R;
 
 /**
- * A dialog that prompts the user for the time of day using a {@link TimePicker}.
+ * A dialog that prompts the user for the time of day using a
+ * {@link TimePicker}.
  *
- * <p>See the <a href="{@docRoot}guide/topics/ui/controls/pickers.html">Pickers</a>
- * guide.</p>
+ * <p>
+ * See the <a href="{@docRoot}guide/topics/ui/controls/pickers.html">Pickers</a>
+ * guide.
  */
 public class TimePickerDialog extends AlertDialog implements OnClickListener,
         OnTimeChangedListener {
-
     private static final String HOUR = "hour";
     private static final String MINUTE = "minute";
     private static final String IS_24_HOUR = "is24hour";
 
     private final TimePicker mTimePicker;
-    private final OnTimeSetListener mTimeSetCallback;
+    private final OnTimeSetListener mTimeSetListener;
 
     private final int mInitialHourOfDay;
     private final int mInitialMinute;
@@ -52,54 +52,65 @@ public class TimePickerDialog extends AlertDialog implements OnClickListener,
 
     /**
      * The callback interface used to indicate the user is done filling in
-     * the time (they clicked on the 'Done' button).
+     * the time (e.g. they clicked on the 'OK' button).
      */
     public interface OnTimeSetListener {
-
         /**
-         * @param view The view associated with this listener.
-         * @param hourOfDay The hour that was set.
-         * @param minute The minute that was set.
+         * Called when the user is done setting a new time and the dialog has
+         * closed.
+         *
+         * @param view the view associated with this listener
+         * @param hourOfDay the hour that was set
+         * @param minute the minute that was set
          */
         void onTimeSet(TimePicker view, int hourOfDay, int minute);
     }
 
     /**
-     * @param context Parent.
-     * @param callBack How parent is notified.
-     * @param hourOfDay The initial hour.
-     * @param minute The initial minute.
-     * @param is24HourView Whether this is a 24 hour view, or AM/PM.
+     * Creates a new time picker dialog.
+     *
+     * @param context the parent context
+     * @param listener the listener to call when the time is set
+     * @param hourOfDay the initial hour
+     * @param minute the initial minute
+     * @param is24HourView whether this is a 24 hour view or AM/PM
      */
-    public TimePickerDialog(Context context,
-            OnTimeSetListener callBack,
-            int hourOfDay, int minute, boolean is24HourView) {
-        this(context, 0, callBack, hourOfDay, minute, is24HourView);
+    public TimePickerDialog(Context context, OnTimeSetListener listener, int hourOfDay, int minute,
+            boolean is24HourView) {
+        this(context, 0, listener, hourOfDay, minute, is24HourView);
     }
 
-    static int resolveDialogTheme(Context context, int resid) {
-        if (resid == 0) {
+    static int resolveDialogTheme(Context context, int resId) {
+        if (resId == 0) {
             final TypedValue outValue = new TypedValue();
             context.getTheme().resolveAttribute(R.attr.timePickerDialogTheme, outValue, true);
             return outValue.resourceId;
         } else {
-            return resid;
+            return resId;
         }
     }
 
     /**
-     * @param context Parent.
-     * @param theme the theme to apply to this dialog
-     * @param callBack How parent is notified.
-     * @param hourOfDay The initial hour.
-     * @param minute The initial minute.
+     * Creates a new time picker dialog with the specified theme.
+     * <p>
+     * The theme is overlaid on top of the theme of the parent {@code context}.
+     * If {@code themeResId} is 0, the dialog will be inflated using the theme
+     * specified by the
+     * {@link android.R.attr#timePickerDialogTheme android:timePickerDialogTheme}
+     * attribute on the parent {@code context}'s theme.
+     *
+     * @param context the parent context
+     * @param themeResId the resource ID of the theme to apply to this dialog
+     * @param listener the listener to call when the time is set
+     * @param hourOfDay the initial hour
+     * @param minute the initial minute
      * @param is24HourView Whether this is a 24 hour view, or AM/PM.
      */
-    public TimePickerDialog(Context context, int theme, OnTimeSetListener callBack, int hourOfDay,
-            int minute, boolean is24HourView) {
-        super(context, resolveDialogTheme(context, theme));
+    public TimePickerDialog(Context context, int themeResId, OnTimeSetListener listener,
+            int hourOfDay, int minute, boolean is24HourView) {
+        super(context, resolveDialogTheme(context, themeResId));
 
-        mTimeSetCallback = callBack;
+        mTimeSetListener = listener;
         mInitialHourOfDay = hourOfDay;
         mInitialMinute = minute;
         mIs24HourView = is24HourView;
@@ -117,7 +128,15 @@ public class TimePickerDialog extends AlertDialog implements OnClickListener,
         mTimePicker.setCurrentHour(mInitialHourOfDay);
         mTimePicker.setCurrentMinute(mInitialMinute);
         mTimePicker.setOnTimeChangedListener(this);
-        mTimePicker.setValidationCallback(mValidationCallback);
+    }
+
+    /**
+     * @return the time picker displayed in the dialog
+     * @hide For testing only.
+     */
+    @TestApi
+    public TimePicker getTimePicker() {
+        return mTimePicker;
     }
 
     @Override
@@ -129,8 +148,8 @@ public class TimePickerDialog extends AlertDialog implements OnClickListener,
     public void onClick(DialogInterface dialog, int which) {
         switch (which) {
             case BUTTON_POSITIVE:
-                if (mTimeSetCallback != null) {
-                    mTimeSetCallback.onTimeSet(mTimePicker, mTimePicker.getCurrentHour(),
+                if (mTimeSetListener != null) {
+                    mTimeSetListener.onTimeSet(mTimePicker, mTimePicker.getCurrentHour(),
                             mTimePicker.getCurrentMinute());
                 }
                 break;
@@ -169,14 +188,4 @@ public class TimePickerDialog extends AlertDialog implements OnClickListener,
         mTimePicker.setCurrentHour(hour);
         mTimePicker.setCurrentMinute(minute);
     }
-
-    private final ValidationCallback mValidationCallback = new ValidationCallback() {
-        @Override
-        public void onValidationChanged(boolean valid) {
-            final Button positive = getButton(BUTTON_POSITIVE);
-            if (positive != null) {
-                positive.setEnabled(valid);
-            }
-        }
-    };
 }

@@ -22,12 +22,12 @@
 
 #include "jni.h"
 #include "GraphicsJNI.h"
-#include <android_runtime/AndroidRuntime.h>
+#include "core_jni_helpers.h"
 
 #include "SkPath.h"
 #include "SkPathOps.h"
 
-#include <ResourceCache.h>
+#include <Caches.h>
 #include <vector>
 #include <map>
 
@@ -38,12 +38,10 @@ public:
 
     static void finalizer(JNIEnv* env, jobject clazz, jlong objHandle) {
         SkPath* obj = reinterpret_cast<SkPath*>(objHandle);
-#ifdef USE_OPENGL_RENDERER
-        if (android::uirenderer::ResourceCache::hasInstance()) {
-            android::uirenderer::ResourceCache::getInstance().destructor(obj);
-            return;
+        // Purge entries from the HWUI path cache if this path's data is unique
+        if (obj->unique() && android::uirenderer::Caches::hasInstance()) {
+            android::uirenderer::Caches::getInstance().pathCache.removeDeferred(obj);
         }
-#endif
         delete obj;
     }
 
@@ -232,12 +230,6 @@ public:
         SkPath* src = reinterpret_cast<SkPath*>(srcHandle);
         SkMatrix* matrix = reinterpret_cast<SkMatrix*>(matrixHandle);
         obj->addPath(*src, *matrix);
-    }
-
-    static void offset__FFPath(JNIEnv* env, jobject clazz, jlong objHandle, jfloat dx, jfloat dy, jlong dstHandle) {
-        SkPath* obj = reinterpret_cast<SkPath*>(objHandle);
-        SkPath* dst = reinterpret_cast<SkPath*>(dstHandle);
-        obj->offset(dx, dy, dst);
     }
 
     static void offset__FF(JNIEnv* env, jobject clazz, jlong objHandle, jfloat dx, jfloat dy) {
@@ -477,7 +469,7 @@ public:
     }
 };
 
-static JNINativeMethod methods[] = {
+static const JNINativeMethod methods[] = {
     {"finalizer", "(J)V", (void*) SkPathGlue::finalizer},
     {"init1","()J", (void*) SkPathGlue::init1},
     {"init2","(J)J", (void*) SkPathGlue::init2},
@@ -510,7 +502,6 @@ static JNINativeMethod methods[] = {
     {"native_addPath","(JJFF)V", (void*) SkPathGlue::addPath__PathFF},
     {"native_addPath","(JJ)V", (void*) SkPathGlue::addPath__Path},
     {"native_addPath","(JJJ)V", (void*) SkPathGlue::addPath__PathMatrix},
-    {"native_offset","(JFFJ)V", (void*) SkPathGlue::offset__FFPath},
     {"native_offset","(JFF)V", (void*) SkPathGlue::offset__FF},
     {"native_setLastPoint","(JFF)V", (void*) SkPathGlue::setLastPoint},
     {"native_transform","(JJJ)V", (void*) SkPathGlue::transform__MatrixPath},
@@ -520,9 +511,10 @@ static JNINativeMethod methods[] = {
 };
 
 int register_android_graphics_Path(JNIEnv* env) {
-    int result = AndroidRuntime::registerNativeMethods(env, "android/graphics/Path", methods,
-        sizeof(methods) / sizeof(methods[0]));
-    return result;
+    return RegisterMethodsOrDie(env, "android/graphics/Path", methods, NELEM(methods));
+
+    static_assert(0  == SkPath::kCW_Direction,  "direction_mismatch");
+    static_assert(1  == SkPath::kCCW_Direction, "direction_mismatch");
 }
 
 }

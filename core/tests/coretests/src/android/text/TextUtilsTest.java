@@ -25,9 +25,11 @@ import android.test.suitebuilder.annotation.SmallTest;
 import android.text.style.StyleSpan;
 import android.text.util.Rfc822Token;
 import android.text.util.Rfc822Tokenizer;
+import android.view.View;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import junit.framework.TestCase;
 
@@ -353,6 +355,7 @@ public class TextUtilsTest extends TestCase {
         assertNull("null CharSequence should generate null from parcel", text);
         p = Parcel.obtain();
         TextUtils.writeToParcel("test", p, 0);
+        p.setDataPosition(0);
         text = TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(p);
         assertEquals("conversion to/from parcel failed", "test", text);
     }
@@ -517,5 +520,47 @@ public class TextUtilsTest extends TestCase {
         public int nextSpanTransition(int start, int limit, Class type) {
             return 0;
         }
+    }
+
+    @SmallTest
+    public void testGetLayoutDirectionFromLocale() {
+        assertEquals(View.LAYOUT_DIRECTION_LTR, TextUtils.getLayoutDirectionFromLocale(null));
+        assertEquals(View.LAYOUT_DIRECTION_LTR,
+                TextUtils.getLayoutDirectionFromLocale(Locale.ROOT));
+        assertEquals(View.LAYOUT_DIRECTION_LTR,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("en")));
+        assertEquals(View.LAYOUT_DIRECTION_LTR,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("en-US")));
+        assertEquals(View.LAYOUT_DIRECTION_LTR,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("az")));
+        assertEquals(View.LAYOUT_DIRECTION_LTR,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("az-AZ")));
+        assertEquals(View.LAYOUT_DIRECTION_LTR,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("az-Latn")));
+        assertEquals(View.LAYOUT_DIRECTION_LTR,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("en-EG")));
+        assertEquals(View.LAYOUT_DIRECTION_LTR,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("ar-Latn")));
+
+        assertEquals(View.LAYOUT_DIRECTION_RTL,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("ar")));
+        assertEquals(View.LAYOUT_DIRECTION_RTL,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("fa")));
+        assertEquals(View.LAYOUT_DIRECTION_RTL,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("he")));
+        assertEquals(View.LAYOUT_DIRECTION_RTL,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("iw")));
+        assertEquals(View.LAYOUT_DIRECTION_RTL,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("ur")));
+        assertEquals(View.LAYOUT_DIRECTION_RTL,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("dv")));
+        assertEquals(View.LAYOUT_DIRECTION_RTL,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("az-Arab")));
+        assertEquals(View.LAYOUT_DIRECTION_RTL,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("az-IR")));
+        assertEquals(View.LAYOUT_DIRECTION_RTL,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("fa-US")));
+        assertEquals(View.LAYOUT_DIRECTION_RTL,
+                TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag("tr-Arab")));
     }
 }

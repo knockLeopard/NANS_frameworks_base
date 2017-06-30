@@ -16,6 +16,7 @@
 
 package android.os;
 
+import android.annotation.Nullable;
 import android.util.ArrayMap;
 import android.util.Size;
 import android.util.SizeF;
@@ -24,31 +25,30 @@ import android.util.SparseArray;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /**
- * A mapping from String values to various Parcelable types.
+ * A mapping from String keys to various {@link Parcelable} values.
  *
+ * @see PersistableBundle
  */
 public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
+    private static final int FLAG_HAS_FDS = 1 << 8;
+    private static final int FLAG_HAS_FDS_KNOWN = 1 << 9;
+    private static final int FLAG_ALLOW_FDS = 1 << 10;
+
     public static final Bundle EMPTY;
-    static final Parcel EMPTY_PARCEL;
 
     static {
         EMPTY = new Bundle();
         EMPTY.mMap = ArrayMap.EMPTY;
-        EMPTY_PARCEL = BaseBundle.EMPTY_PARCEL;
     }
-
-    private boolean mHasFds = false;
-    private boolean mFdsKnown = true;
-    private boolean mAllowFds = true;
 
     /**
      * Constructs a new, empty Bundle.
      */
     public Bundle() {
         super();
+        mFlags = FLAG_HAS_FDS_KNOWN | FLAG_ALLOW_FDS;
     }
 
     /**
@@ -59,16 +59,18 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      */
     Bundle(Parcel parcelledData) {
         super(parcelledData);
-
-        mHasFds = mParcelledData.hasFileDescriptors();
-        mFdsKnown = true;
+        mFlags = FLAG_HAS_FDS_KNOWN | FLAG_ALLOW_FDS;
+        if (mParcelledData.hasFileDescriptors()) {
+            mFlags |= FLAG_HAS_FDS;
+        }
     }
 
     /* package */ Bundle(Parcel parcelledData, int length) {
         super(parcelledData, length);
-
-        mHasFds = mParcelledData.hasFileDescriptors();
-        mFdsKnown = true;
+        mFlags = FLAG_HAS_FDS_KNOWN | FLAG_ALLOW_FDS;
+        if (mParcelledData.hasFileDescriptors()) {
+            mFlags |= FLAG_HAS_FDS;
+        }
     }
 
     /**
@@ -80,6 +82,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      */
     public Bundle(ClassLoader loader) {
         super(loader);
+        mFlags = FLAG_HAS_FDS_KNOWN | FLAG_ALLOW_FDS;
     }
 
     /**
@@ -90,6 +93,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      */
     public Bundle(int capacity) {
         super(capacity);
+        mFlags = FLAG_HAS_FDS_KNOWN | FLAG_ALLOW_FDS;
     }
 
     /**
@@ -100,9 +104,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      */
     public Bundle(Bundle b) {
         super(b);
-
-        mHasFds = b.mHasFds;
-        mFdsKnown = b.mFdsKnown;
+        mFlags = b.mFlags;
     }
 
     /**
@@ -113,6 +115,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      */
     public Bundle(PersistableBundle b) {
         super(b);
+        mFlags = FLAG_HAS_FDS_KNOWN | FLAG_ALLOW_FDS;
     }
 
     /**
@@ -145,11 +148,42 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
         return super.getClassLoader();
     }
 
-    /** @hide */
+    /** {@hide} */
     public boolean setAllowFds(boolean allowFds) {
-        boolean orig = mAllowFds;
-        mAllowFds = allowFds;
+        final boolean orig = (mFlags & FLAG_ALLOW_FDS) != 0;
+        if (allowFds) {
+            mFlags |= FLAG_ALLOW_FDS;
+        } else {
+            mFlags &= ~FLAG_ALLOW_FDS;
+        }
         return orig;
+    }
+
+    /**
+     * Mark if this Bundle is okay to "defuse." That is, it's okay for system
+     * processes to ignore any {@link BadParcelableException} encountered when
+     * unparceling it, leaving an empty bundle in its place.
+     * <p>
+     * This should <em>only</em> be set when the Bundle reaches its final
+     * destination, otherwise a system process may clobber contents that were
+     * destined for an app that could have unparceled them.
+     *
+     * @hide
+     */
+    public void setDefusable(boolean defusable) {
+        if (defusable) {
+            mFlags |= FLAG_DEFUSABLE;
+        } else {
+            mFlags &= ~FLAG_DEFUSABLE;
+        }
+    }
+
+    /** {@hide} */
+    public static Bundle setDefusable(Bundle bundle, boolean defusable) {
+        if (bundle != null) {
+            bundle.setDefusable(defusable);
+        }
+        return bundle;
     }
 
     /**
@@ -167,9 +201,19 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
     @Override
     public void clear() {
         super.clear();
+        mFlags = FLAG_HAS_FDS_KNOWN | FLAG_ALLOW_FDS;
+    }
 
-        mHasFds = false;
-        mFdsKnown = true;
+    /**
+     * Removes any entry with the given key from the mapping of this Bundle.
+     *
+     * @param key a String key
+     */
+    public void remove(String key) {
+        super.remove(key);
+        if ((mFlags & FLAG_HAS_FDS) != 0) {
+            mFlags &= ~FLAG_HAS_FDS_KNOWN;
+        }
     }
 
     /**
@@ -182,16 +226,20 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
         bundle.unparcel();
         mMap.putAll(bundle.mMap);
 
-        // fd state is now known if and only if both bundles already knew
-        mHasFds |= bundle.mHasFds;
-        mFdsKnown = mFdsKnown && bundle.mFdsKnown;
+        // FD state is now known if and only if both bundles already knew
+        if ((bundle.mFlags & FLAG_HAS_FDS) != 0) {
+            mFlags |= FLAG_HAS_FDS;
+        }
+        if ((bundle.mFlags & FLAG_HAS_FDS_KNOWN) == 0) {
+            mFlags &= ~FLAG_HAS_FDS_KNOWN;
+        }
     }
 
     /**
      * Reports whether the bundle contains any parcelled file descriptors.
      */
     public boolean hasFileDescriptors() {
-        if (!mFdsKnown) {
+        if ((mFlags & FLAG_HAS_FDS_KNOWN) == 0) {
             boolean fdFound = false;    // keep going until we find one or run out of data
 
             if (mParcelledData != null) {
@@ -211,8 +259,9 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
                     } else if (obj instanceof Parcelable[]) {
                         Parcelable[] array = (Parcelable[]) obj;
                         for (int n = array.length - 1; n >= 0; n--) {
-                            if ((array[n].describeContents()
-                                    & Parcelable.CONTENTS_FILE_DESCRIPTOR) != 0) {
+                            Parcelable p = array[n];
+                            if (p != null && ((p.describeContents()
+                                    & Parcelable.CONTENTS_FILE_DESCRIPTOR) != 0)) {
                                 fdFound = true;
                                 break;
                             }
@@ -221,7 +270,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
                         SparseArray<? extends Parcelable> array =
                                 (SparseArray<? extends Parcelable>) obj;
                         for (int n = array.size() - 1; n >= 0; n--) {
-                            if ((array.valueAt(n).describeContents()
+                            Parcelable p = array.valueAt(n);
+                            if (p != null && (p.describeContents()
                                     & Parcelable.CONTENTS_FILE_DESCRIPTOR) != 0) {
                                 fdFound = true;
                                 break;
@@ -245,10 +295,63 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
                 }
             }
 
-            mHasFds = fdFound;
-            mFdsKnown = true;
+            if (fdFound) {
+                mFlags |= FLAG_HAS_FDS;
+            } else {
+                mFlags &= ~FLAG_HAS_FDS;
+            }
+            mFlags |= FLAG_HAS_FDS_KNOWN;
         }
-        return mHasFds;
+        return (mFlags & FLAG_HAS_FDS) != 0;
+    }
+
+    /**
+     * Filter values in Bundle to only basic types.
+     * @hide
+     */
+    public Bundle filterValues() {
+        unparcel();
+        Bundle bundle = this;
+        if (mMap != null) {
+            ArrayMap<String, Object> map = mMap;
+            for (int i = map.size() - 1; i >= 0; i--) {
+                Object value = map.valueAt(i);
+                if (PersistableBundle.isValidType(value)) {
+                    continue;
+                }
+                if (value instanceof Bundle) {
+                    Bundle newBundle = ((Bundle)value).filterValues();
+                    if (newBundle != value) {
+                        if (map == mMap) {
+                            // The filter had to generate a new bundle, but we have not yet
+                            // created a new one here.  Do that now.
+                            bundle = new Bundle(this);
+                            // Note the ArrayMap<> constructor is guaranteed to generate
+                            // a new object with items in the same order as the original.
+                            map = bundle.mMap;
+                        }
+                        // Replace this current entry with the new child bundle.
+                        map.setValueAt(i, newBundle);
+                    }
+                    continue;
+                }
+                if (value.getClass().getName().startsWith("android.")) {
+                    continue;
+                }
+                if (map == mMap) {
+                    // This is the first time we have had to remove something, that means we
+                    // need to switch to a new Bundle.
+                    bundle = new Bundle(this);
+                    // Note the ArrayMap<> constructor is guaranteed to generate
+                    // a new object with items in the same order as the original.
+                    map = bundle.mMap;
+                }
+                map.removeAt(i);
+            }
+        }
+        mFlags |= FLAG_HAS_FDS_KNOWN;
+        mFlags &= ~FLAG_HAS_FDS;
+        return bundle;
     }
 
     /**
@@ -259,7 +362,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value a byte
      */
     @Override
-    public void putByte(String key, byte value) {
+    public void putByte(@Nullable String key, byte value) {
         super.putByte(key, value);
     }
 
@@ -268,10 +371,10 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * any existing value for the given key.
      *
      * @param key a String, or null
-     * @param value a char, or null
+     * @param value a char
      */
     @Override
-    public void putChar(String key, char value) {
+    public void putChar(@Nullable String key, char value) {
         super.putChar(key, value);
     }
 
@@ -283,7 +386,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value a short
      */
     @Override
-    public void putShort(String key, short value) {
+    public void putShort(@Nullable String key, short value) {
         super.putShort(key, value);
     }
 
@@ -295,7 +398,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value a float
      */
     @Override
-    public void putFloat(String key, float value) {
+    public void putFloat(@Nullable String key, float value) {
         super.putFloat(key, value);
     }
 
@@ -307,7 +410,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value a CharSequence, or null
      */
     @Override
-    public void putCharSequence(String key, CharSequence value) {
+    public void putCharSequence(@Nullable String key, @Nullable CharSequence value) {
         super.putCharSequence(key, value);
     }
 
@@ -318,10 +421,10 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @param value a Parcelable object, or null
      */
-    public void putParcelable(String key, Parcelable value) {
+    public void putParcelable(@Nullable String key, @Nullable Parcelable value) {
         unparcel();
         mMap.put(key, value);
-        mFdsKnown = false;
+        mFlags &= ~FLAG_HAS_FDS_KNOWN;
     }
 
     /**
@@ -331,7 +434,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @param value a Size object, or null
      */
-    public void putSize(String key, Size value) {
+    public void putSize(@Nullable String key, @Nullable Size value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -343,7 +446,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @param value a SizeF object, or null
      */
-    public void putSizeF(String key, SizeF value) {
+    public void putSizeF(@Nullable String key, @Nullable SizeF value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -356,10 +459,10 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @param value an array of Parcelable objects, or null
      */
-    public void putParcelableArray(String key, Parcelable[] value) {
+    public void putParcelableArray(@Nullable String key, @Nullable Parcelable[] value) {
         unparcel();
         mMap.put(key, value);
-        mFdsKnown = false;
+        mFlags &= ~FLAG_HAS_FDS_KNOWN;
     }
 
     /**
@@ -370,18 +473,18 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @param value an ArrayList of Parcelable objects, or null
      */
-    public void putParcelableArrayList(String key,
-            ArrayList<? extends Parcelable> value) {
+    public void putParcelableArrayList(@Nullable String key,
+            @Nullable ArrayList<? extends Parcelable> value) {
         unparcel();
         mMap.put(key, value);
-        mFdsKnown = false;
+        mFlags &= ~FLAG_HAS_FDS_KNOWN;
     }
 
     /** {@hide} */
     public void putParcelableList(String key, List<? extends Parcelable> value) {
         unparcel();
         mMap.put(key, value);
-        mFdsKnown = false;
+        mFlags &= ~FLAG_HAS_FDS_KNOWN;
     }
 
     /**
@@ -392,11 +495,11 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @param value a SparseArray of Parcelable objects, or null
      */
-    public void putSparseParcelableArray(String key,
-            SparseArray<? extends Parcelable> value) {
+    public void putSparseParcelableArray(@Nullable String key,
+            @Nullable SparseArray<? extends Parcelable> value) {
         unparcel();
         mMap.put(key, value);
-        mFdsKnown = false;
+        mFlags &= ~FLAG_HAS_FDS_KNOWN;
     }
 
     /**
@@ -407,7 +510,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value an ArrayList<Integer> object, or null
      */
     @Override
-    public void putIntegerArrayList(String key, ArrayList<Integer> value) {
+    public void putIntegerArrayList(@Nullable String key, @Nullable ArrayList<Integer> value) {
         super.putIntegerArrayList(key, value);
     }
 
@@ -419,7 +522,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value an ArrayList<String> object, or null
      */
     @Override
-    public void putStringArrayList(String key, ArrayList<String> value) {
+    public void putStringArrayList(@Nullable String key, @Nullable ArrayList<String> value) {
         super.putStringArrayList(key, value);
     }
 
@@ -431,7 +534,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value an ArrayList<CharSequence> object, or null
      */
     @Override
-    public void putCharSequenceArrayList(String key, ArrayList<CharSequence> value) {
+    public void putCharSequenceArrayList(@Nullable String key,
+            @Nullable ArrayList<CharSequence> value) {
         super.putCharSequenceArrayList(key, value);
     }
 
@@ -443,7 +547,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value a Serializable object, or null
      */
     @Override
-    public void putSerializable(String key, Serializable value) {
+    public void putSerializable(@Nullable String key, @Nullable Serializable value) {
         super.putSerializable(key, value);
     }
 
@@ -455,7 +559,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value a byte array object, or null
      */
     @Override
-    public void putByteArray(String key, byte[] value) {
+    public void putByteArray(@Nullable String key, @Nullable byte[] value) {
         super.putByteArray(key, value);
     }
 
@@ -467,7 +571,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value a short array object, or null
      */
     @Override
-    public void putShortArray(String key, short[] value) {
+    public void putShortArray(@Nullable String key, @Nullable short[] value) {
         super.putShortArray(key, value);
     }
 
@@ -479,7 +583,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value a char array object, or null
      */
     @Override
-    public void putCharArray(String key, char[] value) {
+    public void putCharArray(@Nullable String key, @Nullable char[] value) {
         super.putCharArray(key, value);
     }
 
@@ -491,7 +595,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value a float array object, or null
      */
     @Override
-    public void putFloatArray(String key, float[] value) {
+    public void putFloatArray(@Nullable String key, @Nullable float[] value) {
         super.putFloatArray(key, value);
     }
 
@@ -503,7 +607,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param value a CharSequence array object, or null
      */
     @Override
-    public void putCharSequenceArray(String key, CharSequence[] value) {
+    public void putCharSequenceArray(@Nullable String key, @Nullable CharSequence[] value) {
         super.putCharSequenceArray(key, value);
     }
 
@@ -514,7 +618,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @param value a Bundle object, or null
      */
-    public void putBundle(String key, Bundle value) {
+    public void putBundle(@Nullable String key, @Nullable Bundle value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -533,7 +637,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @param value an IBinder object, or null
      */
-    public void putBinder(String key, IBinder value) {
+    public void putBinder(@Nullable String key, @Nullable IBinder value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -549,7 +653,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @hide This is the old name of the function.
      */
     @Deprecated
-    public void putIBinder(String key, IBinder value) {
+    public void putIBinder(@Nullable String key, @Nullable IBinder value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -663,7 +767,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @return a CharSequence value, or null
      */
     @Override
-    public CharSequence getCharSequence(String key) {
+    @Nullable
+    public CharSequence getCharSequence(@Nullable String key) {
         return super.getCharSequence(key);
     }
 
@@ -679,7 +784,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      *     if no valid CharSequence object is currently mapped to that key.
      */
     @Override
-    public CharSequence getCharSequence(String key, CharSequence defaultValue) {
+    public CharSequence getCharSequence(@Nullable String key, CharSequence defaultValue) {
         return super.getCharSequence(key, defaultValue);
     }
 
@@ -691,7 +796,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @return a Size value, or null
      */
-    public Size getSize(String key) {
+    @Nullable
+    public Size getSize(@Nullable String key) {
         unparcel();
         final Object o = mMap.get(key);
         try {
@@ -710,7 +816,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @return a Size value, or null
      */
-    public SizeF getSizeF(String key) {
+    @Nullable
+    public SizeF getSizeF(@Nullable String key) {
         unparcel();
         final Object o = mMap.get(key);
         try {
@@ -729,7 +836,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @return a Bundle value, or null
      */
-    public Bundle getBundle(String key) {
+    @Nullable
+    public Bundle getBundle(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -751,7 +859,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @return a Parcelable value, or null
      */
-    public <T extends Parcelable> T getParcelable(String key) {
+    @Nullable
+    public <T extends Parcelable> T getParcelable(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -773,7 +882,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @return a Parcelable[] value, or null
      */
-    public Parcelable[] getParcelableArray(String key) {
+    @Nullable
+    public Parcelable[] getParcelableArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -795,7 +905,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @return an ArrayList<T> value, or null
      */
-    public <T extends Parcelable> ArrayList<T> getParcelableArrayList(String key) {
+    @Nullable
+    public <T extends Parcelable> ArrayList<T> getParcelableArrayList(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -818,7 +929,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      *
      * @return a SparseArray of T values, or null
      */
-    public <T extends Parcelable> SparseArray<T> getSparseParcelableArray(String key) {
+    @Nullable
+    public <T extends Parcelable> SparseArray<T> getSparseParcelableArray(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -841,7 +953,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @return a Serializable value, or null
      */
     @Override
-    public Serializable getSerializable(String key) {
+    @Nullable
+    public Serializable getSerializable(@Nullable String key) {
         return super.getSerializable(key);
     }
 
@@ -854,7 +967,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @return an ArrayList<String> value, or null
      */
     @Override
-    public ArrayList<Integer> getIntegerArrayList(String key) {
+    @Nullable
+    public ArrayList<Integer> getIntegerArrayList(@Nullable String key) {
         return super.getIntegerArrayList(key);
     }
 
@@ -867,7 +981,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @return an ArrayList<String> value, or null
      */
     @Override
-    public ArrayList<String> getStringArrayList(String key) {
+    @Nullable
+    public ArrayList<String> getStringArrayList(@Nullable String key) {
         return super.getStringArrayList(key);
     }
 
@@ -880,7 +995,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @return an ArrayList<CharSequence> value, or null
      */
     @Override
-    public ArrayList<CharSequence> getCharSequenceArrayList(String key) {
+    @Nullable
+    public ArrayList<CharSequence> getCharSequenceArrayList(@Nullable String key) {
         return super.getCharSequenceArrayList(key);
     }
 
@@ -893,7 +1009,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @return a byte[] value, or null
      */
     @Override
-    public byte[] getByteArray(String key) {
+    @Nullable
+    public byte[] getByteArray(@Nullable String key) {
         return super.getByteArray(key);
     }
 
@@ -906,7 +1023,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @return a short[] value, or null
      */
     @Override
-    public short[] getShortArray(String key) {
+    @Nullable
+    public short[] getShortArray(@Nullable String key) {
         return super.getShortArray(key);
     }
 
@@ -919,7 +1037,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @return a char[] value, or null
      */
     @Override
-    public char[] getCharArray(String key) {
+    @Nullable
+    public char[] getCharArray(@Nullable String key) {
         return super.getCharArray(key);
     }
 
@@ -932,7 +1051,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @return a float[] value, or null
      */
     @Override
-    public float[] getFloatArray(String key) {
+    @Nullable
+    public float[] getFloatArray(@Nullable String key) {
         return super.getFloatArray(key);
     }
 
@@ -945,7 +1065,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @return a CharSequence[] value, or null
      */
     @Override
-    public CharSequence[] getCharSequenceArray(String key) {
+    @Nullable
+    public CharSequence[] getCharSequenceArray(@Nullable String key) {
         return super.getCharSequenceArray(key);
     }
 
@@ -957,7 +1078,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @param key a String, or null
      * @return an IBinder value, or null
      */
-    public IBinder getBinder(String key) {
+    @Nullable
+    public IBinder getBinder(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -983,7 +1105,8 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      * @hide This is the old name of the function.
      */
     @Deprecated
-    public IBinder getIBinder(String key) {
+    @Nullable
+    public IBinder getIBinder(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -1029,7 +1152,7 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      */
     @Override
     public void writeToParcel(Parcel parcel, int flags) {
-        final boolean oldAllowFds = parcel.pushAllowFds(mAllowFds);
+        final boolean oldAllowFds = parcel.pushAllowFds((mFlags & FLAG_ALLOW_FDS) != 0);
         try {
             super.writeToParcelInner(parcel, flags);
         } finally {
@@ -1044,14 +1167,16 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
      */
     public void readFromParcel(Parcel parcel) {
         super.readFromParcelInner(parcel);
-        mHasFds = mParcelledData.hasFileDescriptors();
-        mFdsKnown = true;
+        mFlags = FLAG_HAS_FDS_KNOWN | FLAG_ALLOW_FDS;
+        if (mParcelledData.hasFileDescriptors()) {
+            mFlags |= FLAG_HAS_FDS;
+        }
     }
 
     @Override
     public synchronized String toString() {
         if (mParcelledData != null) {
-            if (mParcelledData == EMPTY_PARCEL) {
+            if (isEmptyParcel()) {
                 return "Bundle[EMPTY_PARCEL]";
             } else {
                 return "Bundle[mParcelledData.dataSize=" +
@@ -1060,5 +1185,4 @@ public final class Bundle extends BaseBundle implements Cloneable, Parcelable {
         }
         return "Bundle[" + mMap.toString() + "]";
     }
-
 }

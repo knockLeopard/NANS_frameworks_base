@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef UTILS_DEFINED
-#define UTILS_DEFINED
+#ifndef _ANDROID_GRAPHICS_UTILS_H_
+#define _ANDROID_GRAPHICS_UTILS_H_
 
 #include "SkStream.h"
 
@@ -28,22 +28,7 @@ namespace android {
 
 class AssetStreamAdaptor : public SkStreamRewindable {
 public:
-    // Enum passed to constructor. If set to kYes_OwnAsset,
-    // the passed in Asset will be deleted upon destruction.
-    enum OwnAsset {
-        kYes_OwnAsset,
-        kNo_OwnAsset,
-    };
-
-    // Enum passed to constructor. If set to kYes_HasMemoryBase,
-    // getMemoryBase will return the Asset's buffer.
-    enum HasMemoryBase {
-        kYes_HasMemoryBase,
-        kNo_HasMemoryBase,
-    };
-
-    AssetStreamAdaptor(Asset*, OwnAsset, HasMemoryBase);
-    ~AssetStreamAdaptor();
+    AssetStreamAdaptor(Asset*);
 
     virtual bool rewind();
     virtual size_t read(void* buffer, size_t size);
@@ -51,13 +36,9 @@ public:
     virtual size_t getLength() const;
     virtual bool isAtEnd() const;
 
-    virtual const void* getMemoryBase() { return fMemoryBase; }
-
     virtual SkStreamRewindable* duplicate() const;
 private:
-    Asset*              fAsset;
-    const void* const   fMemoryBase;
-    const OwnAsset      fOwnAsset;
+    Asset* fAsset;
 };
 
 /**
@@ -87,6 +68,10 @@ private:
 
 jobject nullObjectReturn(const char msg[]);
 
+/** Check if the file descriptor is seekable.
+ */
+bool isSeekable(int descriptor);
+
 }; // namespace android
 
-#endif
+#endif  // _ANDROID_GRAPHICS_UTILS_H_

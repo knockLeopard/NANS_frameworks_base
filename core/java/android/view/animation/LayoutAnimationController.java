@@ -16,6 +16,8 @@
 
 package android.view.animation;
 
+import android.annotation.AnimRes;
+import android.annotation.InterpolatorRes;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.util.AttributeSet;
@@ -148,7 +150,7 @@ public class LayoutAnimationController {
      * Returns the order used to compute the delay of each child's animation.
      *
      * @return one of {@link #ORDER_NORMAL}, {@link #ORDER_REVERSE} or
-     *         {@link #ORDER_RANDOM)
+     *         {@link #ORDER_RANDOM}
      *
      * @attr ref android.R.styleable#LayoutAnimation_animationOrder
      */
@@ -180,7 +182,7 @@ public class LayoutAnimationController {
      *
      * @attr ref android.R.styleable#LayoutAnimation_animation
      */
-    public void setAnimation(Context context, int resourceID) {
+    public void setAnimation(Context context, @AnimRes int resourceID) {
         setAnimation(AnimationUtils.loadAnimation(context, resourceID));
     }
 
@@ -225,7 +227,7 @@ public class LayoutAnimationController {
      *
      * @attr ref android.R.styleable#LayoutAnimation_interpolator
      */
-    public void setInterpolator(Context context, int resourceID) {
+    public void setInterpolator(Context context, @InterpolatorRes int resourceID) {
         setInterpolator(AnimationUtils.loadInterpolator(context, resourceID));
     }
 

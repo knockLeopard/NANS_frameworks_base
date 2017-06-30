@@ -27,6 +27,7 @@ import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
+import android.os.Process;
 import android.os.UserHandle;
 import android.text.TextUtils;
 
@@ -183,7 +184,7 @@ public class Content {
 
         private InsertCommand parseInsertCommand() {
             Uri uri = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             ContentValues values = new ContentValues();
             for (String argument; (argument = mTokenizer.nextArg()) != null;) {
                 if (ARGUMENT_URI.equals(argument)) {
@@ -209,7 +210,7 @@ public class Content {
 
         private DeleteCommand parseDeleteCommand() {
             Uri uri = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             String where = null;
             for (String argument; (argument = mTokenizer.nextArg())!= null;) {
                 if (ARGUMENT_URI.equals(argument)) {
@@ -231,7 +232,7 @@ public class Content {
 
         private UpdateCommand parseUpdateCommand() {
             Uri uri = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             String where = null;
             ContentValues values = new ContentValues();
             for (String argument; (argument = mTokenizer.nextArg())!= null;) {
@@ -260,7 +261,7 @@ public class Content {
 
         public CallCommand parseCallCommand() {
             String method = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             String arg = null;
             Uri uri = null;
             ContentValues values = new ContentValues();
@@ -292,7 +293,7 @@ public class Content {
 
         private ReadCommand parseReadCommand() {
             Uri uri = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             for (String argument; (argument = mTokenizer.nextArg())!= null;) {
                 if (ARGUMENT_URI.equals(argument)) {
                     uri = Uri.parse(argumentValueRequired(argument));
@@ -311,7 +312,7 @@ public class Content {
 
         public QueryCommand parseQueryCommand() {
             Uri uri = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             String[] projection = null;
             String sort = null;
             String where = null;
@@ -426,6 +427,22 @@ public class Content {
             }
         }
 
+        public static String resolveCallingPackage() {
+            switch (Process.myUid()) {
+                case Process.ROOT_UID: {
+                    return "root";
+                }
+
+                case Process.SHELL_UID: {
+                    return "com.android.shell";
+                }
+
+                default: {
+                    return null;
+                }
+            }
+        }
+
         protected abstract void onExecute(IContentProvider provider) throws Exception;
     }
 
@@ -439,7 +456,7 @@ public class Content {
 
         @Override
         public void onExecute(IContentProvider provider) throws Exception {
-            provider.insert(null, mUri, mContentValues);
+            provider.insert(resolveCallingPackage(), mUri, mContentValues);
         }
     }
 
@@ -453,7 +470,7 @@ public class Content {
 
         @Override
         public void onExecute(IContentProvider provider) throws Exception {
-            provider.delete(null, mUri, mWhere, null);
+            provider.delete(resolveCallingPackage(), mUri, mWhere, null);
         }
     }
 
@@ -532,7 +549,8 @@ public class Content {
 
         @Override
         public void onExecute(IContentProvider provider) throws Exception {
-            Cursor cursor = provider.query(null, mUri, mProjection, mWhere, null, mSortOrder, null);
+            Cursor cursor = provider.query(resolveCallingPackage(), mUri, mProjection, mWhere,
+                    null, mSortOrder, null);
             if (cursor == null) {
                 System.out.println("No result found.");
                 return;
@@ -594,7 +612,7 @@ public class Content {
 
         @Override
         public void onExecute(IContentProvider provider) throws Exception {
-            provider.update(null, mUri, mContentValues, mWhere, null);
+            provider.update(resolveCallingPackage(), mUri, mContentValues, mWhere, null);
         }
     }
 

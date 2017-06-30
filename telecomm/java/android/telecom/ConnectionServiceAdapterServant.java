@@ -17,6 +17,7 @@
 package android.telecom;
 
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.os.RemoteException;
@@ -59,6 +60,12 @@ final class ConnectionServiceAdapterServant {
     private static final int MSG_SET_CONFERENCEABLE_CONNECTIONS = 20;
     private static final int MSG_ADD_EXISTING_CONNECTION = 21;
     private static final int MSG_ON_POST_DIAL_CHAR = 22;
+    private static final int MSG_SET_CONFERENCE_MERGE_FAILED = 23;
+    private static final int MSG_PUT_EXTRAS = 24;
+    private static final int MSG_REMOVE_EXTRAS = 25;
+    private static final int MSG_ON_CONNECTION_EVENT = 26;
+    private static final int MSG_SET_CONNECTION_PROPERTIES = 27;
+    private static final int MSG_SET_PULLING = 28;
 
     private final IConnectionServiceAdapter mDelegate;
 
@@ -95,6 +102,9 @@ final class ConnectionServiceAdapterServant {
                 case MSG_SET_DIALING:
                     mDelegate.setDialing((String) msg.obj);
                     break;
+                case MSG_SET_PULLING:
+                    mDelegate.setPulling((String) msg.obj);
+                    break;
                 case MSG_SET_DISCONNECTED: {
                     SomeArgs args = (SomeArgs) msg.obj;
                     try {
@@ -112,6 +122,9 @@ final class ConnectionServiceAdapterServant {
                     break;
                 case MSG_SET_CONNECTION_CAPABILITIES:
                     mDelegate.setConnectionCapabilities((String) msg.obj, msg.arg1);
+                    break;
+                case MSG_SET_CONNECTION_PROPERTIES:
+                    mDelegate.setConnectionProperties((String) msg.obj, msg.arg1);
                     break;
                 case MSG_SET_IS_CONFERENCED: {
                     SomeArgs args = (SomeArgs) msg.obj;
@@ -220,6 +233,43 @@ final class ConnectionServiceAdapterServant {
                     }
                     break;
                 }
+                case MSG_SET_CONFERENCE_MERGE_FAILED: {
+                    SomeArgs args = (SomeArgs) msg.obj;
+                    try {
+                        mDelegate.setConferenceMergeFailed((String) args.arg1);
+                    } finally {
+                        args.recycle();
+                    }
+                    break;
+                }
+                case MSG_PUT_EXTRAS: {
+                    SomeArgs args = (SomeArgs) msg.obj;
+                    try {
+                        mDelegate.putExtras((String) args.arg1, (Bundle) args.arg2);
+                    } finally {
+                        args.recycle();
+                    }
+                    break;
+                }
+                case MSG_REMOVE_EXTRAS: {
+                    SomeArgs args = (SomeArgs) msg.obj;
+                    try {
+                        mDelegate.removeExtras((String) args.arg1, (List<String>) args.arg2);
+                    } finally {
+                        args.recycle();
+                    }
+                    break;
+                }
+                case MSG_ON_CONNECTION_EVENT: {
+                    SomeArgs args = (SomeArgs) msg.obj;
+                    try {
+                        mDelegate.onConnectionEvent((String) args.arg1, (String) args.arg2,
+                                (Bundle) args.arg3);
+                    } finally {
+                        args.recycle();
+                    }
+                    break;
+                }
             }
         }
     };
@@ -253,6 +303,11 @@ final class ConnectionServiceAdapterServant {
         }
 
         @Override
+        public void setPulling(String connectionId) {
+            mHandler.obtainMessage(MSG_SET_PULLING, connectionId).sendToTarget();
+        }
+
+        @Override
         public void setDisconnected(
                 String connectionId, DisconnectCause disconnectCause) {
             SomeArgs args = SomeArgs.obtain();
@@ -277,6 +332,20 @@ final class ConnectionServiceAdapterServant {
             mHandler.obtainMessage(
                     MSG_SET_CONNECTION_CAPABILITIES, connectionCapabilities, 0, connectionId)
                     .sendToTarget();
+        }
+
+        @Override
+        public void setConnectionProperties(String connectionId, int connectionProperties) {
+            mHandler.obtainMessage(
+                    MSG_SET_CONNECTION_PROPERTIES, connectionProperties, 0, connectionId)
+                    .sendToTarget();
+        }
+
+        @Override
+        public void setConferenceMergeFailed(String callId) {
+            SomeArgs args = SomeArgs.obtain();
+            args.arg1 = callId;
+            mHandler.obtainMessage(MSG_SET_CONFERENCE_MERGE_FAILED, args).sendToTarget();
         }
 
         @Override
@@ -383,6 +452,31 @@ final class ConnectionServiceAdapterServant {
             args.arg1 = connectionId;
             args.arg2 = connection;
             mHandler.obtainMessage(MSG_ADD_EXISTING_CONNECTION, args).sendToTarget();
+        }
+
+        @Override
+        public final void putExtras(String connectionId, Bundle extras) {
+            SomeArgs args = SomeArgs.obtain();
+            args.arg1 = connectionId;
+            args.arg2 = extras;
+            mHandler.obtainMessage(MSG_PUT_EXTRAS, args).sendToTarget();
+        }
+
+        @Override
+        public final void removeExtras(String connectionId, List<String> keys) {
+            SomeArgs args = SomeArgs.obtain();
+            args.arg1 = connectionId;
+            args.arg2 = keys;
+            mHandler.obtainMessage(MSG_REMOVE_EXTRAS, args).sendToTarget();
+        }
+
+        @Override
+        public final void onConnectionEvent(String connectionId, String event, Bundle extras) {
+            SomeArgs args = SomeArgs.obtain();
+            args.arg1 = connectionId;
+            args.arg2 = event;
+            args.arg3 = extras;
+            mHandler.obtainMessage(MSG_ON_CONNECTION_EVENT, args).sendToTarget();
         }
     };
 

@@ -16,9 +16,12 @@
 
 package android.view;
 
+import android.annotation.Nullable;
 import android.view.ActionMode.Callback;
 import android.view.WindowManager.LayoutParams;
 import android.view.accessibility.AccessibilityEvent;
+
+import java.util.List;
 
 /**
  * An empty implementation of {@link Window.Callback} that always returns null/false.
@@ -110,12 +113,22 @@ public class WindowCallback implements Window.Callback {
     }
 
     @Override
+    public boolean onSearchRequested(SearchEvent searchEvent) {
+        return onSearchRequested();
+    }
+
+    @Override
     public boolean onSearchRequested() {
         return false;
     }
 
     @Override
     public ActionMode onWindowStartingActionMode(Callback callback) {
+        return null;
+    }
+
+    @Override
+    public ActionMode onWindowStartingActionMode(Callback callback, int type) {
         return null;
     }
 

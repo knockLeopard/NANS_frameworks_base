@@ -16,22 +16,27 @@
 
 package com.android.server.am;
 
-import static com.android.server.am.TaskPersister.DEBUG_PERSISTER;
-import static com.android.server.am.TaskPersister.DEBUG_RESTORER;
+import static android.app.ActivityManager.StackId;
+import static android.app.ActivityManager.StackId.DOCKED_STACK_ID;
+import static android.app.ActivityManager.StackId.FREEFORM_WORKSPACE_STACK_ID;
+import static android.app.ActivityManager.StackId.PINNED_STACK_ID;
+import static android.content.pm.ActivityInfo.RESIZE_MODE_CROP_WINDOWS;
+import static android.content.pm.ActivityInfo.FLAG_ALWAYS_FOCUSABLE;
+import static android.content.pm.ActivityInfo.RESIZE_MODE_RESIZEABLE;
+import static android.content.pm.ActivityInfo.RESIZE_MODE_RESIZEABLE_AND_PIPABLE;
+import static com.android.server.am.ActivityManagerDebugConfig.DEBUG_CONFIGURATION;
+import static com.android.server.am.ActivityManagerDebugConfig.DEBUG_SWITCH;
+import static com.android.server.am.ActivityManagerDebugConfig.DEBUG_THUMBNAILS;
+import static com.android.server.am.ActivityManagerDebugConfig.POSTFIX_STATES;
+import static com.android.server.am.ActivityManagerDebugConfig.POSTFIX_SWITCH;
+import static com.android.server.am.ActivityManagerDebugConfig.POSTFIX_THUMBNAILS;
+import static com.android.server.am.ActivityManagerDebugConfig.TAG_AM;
+import static com.android.server.am.ActivityManagerDebugConfig.TAG_WITH_CLASS_NAME;
 import static com.android.server.am.TaskRecord.INVALID_TASK_ID;
 
 import android.app.ActivityManager.TaskDescription;
-import android.os.PersistableBundle;
-import android.os.Trace;
-
-import com.android.internal.app.ResolverActivity;
-import com.android.internal.content.ReferrerIntent;
-import com.android.internal.util.XmlUtils;
-import com.android.server.AttributeCache;
-import com.android.server.am.ActivityStack.ActivityState;
-import com.android.server.am.ActivityStackSupervisor.ActivityContainer;
-
 import android.app.ActivityOptions;
+import android.app.PendingIntent;
 import android.app.ResultInfo;
 import android.content.ComponentName;
 import android.content.Intent;
@@ -45,43 +50,59 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Message;
+import android.os.PersistableBundle;
 import android.os.Process;
 import android.os.RemoteException;
 import android.os.SystemClock;
+import android.os.Trace;
 import android.os.UserHandle;
+import android.service.voice.IVoiceInteractionSession;
 import android.util.EventLog;
 import android.util.Log;
 import android.util.Slog;
 import android.util.TimeUtils;
+import android.view.AppTransitionAnimationSpec;
 import android.view.IApplicationToken;
 import android.view.WindowManager;
+
+import com.android.internal.app.ResolverActivity;
+import com.android.internal.content.ReferrerIntent;
+import com.android.internal.util.XmlUtils;
+import com.android.server.AttributeCache;
+import com.android.server.am.ActivityStack.ActivityState;
+import com.android.server.am.ActivityStackSupervisor.ActivityContainer;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Objects;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlSerializer;
 
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.lang.ref.WeakReference;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Objects;
-
 /**
  * An entry in the history stack, representing an activity.
  */
 final class ActivityRecord {
-    static final String TAG = ActivityManagerService.TAG;
-    static final boolean DEBUG_SAVED_STATE = ActivityStackSupervisor.DEBUG_SAVED_STATE;
+    private static final String TAG = TAG_WITH_CLASS_NAME ? "ActivityRecord" : TAG_AM;
+    private static final String TAG_STATES = TAG + POSTFIX_STATES;
+    private static final String TAG_SWITCH = TAG + POSTFIX_SWITCH;
+    private static final String TAG_THUMBNAILS = TAG + POSTFIX_THUMBNAILS;
+
+    private static final boolean SHOW_ACTIVITY_START_TIME = true;
     final public static String RECENTS_PACKAGE_NAME = "com.android.systemui.recents";
 
-    private static final String TAG_ACTIVITY = "activity";
     private static final String ATTR_ID = "id";
     private static final String TAG_INTENT = "intent";
     private static final String ATTR_USERID = "user_id";
     private static final String TAG_PERSISTABLEBUNDLE = "persistable_bundle";
     private static final String ATTR_LAUNCHEDFROMUID = "launched_from_uid";
-    static final String ATTR_LAUNCHEDFROMPACKAGE = "launched_from_package";
+    private static final String ATTR_LAUNCHEDFROMPACKAGE = "launched_from_package";
     private static final String ATTR_RESOLVEDTYPE = "resolved_type";
     private static final String ATTR_COMPONENTSPECIFIED = "component_specified";
     static final String ACTIVITY_ICON_SUFFIX = "_activity_icon_";
@@ -90,7 +111,7 @@ final class ActivityRecord {
     final IApplicationToken.Stub appToken; // window manager token
     final ActivityInfo info; // all about me
     final ApplicationInfo appInfo; // information about activity's app
-    int launchedFromUid; // always the uid who started the activity.
+    final int launchedFromUid; // always the uid who started the activity.
     final String launchedFromPackage; // always the package who started the activity.
     final int userId;          // Which user is this running for?
     final Intent intent;    // the original intent that generated us
@@ -103,7 +124,8 @@ final class ActivityRecord {
     final boolean stateNotNeeded; // As per ActivityInfo.flags
     boolean fullscreen; // covers the full screen?
     final boolean noDisplay;  // activity is not displayed?
-    final boolean componentSpecified;  // did caller specifiy an explicit component?
+    final boolean componentSpecified;  // did caller specify an explicit component?
+    final boolean rootVoiceInteraction;  // was this the root activity of a voice interaction?
 
     static final int APPLICATION_ACTIVITY_TYPE = 0;
     static final int HOME_ACTIVITY_TYPE = 1;
@@ -127,6 +149,10 @@ final class ActivityRecord {
     long pauseTime;         // last time we started pausing the activity
     long launchTickTime;    // base time for launch tick messages
     Configuration configuration; // configuration activity was last running in
+    // Overridden configuration by the activity task
+    // WARNING: Reference points to {@link TaskRecord#mOverrideConfig}, so its internal state
+    // should never be altered directly.
+    Configuration taskConfigOverride;
     CompatibilityInfo compat;// last used compatibility mode
     ActivityRecord resultTo; // who started this entry, so will get our reply
     final String resultWho; // additional identifier for use by resultTo.
@@ -136,6 +162,7 @@ final class ActivityRecord {
     ArrayList<ReferrerIntent> newIntents; // any pending new intents for single-top mode
     ActivityOptions pendingOptions; // most recently given options
     ActivityOptions returningOptions; // options that are coming back via convertToTranslucent
+    AppTimeTracker appTimeTracker; // set if we are tracking the time in this app/task/activity
     HashSet<ConnectionRecord> connections; // All ConnectionRecord we hold
     UriPermissionOwner uriPermissions; // current special URI access perms.
     ProcessRecord app;      // if non-null, hosting application
@@ -148,13 +175,14 @@ final class ActivityRecord {
     boolean stopped;        // is activity pause finished?
     boolean delayedResume;  // not yet resumed because of stopped app switches?
     boolean finishing;      // activity in pending finish list?
-    boolean configDestroy;  // need to destroy due to config change?
+    boolean deferRelaunchUntilPaused;   // relaunch of activity is being deferred until pause is
+                                        // completed
+    boolean preserveWindowOnDeferredRelaunch; // activity windows are preserved on deferred relaunch
     int configChangeFlags;  // which config values have changed
     boolean keysPaused;     // has key dispatching been paused for it?
     int launchMode;         // the launch mode activity attribute.
     boolean visible;        // does this activity's window need to be shown?
     boolean sleeping;       // have we told the activity to sleep?
-    boolean waitingVisible; // true if waiting for a new act to become vis
     boolean nowVisible;     // is this activity's window visible?
     boolean idle;           // has the activity gone idle?
     boolean hasBeenLaunched;// has this activity ever been launched?
@@ -162,19 +190,57 @@ final class ActivityRecord {
     boolean immersive;      // immersive mode (don't interrupt if possible)
     boolean forceNewConfig; // force re-create with new config next time
     int launchCount;        // count of launches since last state
-    long lastLaunchTime;    // time of last lauch of this activity
-    ArrayList<ActivityContainer> mChildContainers = new ArrayList<ActivityContainer>();
+    long lastLaunchTime;    // time of last launch of this activity
+    ComponentName requestedVrComponent; // the requested component for handling VR mode.
+    ArrayList<ActivityContainer> mChildContainers = new ArrayList<>();
 
     String stringName;      // for caching of toString().
 
     private boolean inHistory;  // are we in the history stack?
     final ActivityStackSupervisor mStackSupervisor;
-    boolean mStartingWindowShown = false;
+
+    static final int STARTING_WINDOW_NOT_SHOWN = 0;
+    static final int STARTING_WINDOW_SHOWN = 1;
+    static final int STARTING_WINDOW_REMOVED = 2;
+    int mStartingWindowState = STARTING_WINDOW_NOT_SHOWN;
+    boolean mTaskOverlay = false; // Task is always on-top of other activities in the task.
+
+    boolean mUpdateTaskThumbnailWhenHidden;
     ActivityContainer mInitialActivityContainer;
 
     TaskDescription taskDescription; // the recents information for this activity
     boolean mLaunchTaskBehind; // this activity is actively being launched with
         // ActivityOptions.setLaunchTaskBehind, will be cleared once launch is completed.
+
+    // These configurations are collected from application's resources based on size-sensitive
+    // qualifiers. For example, layout-w800dp will be added to mHorizontalSizeConfigurations as 800
+    // and drawable-sw400dp will be added to both as 400.
+    private int[] mVerticalSizeConfigurations;
+    private int[] mHorizontalSizeConfigurations;
+    private int[] mSmallestSizeConfigurations;
+
+    boolean pendingVoiceInteractionStart;   // Waiting for activity-invoked voice session
+    IVoiceInteractionSession voiceSession;  // Voice interaction session for this activity
+
+    // A hint to override the window specified rotation animation, or -1
+    // to use the window specified value. We use this so that
+    // we can select the right animation in the cases of starting
+    // windows, where the app hasn't had time to set a value
+    // on the window.
+    int mRotationAnimationHint = -1;
+
+    private static String startingWindowStateToString(int state) {
+        switch (state) {
+            case STARTING_WINDOW_NOT_SHOWN:
+                return "STARTING_WINDOW_NOT_SHOWN";
+            case STARTING_WINDOW_SHOWN:
+                return "STARTING_WINDOW_SHOWN";
+            case STARTING_WINDOW_REMOVED:
+                return "STARTING_WINDOW_REMOVED";
+            default:
+                return "unknown state=" + state;
+        }
+    }
 
     void dump(PrintWriter pw, String prefix) {
         final long now = SystemClock.uptimeMillis();
@@ -196,15 +262,23 @@ final class ActivityRecord {
                 pw.print(prefix); pw.print("resDir="); pw.println(appInfo.publicSourceDir);
             }
             pw.print(prefix); pw.print("dataDir="); pw.println(appInfo.dataDir);
+            if (appInfo.splitSourceDirs != null) {
+                pw.print(prefix); pw.print("splitDir=");
+                        pw.println(Arrays.toString(appInfo.splitSourceDirs));
+            }
         }
         pw.print(prefix); pw.print("stateNotNeeded="); pw.print(stateNotNeeded);
                 pw.print(" componentSpecified="); pw.print(componentSpecified);
                 pw.print(" mActivityType="); pw.println(mActivityType);
+        if (rootVoiceInteraction) {
+            pw.print(prefix); pw.print("rootVoiceInteraction="); pw.println(rootVoiceInteraction);
+        }
         pw.print(prefix); pw.print("compat="); pw.print(compat);
                 pw.print(" labelRes=0x"); pw.print(Integer.toHexString(labelRes));
                 pw.print(" icon=0x"); pw.print(Integer.toHexString(icon));
                 pw.print(" theme=0x"); pw.println(Integer.toHexString(theme));
         pw.print(prefix); pw.print("config="); pw.println(configuration);
+        pw.print(prefix); pw.print("taskConfigOverride="); pw.println(taskConfigOverride);
         if (resultTo != null || resultWho != null) {
             pw.print(prefix); pw.print("resultTo="); pw.print(resultTo);
                     pw.print(" resultWho="); pw.print(resultWho);
@@ -256,6 +330,9 @@ final class ActivityRecord {
         if (pendingOptions != null) {
             pw.print(prefix); pw.print("pendingOptions="); pw.println(pendingOptions);
         }
+        if (appTimeTracker != null) {
+            appTimeTracker.dumpWithHeader(pw, prefix, false);
+        }
         if (uriPermissions != null) {
             uriPermissions.dump(pw, prefix);
         }
@@ -275,7 +352,9 @@ final class ActivityRecord {
                 pw.print(" inHistory="); pw.print(inHistory);
                 pw.print(" visible="); pw.print(visible);
                 pw.print(" sleeping="); pw.print(sleeping);
-                pw.print(" idle="); pw.println(idle);
+                pw.print(" idle="); pw.print(idle);
+                pw.print(" mStartingWindowState=");
+                pw.println(startingWindowStateToString(mStartingWindowState));
         pw.print(prefix); pw.print("fullscreen="); pw.print(fullscreen);
                 pw.print(" noDisplay="); pw.print(noDisplay);
                 pw.print(" immersive="); pw.print(immersive);
@@ -284,6 +363,11 @@ final class ActivityRecord {
                 pw.print(" forceNewConfig="); pw.println(forceNewConfig);
         pw.print(prefix); pw.print("mActivityType=");
                 pw.println(activityTypeToString(mActivityType));
+        if (requestedVrComponent != null) {
+            pw.print(prefix);
+            pw.print("requestedVrComponent=");
+            pw.println(requestedVrComponent);
+        }
         if (displayStartTime != 0 || startTime != 0) {
             pw.print(prefix); pw.print("displayStartTime=");
                     if (displayStartTime == 0) pw.print("0");
@@ -293,6 +377,7 @@ final class ActivityRecord {
                     else TimeUtils.formatDuration(startTime, now, pw);
                     pw.println();
         }
+        final boolean waitingVisible = mStackSupervisor.mWaitingVisibleActivities.contains(this);
         if (lastVisibleTime != 0 || waitingVisible || nowVisible) {
             pw.print(prefix); pw.print("waitingVisible="); pw.print(waitingVisible);
                     pw.print(" nowVisible="); pw.print(nowVisible);
@@ -301,55 +386,195 @@ final class ActivityRecord {
                     else TimeUtils.formatDuration(lastVisibleTime, now, pw);
                     pw.println();
         }
-        if (configDestroy || configChangeFlags != 0) {
-            pw.print(prefix); pw.print("configDestroy="); pw.print(configDestroy);
+        if (deferRelaunchUntilPaused || configChangeFlags != 0) {
+            pw.print(prefix); pw.print("deferRelaunchUntilPaused="); pw.print(deferRelaunchUntilPaused);
                     pw.print(" configChangeFlags=");
                     pw.println(Integer.toHexString(configChangeFlags));
         }
         if (connections != null) {
             pw.print(prefix); pw.print("connections="); pw.println(connections);
         }
+        if (info != null) {
+            pw.println(prefix + "resizeMode=" + ActivityInfo.resizeModeToString(info.resizeMode));
+        }
+    }
+
+    public boolean crossesHorizontalSizeThreshold(int firstDp, int secondDp) {
+        return crossesSizeThreshold(mHorizontalSizeConfigurations, firstDp, secondDp);
+    }
+
+    public boolean crossesVerticalSizeThreshold(int firstDp, int secondDp) {
+        return crossesSizeThreshold(mVerticalSizeConfigurations, firstDp, secondDp);
+    }
+
+    public boolean crossesSmallestSizeThreshold(int firstDp, int secondDp) {
+        return crossesSizeThreshold(mSmallestSizeConfigurations, firstDp, secondDp);
+    }
+
+    /**
+     * The purpose of this method is to decide whether the activity needs to be relaunched upon
+     * changing its size. In most cases the activities don't need to be relaunched, if the resize
+     * is small, all the activity content has to do is relayout itself within new bounds. There are
+     * cases however, where the activity's content would be completely changed in the new size and
+     * the full relaunch is required.
+     *
+     * The activity will report to us vertical and horizontal thresholds after which a relaunch is
+     * required. These thresholds are collected from the application resource qualifiers. For
+     * example, if application has layout-w600dp resource directory, then it needs a relaunch when
+     * we resize from width of 650dp to 550dp, as it crosses the 600dp threshold. However, if
+     * it resizes width from 620dp to 700dp, it won't be relaunched as it stays on the same side
+     * of the threshold.
+     */
+    private static boolean crossesSizeThreshold(int[] thresholds, int firstDp,
+            int secondDp) {
+        if (thresholds == null) {
+            return false;
+        }
+        for (int i = thresholds.length - 1; i >= 0; i--) {
+            final int threshold = thresholds[i];
+            if ((firstDp < threshold && secondDp >= threshold)
+                    || (firstDp >= threshold && secondDp < threshold)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void setSizeConfigurations(int[] horizontalSizeConfiguration,
+            int[] verticalSizeConfigurations, int[] smallestSizeConfigurations) {
+        mHorizontalSizeConfigurations = horizontalSizeConfiguration;
+        mVerticalSizeConfigurations = verticalSizeConfigurations;
+        mSmallestSizeConfigurations = smallestSizeConfigurations;
+    }
+
+    void scheduleConfigurationChanged(Configuration config, boolean reportToActivity) {
+        if (app == null || app.thread == null) {
+            return;
+        }
+        try {
+            // Make sure fontScale is always equal to global. For fullscreen apps, config is
+            // the shared EMPTY config, which has default fontScale of 1.0. We don't want it
+            // to be applied as an override config.
+            Configuration overrideConfig = new Configuration(config);
+            overrideConfig.fontScale = service.mConfiguration.fontScale;
+
+            if (DEBUG_CONFIGURATION) Slog.v(TAG, "Sending new config to " + this + " " +
+                    "reportToActivity=" + reportToActivity + " and config: " + overrideConfig);
+
+            app.thread.scheduleActivityConfigurationChanged(
+                    appToken, overrideConfig, reportToActivity);
+        } catch (RemoteException e) {
+            // If process died, whatever.
+        }
+    }
+
+    void scheduleMultiWindowModeChanged() {
+        if (task == null || task.stack == null || app == null || app.thread == null) {
+            return;
+        }
+        try {
+            // An activity is considered to be in multi-window mode if its task isn't fullscreen.
+            app.thread.scheduleMultiWindowModeChanged(appToken, !task.mFullscreen);
+        } catch (Exception e) {
+            // If process died, I don't care.
+        }
+    }
+
+    void schedulePictureInPictureModeChanged() {
+        if (task == null || task.stack == null || app == null || app.thread == null) {
+            return;
+        }
+        try {
+            app.thread.schedulePictureInPictureModeChanged(
+                    appToken, task.stack.mStackId == PINNED_STACK_ID);
+        } catch (Exception e) {
+            // If process died, no one cares.
+        }
+    }
+
+    boolean isFreeform() {
+        return task != null && task.stack != null
+                && task.stack.mStackId == FREEFORM_WORKSPACE_STACK_ID;
     }
 
     static class Token extends IApplicationToken.Stub {
-        final WeakReference<ActivityRecord> weakActivity;
+        private final WeakReference<ActivityRecord> weakActivity;
+        private final ActivityManagerService mService;
 
-        Token(ActivityRecord activity) {
-            weakActivity = new WeakReference<ActivityRecord>(activity);
+        Token(ActivityRecord activity, ActivityManagerService service) {
+            weakActivity = new WeakReference<>(activity);
+            mService = service;
         }
 
-        @Override public void windowsDrawn() {
-            ActivityRecord activity = weakActivity.get();
-            if (activity != null) {
-                activity.windowsDrawn();
+        @Override
+        public void windowsDrawn() {
+            synchronized (mService) {
+                ActivityRecord r = tokenToActivityRecordLocked(this);
+                if (r != null) {
+                    r.windowsDrawnLocked();
+                }
             }
         }
 
-        @Override public void windowsVisible() {
-            ActivityRecord activity = weakActivity.get();
-            if (activity != null) {
-                activity.windowsVisible();
+        @Override
+        public void windowsVisible() {
+            synchronized (mService) {
+                ActivityRecord r = tokenToActivityRecordLocked(this);
+                if (r != null) {
+                    r.windowsVisibleLocked();
+                }
             }
         }
 
-        @Override public void windowsGone() {
-            ActivityRecord activity = weakActivity.get();
-            if (activity != null) {
-                activity.windowsGone();
+        @Override
+        public void windowsGone() {
+            synchronized (mService) {
+                ActivityRecord r = tokenToActivityRecordLocked(this);
+                if (r != null) {
+                    if (DEBUG_SWITCH) Log.v(TAG_SWITCH, "windowsGone(): " + r);
+                    r.nowVisible = false;
+                    return;
+                }
             }
         }
 
-        @Override public boolean keyDispatchingTimedOut(String reason) {
-            ActivityRecord activity = weakActivity.get();
-            return activity != null && activity.keyDispatchingTimedOut(reason);
+        @Override
+        public boolean keyDispatchingTimedOut(String reason) {
+            ActivityRecord r;
+            ActivityRecord anrActivity;
+            ProcessRecord anrApp;
+            synchronized (mService) {
+                r = tokenToActivityRecordLocked(this);
+                if (r == null) {
+                    return false;
+                }
+                anrActivity = r.getWaitingHistoryRecordLocked();
+                anrApp = r != null ? r.app : null;
+            }
+            return mService.inputDispatchingTimedOut(anrApp, anrActivity, r, false, reason);
         }
 
-        @Override public long getKeyDispatchingTimeout() {
-            ActivityRecord activity = weakActivity.get();
-            if (activity != null) {
-                return activity.getKeyDispatchingTimeout();
+        @Override
+        public long getKeyDispatchingTimeout() {
+            synchronized (mService) {
+                ActivityRecord r = tokenToActivityRecordLocked(this);
+                if (r == null) {
+                    return 0;
+                }
+                r = r.getWaitingHistoryRecordLocked();
+                return ActivityManagerService.getInputDispatchingTimeoutLocked(r);
             }
-            return 0;
+        }
+
+        private static final ActivityRecord tokenToActivityRecordLocked(Token token) {
+            if (token == null) {
+                return null;
+            }
+            ActivityRecord r = token.weakActivity.get();
+            if (r == null || r.task == null || r.task.stack == null) {
+                return null;
+            }
+            return r;
         }
 
         @Override
@@ -364,27 +589,28 @@ final class ActivityRecord {
         }
     }
 
-    static ActivityRecord forToken(IBinder token) {
+    static ActivityRecord forTokenLocked(IBinder token) {
         try {
-            return token != null ? ((Token)token).weakActivity.get() : null;
+            return Token.tokenToActivityRecordLocked((Token)token);
         } catch (ClassCastException e) {
-            Slog.w(ActivityManagerService.TAG, "Bad activity token: " + token, e);
+            Slog.w(TAG, "Bad activity token: " + token, e);
             return null;
         }
     }
 
-    boolean isNotResolverActivity() {
-        return !ResolverActivity.class.getName().equals(realActivity.getClassName());
+    boolean isResolverActivity() {
+        return ResolverActivity.class.getName().equals(realActivity.getClassName());
     }
 
     ActivityRecord(ActivityManagerService _service, ProcessRecord _caller,
             int _launchedFromUid, String _launchedFromPackage, Intent _intent, String _resolvedType,
             ActivityInfo aInfo, Configuration _configuration,
             ActivityRecord _resultTo, String _resultWho, int _reqCode,
-            boolean _componentSpecified, ActivityStackSupervisor supervisor,
-            ActivityContainer container, Bundle options) {
+            boolean _componentSpecified, boolean _rootVoiceInteraction,
+            ActivityStackSupervisor supervisor,
+            ActivityContainer container, ActivityOptions options, ActivityRecord sourceRecord) {
         service = _service;
-        appToken = new Token(this);
+        appToken = new Token(this, service);
         info = aInfo;
         launchedFromUid = _launchedFromUid;
         launchedFromPackage = _launchedFromPackage;
@@ -393,7 +619,9 @@ final class ActivityRecord {
         shortComponentName = _intent.getComponent().flattenToShortString();
         resolvedType = _resolvedType;
         componentSpecified = _componentSpecified;
+        rootVoiceInteraction = _rootVoiceInteraction;
         configuration = _configuration;
+        taskConfigOverride = Configuration.EMPTY;
         resultTo = _resultTo;
         resultWho = _resultWho;
         requestCode = _reqCode;
@@ -403,19 +631,23 @@ final class ActivityRecord {
         stopped = false;
         delayedResume = false;
         finishing = false;
-        configDestroy = false;
+        deferRelaunchUntilPaused = false;
         keysPaused = false;
         inHistory = false;
-        visible = true;
-        waitingVisible = false;
+        visible = false;
         nowVisible = false;
         idle = false;
         hasBeenLaunched = false;
         mStackSupervisor = supervisor;
         mInitialActivityContainer = container;
         if (options != null) {
-            pendingOptions = new ActivityOptions(options);
+            pendingOptions = options;
             mLaunchTaskBehind = pendingOptions.getLaunchTaskBehind();
+            mRotationAnimationHint = pendingOptions.getRotationAnimationHint();
+            PendingIntent usageReport = pendingOptions.getUsageTimeReport();
+            if (usageReport != null) {
+                appTimeTracker = new AppTimeTracker(usageReport);
+            }
         }
 
         // This starts out true, since the initial state of an activity
@@ -424,13 +656,16 @@ final class ActivityRecord {
         haveState = true;
 
         if (aInfo != null) {
+            // If the class name in the intent doesn't match that of the target, this is
+            // probably an alias. We have to create a new ComponentName object to keep track
+            // of the real activity name, so that FLAG_ACTIVITY_CLEAR_TOP is handled properly.
             if (aInfo.targetActivity == null
-                    || aInfo.launchMode == ActivityInfo.LAUNCH_MULTIPLE
-                    || aInfo.launchMode == ActivityInfo.LAUNCH_SINGLE_TOP) {
+                    || (aInfo.targetActivity.equals(_intent.getComponent().getClassName())
+                    && (aInfo.launchMode == ActivityInfo.LAUNCH_MULTIPLE
+                    || aInfo.launchMode == ActivityInfo.LAUNCH_SINGLE_TOP))) {
                 realActivity = _intent.getComponent();
             } else {
-                realActivity = new ComponentName(aInfo.packageName,
-                        aInfo.targetActivity);
+                realActivity = new ComponentName(aInfo.packageName, aInfo.targetActivity);
             }
             taskAffinity = aInfo.taskAffinity;
             stateNotNeeded = (aInfo.flags&
@@ -474,31 +709,20 @@ final class ActivityRecord {
 
             AttributeCache.Entry ent = AttributeCache.instance().get(packageName,
                     realTheme, com.android.internal.R.styleable.Window, userId);
+            final boolean translucent = ent != null && (ent.array.getBoolean(
+                    com.android.internal.R.styleable.Window_windowIsTranslucent, false));
             fullscreen = ent != null && !ent.array.getBoolean(
                     com.android.internal.R.styleable.Window_windowIsFloating, false)
-                    && !ent.array.getBoolean(
-                    com.android.internal.R.styleable.Window_windowIsTranslucent, false);
+                    && !translucent;
             noDisplay = ent != null && ent.array.getBoolean(
                     com.android.internal.R.styleable.Window_windowNoDisplay, false);
 
-            if ((!_componentSpecified || _launchedFromUid == Process.myUid()
-                    || _launchedFromUid == 0) &&
-                    Intent.ACTION_MAIN.equals(_intent.getAction()) &&
-                    _intent.hasCategory(Intent.CATEGORY_HOME) &&
-                    _intent.getCategories().size() == 1 &&
-                    _intent.getData() == null &&
-                    _intent.getType() == null &&
-                    (intent.getFlags()&Intent.FLAG_ACTIVITY_NEW_TASK) != 0 &&
-                    isNotResolverActivity()) {
-                // This sure looks like a home activity!
-                mActivityType = HOME_ACTIVITY_TYPE;
-            } else if (realActivity.getClassName().contains(RECENTS_PACKAGE_NAME)) {
-                mActivityType = RECENTS_ACTIVITY_TYPE;
-            } else {
-                mActivityType = APPLICATION_ACTIVITY_TYPE;
-            }
+            setActivityType(_componentSpecified, _launchedFromUid, _intent, sourceRecord);
 
             immersive = (aInfo.flags & ActivityInfo.FLAG_IMMERSIVE) != 0;
+
+            requestedVrComponent = (aInfo.requestedVrComponent == null) ?
+                    null : ComponentName.unflattenFromString(aInfo.requestedVrComponent);
         } else {
             realActivity = null;
             taskAffinity = null;
@@ -510,17 +734,51 @@ final class ActivityRecord {
             noDisplay = false;
             mActivityType = APPLICATION_ACTIVITY_TYPE;
             immersive = false;
+            requestedVrComponent  = null;
+        }
+    }
+
+    private boolean isHomeIntent(Intent intent) {
+        return Intent.ACTION_MAIN.equals(intent.getAction())
+                && intent.hasCategory(Intent.CATEGORY_HOME)
+                && intent.getCategories().size() == 1
+                && intent.getData() == null
+                && intent.getType() == null;
+    }
+
+    static boolean isMainIntent(Intent intent) {
+        return Intent.ACTION_MAIN.equals(intent.getAction())
+                && intent.hasCategory(Intent.CATEGORY_LAUNCHER)
+                && intent.getCategories().size() == 1
+                && intent.getData() == null
+                && intent.getType() == null;
+    }
+
+    private boolean canLaunchHomeActivity(int uid, ActivityRecord sourceRecord) {
+        if (uid == Process.myUid() || uid == 0) {
+            // System process can launch home activity.
+            return true;
+        }
+        // Resolver activity can launch home activity.
+        return sourceRecord != null && sourceRecord.isResolverActivity();
+    }
+
+    private void setActivityType(boolean componentSpecified,
+            int launchedFromUid, Intent intent, ActivityRecord sourceRecord) {
+        if ((!componentSpecified || canLaunchHomeActivity(launchedFromUid, sourceRecord))
+                && isHomeIntent(intent) && !isResolverActivity()) {
+            // This sure looks like a home activity!
+            mActivityType = HOME_ACTIVITY_TYPE;
+        } else if (realActivity.getClassName().contains(RECENTS_PACKAGE_NAME)) {
+            mActivityType = RECENTS_ACTIVITY_TYPE;
+        } else {
+            mActivityType = APPLICATION_ACTIVITY_TYPE;
         }
     }
 
     void setTask(TaskRecord newTask, TaskRecord taskToAffiliateWith) {
-        if (task != null && task.removeActivity(this)) {
-            if (task != newTask) {
-                task.stack.removeTask(task, "setTask");
-            } else {
-                Slog.d(TAG, "!!! REMOVE THIS LOG !!! setTask: nearly removed stack=" +
-                        (newTask == null ? null : newTask.stack));
-            }
+        if (task != null && task.removeActivity(this) && task != newTask && task.stack != null) {
+            task.stack.removeTask(task, "setTask");
         }
         task = newTask;
         setTaskToAffiliateWith(taskToAffiliateWith);
@@ -566,6 +824,10 @@ final class ActivityRecord {
         return inHistory;
     }
 
+    boolean isInStackLocked() {
+        return task != null && task.stack != null && task.stack.isInStackLocked(this) != null;
+    }
+
     boolean isHomeActivity() {
         return mActivityType == HOME_ACTIVITY_TYPE;
     }
@@ -585,9 +847,40 @@ final class ActivityRecord {
                         (intent.getFlags() & Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS) == 0);
     }
 
-    void makeFinishing() {
+    boolean isFocusable() {
+        return StackId.canReceiveKeys(task.stack.mStackId) || isAlwaysFocusable();
+    }
+
+    boolean isResizeable() {
+        return !isHomeActivity() && ActivityInfo.isResizeableMode(info.resizeMode);
+    }
+
+    boolean isResizeableOrForced() {
+        return !isHomeActivity() && (isResizeable() || service.mForceResizableActivities);
+    }
+
+    boolean isNonResizableOrForced() {
+        return !isHomeActivity() && info.resizeMode != RESIZE_MODE_RESIZEABLE
+                && info.resizeMode != RESIZE_MODE_RESIZEABLE_AND_PIPABLE;
+    }
+
+    boolean supportsPictureInPicture() {
+        return !isHomeActivity() && info.resizeMode == RESIZE_MODE_RESIZEABLE_AND_PIPABLE;
+    }
+
+    boolean canGoInDockedStack() {
+        return !isHomeActivity()
+                && (isResizeableOrForced() || info.resizeMode == RESIZE_MODE_CROP_WINDOWS);
+    }
+
+    boolean isAlwaysFocusable() {
+        return (info.flags & FLAG_ALWAYS_FOCUSABLE) != 0;
+    }
+
+    void makeFinishingLocked() {
         if (!finishing) {
-            if (this == task.stack.getVisibleBehindActivity()) {
+            if (task != null && task.stack != null
+                    && this == task.stack.getVisibleBehindActivity()) {
                 // A finishing activity should not remain as visible in the background
                 mStackSupervisor.requestVisibleBehindLocked(this, false);
             }
@@ -649,40 +942,34 @@ final class ActivityRecord {
         // The activity now gets access to the data associated with this Intent.
         service.grantUriPermissionFromIntentLocked(callingUid, packageName,
                 intent, getUriPermissionsLocked(), userId);
-        // We want to immediately deliver the intent to the activity if
-        // it is currently the top resumed activity...  however, if the
-        // device is sleeping, then all activities are stopped, so in that
-        // case we will deliver it if this is the current top activity on its
-        // stack.
         final ReferrerIntent rintent = new ReferrerIntent(intent, referrer);
         boolean unsent = true;
-        if ((state == ActivityState.RESUMED || (service.isSleeping()
-                        && task.stack.topRunningActivityLocked(null) == this))
-                && app != null && app.thread != null) {
+        final ActivityStack stack = task.stack;
+        final boolean isTopActivityInStack =
+                stack != null && stack.topRunningActivityLocked() == this;
+        final boolean isTopActivityWhileSleeping =
+                service.isSleepingLocked() && isTopActivityInStack;
+
+        // We want to immediately deliver the intent to the activity if:
+        // - It is currently resumed or paused. i.e. it is currently visible to the user and we want
+        //   the user to see the visual effects caused by the intent delivery now.
+        // - The device is sleeping and it is the top activity behind the lock screen (b/6700897).
+        if ((state == ActivityState.RESUMED || state == ActivityState.PAUSED
+                || isTopActivityWhileSleeping) && app != null && app.thread != null) {
             try {
                 ArrayList<ReferrerIntent> ar = new ArrayList<>(1);
                 ar.add(rintent);
-                app.thread.scheduleNewIntent(ar, appToken);
+                app.thread.scheduleNewIntent(
+                        ar, appToken, state == ActivityState.PAUSED /* andPause */);
                 unsent = false;
             } catch (RemoteException e) {
-                Slog.w(ActivityManagerService.TAG,
-                        "Exception thrown sending new intent to " + this, e);
+                Slog.w(TAG, "Exception thrown sending new intent to " + this, e);
             } catch (NullPointerException e) {
-                Slog.w(ActivityManagerService.TAG,
-                        "Exception thrown sending new intent to " + this, e);
+                Slog.w(TAG, "Exception thrown sending new intent to " + this, e);
             }
         }
         if (unsent) {
             addNewIntentLocked(rintent);
-        }
-    }
-
-    void updateOptionsLocked(Bundle options) {
-        if (options != null) {
-            if (pendingOptions != null) {
-                pendingOptions.abort();
-            }
-            pendingOptions = new ActivityOptions(options);
         }
     }
 
@@ -706,6 +993,17 @@ final class ActivityRecord {
                             pendingOptions.getCustomEnterResId(),
                             pendingOptions.getCustomExitResId(),
                             pendingOptions.getOnAnimationStartListener());
+                    break;
+                case ActivityOptions.ANIM_CLIP_REVEAL:
+                    service.mWindowManager.overridePendingAppTransitionClipReveal(
+                            pendingOptions.getStartX(), pendingOptions.getStartY(),
+                            pendingOptions.getWidth(), pendingOptions.getHeight());
+                    if (intent.getSourceBounds() == null) {
+                        intent.setSourceBounds(new Rect(pendingOptions.getStartX(),
+                                pendingOptions.getStartY(),
+                                pendingOptions.getStartX()+pendingOptions.getWidth(),
+                                pendingOptions.getStartY()+pendingOptions.getHeight()));
+                    }
                     break;
                 case ActivityOptions.ANIM_SCALE_UP:
                     service.mWindowManager.overridePendingAppTransitionScaleUp(
@@ -737,17 +1035,25 @@ final class ActivityRecord {
                     break;
                 case ActivityOptions.ANIM_THUMBNAIL_ASPECT_SCALE_UP:
                 case ActivityOptions.ANIM_THUMBNAIL_ASPECT_SCALE_DOWN:
-                    service.mWindowManager.overridePendingAppTransitionAspectScaledThumb(
-                            pendingOptions.getThumbnail(),
-                            pendingOptions.getStartX(), pendingOptions.getStartY(),
-                            pendingOptions.getWidth(), pendingOptions.getHeight(),
-                            pendingOptions.getOnAnimationStartListener(),
-                            (animationType == ActivityOptions.ANIM_THUMBNAIL_ASPECT_SCALE_UP));
-                    if (intent.getSourceBounds() == null) {
-                        intent.setSourceBounds(new Rect(pendingOptions.getStartX(),
-                                pendingOptions.getStartY(),
-                                pendingOptions.getStartX() + pendingOptions.getWidth(),
-                                pendingOptions.getStartY() + pendingOptions.getHeight()));
+                    final AppTransitionAnimationSpec[] specs = pendingOptions.getAnimSpecs();
+                    if (animationType == ActivityOptions.ANIM_THUMBNAIL_ASPECT_SCALE_DOWN
+                            && specs != null) {
+                        service.mWindowManager.overridePendingAppTransitionMultiThumb(
+                                specs, pendingOptions.getOnAnimationStartListener(),
+                                pendingOptions.getAnimationFinishedListener(), false);
+                    } else {
+                        service.mWindowManager.overridePendingAppTransitionAspectScaledThumb(
+                                pendingOptions.getThumbnail(),
+                                pendingOptions.getStartX(), pendingOptions.getStartY(),
+                                pendingOptions.getWidth(), pendingOptions.getHeight(),
+                                pendingOptions.getOnAnimationStartListener(),
+                                (animationType == ActivityOptions.ANIM_THUMBNAIL_ASPECT_SCALE_UP));
+                        if (intent.getSourceBounds() == null) {
+                            intent.setSourceBounds(new Rect(pendingOptions.getStartX(),
+                                    pendingOptions.getStartY(),
+                                    pendingOptions.getStartX() + pendingOptions.getWidth(),
+                                    pendingOptions.getStartY() + pendingOptions.getHeight()));
+                        }
                     }
                     break;
                 default:
@@ -798,9 +1104,9 @@ final class ActivityRecord {
 
     void updateThumbnailLocked(Bitmap newThumbnail, CharSequence description) {
         if (newThumbnail != null) {
-            if (ActivityManagerService.DEBUG_THUMBNAILS) Slog.i(ActivityManagerService.TAG,
+            if (DEBUG_THUMBNAILS) Slog.i(TAG_THUMBNAILS,
                     "Setting thumbnail of " + this + " to " + newThumbnail);
-            boolean thumbnailUpdated = task.setLastThumbnail(newThumbnail);
+            boolean thumbnailUpdated = task.setLastThumbnailLocked(newThumbnail);
             if (thumbnailUpdated && isPersistable()) {
                 mStackSupervisor.mService.notifyTaskPersisterLocked(task, false);
             }
@@ -819,19 +1125,27 @@ final class ActivityRecord {
     }
 
     boolean continueLaunchTickingLocked() {
-        if (launchTickTime != 0) {
-            final ActivityStack stack = task.stack;
-            Message msg = stack.mHandler.obtainMessage(ActivityStack.LAUNCH_TICK_MSG, this);
-            stack.mHandler.removeMessages(ActivityStack.LAUNCH_TICK_MSG);
-            stack.mHandler.sendMessageDelayed(msg, ActivityStack.LAUNCH_TICK);
-            return true;
+        if (launchTickTime == 0) {
+            return false;
         }
-        return false;
+
+        final ActivityStack stack = task.stack;
+        if (stack == null) {
+            return false;
+        }
+
+        Message msg = stack.mHandler.obtainMessage(ActivityStack.LAUNCH_TICK_MSG, this);
+        stack.mHandler.removeMessages(ActivityStack.LAUNCH_TICK_MSG);
+        stack.mHandler.sendMessageDelayed(msg, ActivityStack.LAUNCH_TICK);
+        return true;
     }
 
     void finishLaunchTickingLocked() {
         launchTickTime = 0;
-        task.stack.mHandler.removeMessages(ActivityStack.LAUNCH_TICK_MSG);
+        final ActivityStack stack = task.stack;
+        if (stack != null) {
+            stack.mHandler.removeMessages(ActivityStack.LAUNCH_TICK_MSG);
+        }
     }
 
     // IApplicationToken
@@ -862,12 +1176,12 @@ final class ActivityRecord {
         if (displayStartTime != 0) {
             reportLaunchTimeLocked(curTime);
         }
-        if (fullyDrawnStartTime != 0) {
-            final ActivityStack stack = task.stack;
+        final ActivityStack stack = task.stack;
+        if (fullyDrawnStartTime != 0 && stack != null) {
             final long thisTime = curTime - fullyDrawnStartTime;
             final long totalTime = stack.mFullyDrawnStartTime != 0
                     ? (curTime - stack.mFullyDrawnStartTime) : thisTime;
-            if (ActivityManagerService.SHOW_ACTIVITY_START_TIME) {
+            if (SHOW_ACTIVITY_START_TIME) {
                 Trace.asyncTraceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER, "drawing", 0);
                 EventLog.writeEvent(EventLogTags.AM_ACTIVITY_FULLY_DRAWN_TIME,
                         userId, System.identityHashCode(this), shortComponentName,
@@ -883,23 +1197,26 @@ final class ActivityRecord {
                     TimeUtils.formatDuration(totalTime, sb);
                     sb.append(")");
                 }
-                Log.i(ActivityManagerService.TAG, sb.toString());
+                Log.i(TAG, sb.toString());
             }
             if (totalTime > 0) {
                 //service.mUsageStatsService.noteFullyDrawnTime(realActivity, (int) totalTime);
             }
-            fullyDrawnStartTime = 0;
             stack.mFullyDrawnStartTime = 0;
         }
+        fullyDrawnStartTime = 0;
     }
 
     private void reportLaunchTimeLocked(final long curTime) {
         final ActivityStack stack = task.stack;
+        if (stack == null) {
+            return;
+        }
         final long thisTime = curTime - displayStartTime;
         final long totalTime = stack.mLaunchStartTime != 0
                 ? (curTime - stack.mLaunchStartTime) : thisTime;
-        if (ActivityManagerService.SHOW_ACTIVITY_START_TIME) {
-            Trace.asyncTraceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER, "launching", 0);
+        if (SHOW_ACTIVITY_START_TIME) {
+            Trace.asyncTraceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER, "launching: " + packageName, 0);
             EventLog.writeEvent(EventLogTags.AM_ACTIVITY_LAUNCH_TIME,
                     userId, System.identityHashCode(this), shortComponentName,
                     thisTime, totalTime);
@@ -914,7 +1231,7 @@ final class ActivityRecord {
                 TimeUtils.formatDuration(totalTime, sb);
                 sb.append(")");
             }
-            Log.i(ActivityManagerService.TAG, sb.toString());
+            Log.i(TAG, sb.toString());
         }
         mStackSupervisor.reportActivityLaunchedLocked(false, this, thisTime, totalTime);
         if (totalTime > 0) {
@@ -924,100 +1241,63 @@ final class ActivityRecord {
         stack.mLaunchStartTime = 0;
     }
 
-    public void windowsDrawn() {
-        synchronized(service) {
-            if (displayStartTime != 0) {
-                reportLaunchTimeLocked(SystemClock.uptimeMillis());
-            }
-            mStackSupervisor.sendWaitingVisibleReportLocked(this);
-            startTime = 0;
-            finishLaunchTickingLocked();
-            if (task != null) {
-                task.hasBeenVisible = true;
-            }
+    void windowsDrawnLocked() {
+        mStackSupervisor.mActivityMetricsLogger.notifyWindowsDrawn();
+        if (displayStartTime != 0) {
+            reportLaunchTimeLocked(SystemClock.uptimeMillis());
+        }
+        mStackSupervisor.sendWaitingVisibleReportLocked(this);
+        startTime = 0;
+        finishLaunchTickingLocked();
+        if (task != null) {
+            task.hasBeenVisible = true;
         }
     }
 
-    public void windowsVisible() {
-        synchronized(service) {
-            mStackSupervisor.reportActivityVisibleLocked(this);
-            if (ActivityManagerService.DEBUG_SWITCH) Log.v(
-                    ActivityManagerService.TAG, "windowsVisible(): " + this);
-            if (!nowVisible) {
-                nowVisible = true;
-                lastVisibleTime = SystemClock.uptimeMillis();
-                if (!idle) {
-                    // Instead of doing the full stop routine here, let's just
-                    // hide any activities we now can, and let them stop when
-                    // the normal idle happens.
-                    mStackSupervisor.processStoppingActivitiesLocked(false);
-                } else {
-                    // If this activity was already idle, then we now need to
-                    // make sure we perform the full stop of any activities
-                    // that are waiting to do so.  This is because we won't
-                    // do that while they are still waiting for this one to
-                    // become visible.
-                    final int N = mStackSupervisor.mWaitingVisibleActivities.size();
-                    if (N > 0) {
-                        for (int i=0; i<N; i++) {
-                            ActivityRecord r = mStackSupervisor.mWaitingVisibleActivities.get(i);
-                            r.waitingVisible = false;
-                            if (ActivityManagerService.DEBUG_SWITCH) Log.v(
-                                    ActivityManagerService.TAG,
-                                    "Was waiting for visible: " + r);
-                        }
-                        mStackSupervisor.mWaitingVisibleActivities.clear();
-                        mStackSupervisor.scheduleIdleLocked();
+    void windowsVisibleLocked() {
+        mStackSupervisor.reportActivityVisibleLocked(this);
+        if (DEBUG_SWITCH) Log.v(TAG_SWITCH, "windowsVisibleLocked(): " + this);
+        if (!nowVisible) {
+            nowVisible = true;
+            lastVisibleTime = SystemClock.uptimeMillis();
+            if (!idle) {
+                // Instead of doing the full stop routine here, let's just hide any activities
+                // we now can, and let them stop when the normal idle happens.
+                mStackSupervisor.processStoppingActivitiesLocked(false);
+            } else {
+                // If this activity was already idle, then we now need to make sure we perform
+                // the full stop of any activities that are waiting to do so. This is because
+                // we won't do that while they are still waiting for this one to become visible.
+                final int size = mStackSupervisor.mWaitingVisibleActivities.size();
+                if (size > 0) {
+                    for (int i = 0; i < size; i++) {
+                        ActivityRecord r = mStackSupervisor.mWaitingVisibleActivities.get(i);
+                        if (DEBUG_SWITCH) Log.v(TAG_SWITCH, "Was waiting for visible: " + r);
                     }
+                    mStackSupervisor.mWaitingVisibleActivities.clear();
+                    mStackSupervisor.scheduleIdleLocked();
                 }
-                service.scheduleAppGcsLocked();
             }
+            service.scheduleAppGcsLocked();
         }
     }
 
-    public void windowsGone() {
-        if (ActivityManagerService.DEBUG_SWITCH) Log.v(
-                ActivityManagerService.TAG, "windowsGone(): " + this);
-        nowVisible = false;
-    }
-
-    private ActivityRecord getWaitingHistoryRecordLocked() {
-        // First find the real culprit...  if we are waiting
-        // for another app to start, then we have paused dispatching
-        // for this activity.
-        ActivityRecord r = this;
-        if (r.waitingVisible) {
+    ActivityRecord getWaitingHistoryRecordLocked() {
+        // First find the real culprit...  if this activity is waiting for
+        // another activity to start or has stopped, then the key dispatching
+        // timeout should not be caused by this.
+        if (mStackSupervisor.mWaitingVisibleActivities.contains(this) || stopped) {
             final ActivityStack stack = mStackSupervisor.getFocusedStack();
-            // Hmmm, who might we be waiting for?
-            r = stack.mResumedActivity;
+            // Try to use the one which is closest to top.
+            ActivityRecord r = stack.mResumedActivity;
             if (r == null) {
                 r = stack.mPausingActivity;
             }
-            // Both of those null?  Fall back to 'this' again
-            if (r == null) {
-                r = this;
+            if (r != null) {
+                return r;
             }
         }
-
-        return r;
-    }
-
-    public boolean keyDispatchingTimedOut(String reason) {
-        ActivityRecord r;
-        ProcessRecord anrApp;
-        synchronized(service) {
-            r = getWaitingHistoryRecordLocked();
-            anrApp = r != null ? r.app : null;
-        }
-        return service.inputDispatchingTimedOut(anrApp, r, this, false, reason);
-    }
-
-    /** Returns the key dispatching timeout for this application token. */
-    public long getKeyDispatchingTimeout() {
-        synchronized(service) {
-            ActivityRecord r = getWaitingHistoryRecordLocked();
-            return ActivityManagerService.getInputDispatchingTimeoutLocked(r);
-        }
+        return this;
     }
 
     /**
@@ -1029,8 +1309,12 @@ final class ActivityRecord {
                 state == ActivityState.RESUMED;
     }
 
-    public void setSleeping(boolean _sleeping) {
-        if (sleeping == _sleeping) {
+    void setSleeping(boolean _sleeping) {
+        setSleeping(_sleeping, false);
+    }
+
+    void setSleeping(boolean _sleeping, boolean force) {
+        if (!force && sleeping == _sleeping) {
             return;
         }
         if (app != null && app.thread != null) {
@@ -1046,15 +1330,8 @@ final class ActivityRecord {
         }
     }
 
-    static void activityResumedLocked(IBinder token) {
-        final ActivityRecord r = ActivityRecord.forToken(token);
-        if (DEBUG_SAVED_STATE) Slog.i(TAG, "Resumed activity; dropping state of: " + r);
-        r.icicle = null;
-        r.haveState = false;
-    }
-
     static int getTaskForActivityLocked(IBinder token, boolean onlyRoot) {
-        final ActivityRecord r = ActivityRecord.forToken(token);
+        final ActivityRecord r = ActivityRecord.forTokenLocked(token);
         if (r == null) {
             return INVALID_TASK_ID;
         }
@@ -1067,11 +1344,8 @@ final class ActivityRecord {
     }
 
     static ActivityRecord isInStackLocked(IBinder token) {
-        final ActivityRecord r = ActivityRecord.forToken(token);
-        if (r != null) {
-            return r.task.stack.isInStackLocked(token);
-        }
-        return null;
+        final ActivityRecord r = ActivityRecord.forTokenLocked(token);
+        return (r != null) ? r.task.stack.isInStackLocked(r) : null;
     }
 
     static ActivityStack getStackLocked(IBinder token) {
@@ -1110,10 +1384,34 @@ final class ActivityRecord {
         if (_taskDescription.getIconFilename() == null &&
                 (icon = _taskDescription.getIcon()) != null) {
             final String iconFilename = createImageFilename(createTime, task.taskId);
-            mStackSupervisor.mService.mTaskPersister.saveImage(icon, iconFilename);
-            _taskDescription.setIconFilename(iconFilename);
+            final File iconFile = new File(TaskPersister.getUserImagesDir(task.userId),
+                    iconFilename);
+            final String iconFilePath = iconFile.getAbsolutePath();
+            service.mRecentTasks.saveImage(icon, iconFilePath);
+            _taskDescription.setIconFilename(iconFilePath);
         }
         taskDescription = _taskDescription;
+    }
+
+    void setVoiceSessionLocked(IVoiceInteractionSession session) {
+        voiceSession = session;
+        pendingVoiceInteractionStart = false;
+    }
+
+    void clearVoiceSessionLocked() {
+        voiceSession = null;
+        pendingVoiceInteractionStart = false;
+    }
+
+    void showStartingWindow(ActivityRecord prev, boolean createIfNeeded) {
+        final CompatibilityInfo compatInfo =
+                service.compatibilityInfoForPackageLocked(info.applicationInfo);
+        final boolean shown = service.mWindowManager.setAppStartingWindow(
+                appToken, packageName, theme, compatInfo, nonLocalizedLabel, labelRes, icon,
+                logo, windowFlags, prev != null ? prev.appToken : null, createIfNeeded);
+        if (shown) {
+            mStartingWindowState = STARTING_WINDOW_SHOWN;
+        }
     }
 
     void saveToXml(XmlSerializer out) throws IOException, XmlPullParserException {
@@ -1143,8 +1441,8 @@ final class ActivityRecord {
         }
     }
 
-    static ActivityRecord restoreFromXml(XmlPullParser in, ActivityStackSupervisor stackSupervisor)
-            throws IOException, XmlPullParserException {
+    static ActivityRecord restoreFromXml(XmlPullParser in,
+            ActivityStackSupervisor stackSupervisor) throws IOException, XmlPullParserException {
         Intent intent = null;
         PersistableBundle persistentState = null;
         int launchedFromUid = 0;
@@ -1159,12 +1457,12 @@ final class ActivityRecord {
         for (int attrNdx = in.getAttributeCount() - 1; attrNdx >= 0; --attrNdx) {
             final String attrName = in.getAttributeName(attrNdx);
             final String attrValue = in.getAttributeValue(attrNdx);
-            if (DEBUG_PERSISTER || DEBUG_RESTORER) Slog.d(TaskPersister.TAG,
+            if (TaskPersister.DEBUG) Slog.d(TaskPersister.TAG,
                         "ActivityRecord: attribute name=" + attrName + " value=" + attrValue);
             if (ATTR_ID.equals(attrName)) {
                 createTime = Long.valueOf(attrValue);
             } else if (ATTR_LAUNCHEDFROMUID.equals(attrName)) {
-                launchedFromUid = Integer.valueOf(attrValue);
+                launchedFromUid = Integer.parseInt(attrValue);
             } else if (ATTR_LAUNCHEDFROMPACKAGE.equals(attrName)) {
                 launchedFromPackage = attrValue;
             } else if (ATTR_RESOLVEDTYPE.equals(attrName)) {
@@ -1172,7 +1470,7 @@ final class ActivityRecord {
             } else if (ATTR_COMPONENTSPECIFIED.equals(attrName)) {
                 componentSpecified = Boolean.valueOf(attrValue);
             } else if (ATTR_USERID.equals(attrName)) {
-                userId = Integer.valueOf(attrValue);
+                userId = Integer.parseInt(attrValue);
             } else if (attrName.startsWith(TaskDescription.ATTR_TASKDESCRIPTION_PREFIX)) {
                 taskDescription.restoreFromXml(attrName, attrValue);
             } else {
@@ -1182,18 +1480,18 @@ final class ActivityRecord {
 
         int event;
         while (((event = in.next()) != XmlPullParser.END_DOCUMENT) &&
-                (event != XmlPullParser.END_TAG || in.getDepth() < outerDepth)) {
+                (event != XmlPullParser.END_TAG || in.getDepth() >= outerDepth)) {
             if (event == XmlPullParser.START_TAG) {
                 final String name = in.getName();
-                if (DEBUG_PERSISTER || DEBUG_RESTORER)
+                if (TaskPersister.DEBUG)
                         Slog.d(TaskPersister.TAG, "ActivityRecord: START_TAG name=" + name);
                 if (TAG_INTENT.equals(name)) {
                     intent = Intent.restoreFromXml(in);
-                    if (DEBUG_PERSISTER || DEBUG_RESTORER)
+                    if (TaskPersister.DEBUG)
                             Slog.d(TaskPersister.TAG, "ActivityRecord: intent=" + intent);
                 } else if (TAG_PERSISTABLEBUNDLE.equals(name)) {
                     persistentState = PersistableBundle.restoreFromXml(in);
-                    if (DEBUG_PERSISTER || DEBUG_RESTORER) Slog.d(TaskPersister.TAG,
+                    if (TaskPersister.DEBUG) Slog.d(TaskPersister.TAG,
                             "ActivityRecord: persistentState=" + persistentState);
                 } else {
                     Slog.w(TAG, "restoreActivity: unexpected name=" + name);
@@ -1215,7 +1513,7 @@ final class ActivityRecord {
         }
         final ActivityRecord r = new ActivityRecord(service, /*caller*/null, launchedFromUid,
                 launchedFromPackage, intent, resolvedType, aInfo, service.getConfiguration(),
-                null, null, 0, componentSpecified, stackSupervisor, null, null);
+                null, null, 0, componentSpecified, false, stackSupervisor, null, null, null);
 
         r.persistentState = persistentState;
         r.taskDescription = taskDescription;

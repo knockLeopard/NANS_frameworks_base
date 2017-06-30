@@ -165,8 +165,6 @@ public class SearchDialog extends Dialog {
         setContentView(com.android.internal.R.layout.search_bar);
 
         // get the view elements for local access
-        SearchBar searchBar = (SearchBar) findViewById(com.android.internal.R.id.search_bar);
-        searchBar.setSearchDialog(this);
         mSearchView = (SearchView) findViewById(com.android.internal.R.id.search_view);
         mSearchView.setIconified(false);
         mSearchView.setOnCloseListener(mOnCloseListener);
@@ -507,8 +505,7 @@ public class SearchDialog extends Dialog {
 
         // We made sure the IME was displayed, so also make sure it is closed
         // when we go away.
-        InputMethodManager imm = (InputMethodManager)getContext()
-                .getSystemService(Context.INPUT_METHOD_SERVICE);
+        InputMethodManager imm = getContext().getSystemService(InputMethodManager.class);
         if (imm != null) {
             imm.hideSoftInputFromWindow(
                     getWindow().getDecorView().getWindowToken(), 0);
@@ -618,8 +615,6 @@ public class SearchDialog extends Dialog {
      */
     public static class SearchBar extends LinearLayout {
 
-        private SearchDialog mSearchDialog;
-
         public SearchBar(Context context, AttributeSet attrs) {
             super(context, attrs);
         }
@@ -628,15 +623,13 @@ public class SearchDialog extends Dialog {
             super(context);
         }
 
-        public void setSearchDialog(SearchDialog searchDialog) {
-            mSearchDialog = searchDialog;
-        }
-
-        /**
-         * Don't allow action modes in a SearchBar, it looks silly.
-         */
         @Override
-        public ActionMode startActionModeForChild(View child, ActionMode.Callback callback) {
+        public ActionMode startActionModeForChild(
+                View child, ActionMode.Callback callback, int type) {
+            // Disable Primary Action Modes in the SearchBar, as they overlap.
+            if (type != ActionMode.TYPE_PRIMARY) {
+                return super.startActionModeForChild(child, callback, type);
+            }
             return null;
         }
     }
@@ -649,8 +642,7 @@ public class SearchDialog extends Dialog {
     public void onBackPressed() {
         // If the input method is covering the search dialog completely,
         // e.g. in landscape mode with no hard keyboard, dismiss just the input method
-        InputMethodManager imm = (InputMethodManager)getContext()
-                .getSystemService(Context.INPUT_METHOD_SERVICE);
+        InputMethodManager imm = getContext().getSystemService(InputMethodManager.class);
         if (imm != null && imm.isFullscreenMode() &&
                 imm.hideSoftInputFromWindow(getWindow().getDecorView().getWindowToken(), 0)) {
             return;

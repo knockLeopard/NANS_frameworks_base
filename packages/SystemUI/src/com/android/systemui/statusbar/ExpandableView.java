@@ -17,13 +17,13 @@
 package com.android.systemui.statusbar;
 
 import android.content.Context;
+import android.graphics.Paint;
 import android.graphics.Rect;
 import android.util.AttributeSet;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import com.android.systemui.R;
+
 import com.android.systemui.statusbar.stack.NotificationStackScrollLayout;
 
 import java.util.ArrayList;
@@ -33,36 +33,38 @@ import java.util.ArrayList;
  */
 public abstract class ExpandableView extends FrameLayout {
 
-    private final int mMaxNotificationHeight;
-
-    private OnHeightChangedListener mOnHeightChangedListener;
+    protected OnHeightChangedListener mOnHeightChangedListener;
     private int mActualHeight;
     protected int mClipTopAmount;
-    private boolean mActualHeightInitialized;
     private boolean mDark;
     private ArrayList<View> mMatchParentViews = new ArrayList<View>();
+    private static Rect mClipRect = new Rect();
+    private boolean mWillBeGone;
+    private int mMinClipTopAmount = 0;
+    private boolean mClipToActualHeight = true;
+    private boolean mChangingPosition = false;
+    private ViewGroup mTransientContainer;
 
     public ExpandableView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        mMaxNotificationHeight = getResources().getDimensionPixelSize(
-                R.dimen.notification_max_height);
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        int ownMaxHeight = mMaxNotificationHeight;
+        final int givenSize = MeasureSpec.getSize(heightMeasureSpec);
+        int ownMaxHeight = Integer.MAX_VALUE;
         int heightMode = MeasureSpec.getMode(heightMeasureSpec);
-        boolean hasFixedHeight = heightMode == MeasureSpec.EXACTLY;
-        boolean isHeightLimited = heightMode == MeasureSpec.AT_MOST;
-        if (hasFixedHeight || isHeightLimited) {
-            int size = MeasureSpec.getSize(heightMeasureSpec);
-            ownMaxHeight = Math.min(ownMaxHeight, size);
+        if (heightMode != MeasureSpec.UNSPECIFIED && givenSize != 0) {
+            ownMaxHeight = Math.min(givenSize, ownMaxHeight);
         }
         int newHeightSpec = MeasureSpec.makeMeasureSpec(ownMaxHeight, MeasureSpec.AT_MOST);
         int maxChildHeight = 0;
         int childCount = getChildCount();
         for (int i = 0; i < childCount; i++) {
             View child = getChildAt(i);
+            if (child.getVisibility() == GONE) {
+                continue;
+            }
             int childHeightSpec = newHeightSpec;
             ViewGroup.LayoutParams layoutParams = child.getLayoutParams();
             if (layoutParams.height != ViewGroup.LayoutParams.MATCH_PARENT) {
@@ -81,7 +83,8 @@ public abstract class ExpandableView extends FrameLayout {
                 mMatchParentViews.add(child);
             }
         }
-        int ownHeight = hasFixedHeight ? ownMaxHeight : maxChildHeight;
+        int ownHeight = heightMode == MeasureSpec.EXACTLY
+                ? givenSize : Math.min(ownMaxHeight, maxChildHeight);
         newHeightSpec = MeasureSpec.makeMeasureSpec(ownHeight, MeasureSpec.EXACTLY);
         for (View child : mMatchParentViews) {
             child.measure(getChildMeasureSpec(
@@ -96,38 +99,15 @@ public abstract class ExpandableView extends FrameLayout {
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
-        if (!mActualHeightInitialized && mActualHeight == 0) {
-            int initialHeight = getInitialHeight();
-            if (initialHeight != 0) {
-                setActualHeight(initialHeight);
-            }
-        }
-    }
-
-    /**
-     * Resets the height of the view on the next layout pass
-     */
-    protected void resetActualHeight() {
-        mActualHeight = 0;
-        mActualHeightInitialized = false;
-        requestLayout();
-    }
-
-    protected int getInitialHeight() {
-        return getHeight();
+        updateClipping();
     }
 
     @Override
-    public boolean dispatchTouchEvent(MotionEvent ev) {
-        if (filterMotionEvent(ev)) {
-            return super.dispatchTouchEvent(ev);
-        }
-        return false;
-    }
-
-    protected boolean filterMotionEvent(MotionEvent event) {
-        return event.getActionMasked() != MotionEvent.ACTION_DOWN
-                || event.getY() > mClipTopAmount && event.getY() < mActualHeight;
+    public boolean pointInView(float localX, float localY, float slop) {
+        float top = mClipTopAmount;
+        float bottom = mActualHeight;
+        return localX >= -slop && localY >= top - slop && localX < ((mRight - mLeft) + slop) &&
+                localY < (bottom + slop);
     }
 
     /**
@@ -138,15 +118,15 @@ public abstract class ExpandableView extends FrameLayout {
      * @param notifyListeners Whether the listener should be informed about the change.
      */
     public void setActualHeight(int actualHeight, boolean notifyListeners) {
-        mActualHeightInitialized = true;
         mActualHeight = actualHeight;
+        updateClipping();
         if (notifyListeners) {
-            notifyHeightChanged();
+            notifyHeightChanged(false  /* needsAnimation */);
         }
     }
 
     public void setActualHeight(int actualHeight) {
-        setActualHeight(actualHeight, true);
+        setActualHeight(actualHeight, true /* notifyListeners */);
     }
 
     /**
@@ -161,14 +141,23 @@ public abstract class ExpandableView extends FrameLayout {
     /**
      * @return The maximum height of this notification.
      */
-    public int getMaxHeight() {
+    public int getMaxContentHeight() {
         return getHeight();
     }
 
     /**
-     * @return The minimum height of this notification.
+     * @return The minimum content height of this notification.
      */
     public int getMinHeight() {
+        return getHeight();
+    }
+
+    /**
+     * @return The collapsed height of this view. Note that this might be different
+     * than {@link #getMinHeight()} because some elements like groups may have different sizes when
+     * they are system expanded.
+     */
+    public int getCollapsedHeight() {
         return getHeight();
     }
 
@@ -228,6 +217,7 @@ public abstract class ExpandableView extends FrameLayout {
      */
     public void setClipTopAmount(int clipTopAmount) {
         mClipTopAmount = clipTopAmount;
+        updateClipping();
     }
 
     public int getClipTopAmount() {
@@ -245,9 +235,9 @@ public abstract class ExpandableView extends FrameLayout {
         return false;
     }
 
-    public void notifyHeightChanged() {
+    public void notifyHeightChanged(boolean needsAnimation) {
         if (mOnHeightChangedListener != null) {
-            mOnHeightChangedListener.onHeightChanged(this);
+            mOnHeightChangedListener.onHeightChanged(this, needsAnimation);
         }
     }
 
@@ -274,6 +264,20 @@ public abstract class ExpandableView extends FrameLayout {
     public void setBelowSpeedBump(boolean below) {
     }
 
+    /**
+     * Sets the translation of the view.
+     */
+    public void setTranslation(float translation) {
+        setTranslationX(translation);
+    }
+
+    /**
+     * Gets the translation of the view.
+     */
+    public float getTranslation() {
+        return getTranslationX();
+    }
+
     public void onHeightReset() {
         if (mOnHeightChangedListener != null) {
             mOnHeightChangedListener.onReset(this);
@@ -298,6 +302,142 @@ public abstract class ExpandableView extends FrameLayout {
         outRect.top += getTranslationY() + getClipTopAmount();
     }
 
+    @Override
+    public void getBoundsOnScreen(Rect outRect, boolean clipToParent) {
+        super.getBoundsOnScreen(outRect, clipToParent);
+        if (getTop() + getTranslationY() < 0) {
+            // We got clipped to the parent here - make sure we undo that.
+            outRect.top += getTop() + getTranslationY();
+        }
+        outRect.bottom = outRect.top + getActualHeight();
+        outRect.top += getClipTopAmount();
+    }
+
+    public boolean isSummaryWithChildren() {
+        return false;
+    }
+
+    public boolean areChildrenExpanded() {
+        return false;
+    }
+
+    private void updateClipping() {
+        if (mClipToActualHeight) {
+            int top = getClipTopAmount();
+            if (top >= getActualHeight()) {
+                top = getActualHeight() - 1;
+            }
+            mClipRect.set(0, top, getWidth(), getActualHeight() + getExtraBottomPadding());
+            setClipBounds(mClipRect);
+        } else {
+            setClipBounds(null);
+        }
+    }
+
+    public void setClipToActualHeight(boolean clipToActualHeight) {
+        mClipToActualHeight = clipToActualHeight;
+        updateClipping();
+    }
+
+    public boolean willBeGone() {
+        return mWillBeGone;
+    }
+
+    public void setWillBeGone(boolean willBeGone) {
+        mWillBeGone = willBeGone;
+    }
+
+    public int getMinClipTopAmount() {
+        return mMinClipTopAmount;
+    }
+
+    public void setMinClipTopAmount(int minClipTopAmount) {
+        mMinClipTopAmount = minClipTopAmount;
+    }
+
+    @Override
+    public void setLayerType(int layerType, Paint paint) {
+        if (hasOverlappingRendering()) {
+            super.setLayerType(layerType, paint);
+        }
+    }
+
+    @Override
+    public boolean hasOverlappingRendering() {
+        // Otherwise it will be clipped
+        return super.hasOverlappingRendering() && getActualHeight() <= getHeight();
+    }
+
+    public float getShadowAlpha() {
+        return 0.0f;
+    }
+
+    public void setShadowAlpha(float shadowAlpha) {
+    }
+
+    /**
+     * @return an amount between 0 and 1 of increased padding that this child needs
+     */
+    public float getIncreasedPaddingAmount() {
+        return 0.0f;
+    }
+
+    public boolean mustStayOnScreen() {
+        return false;
+    }
+
+    public void setFakeShadowIntensity(float shadowIntensity, float outlineAlpha, int shadowYEnd,
+            int outlineTranslation) {
+    }
+
+    public float getOutlineAlpha() {
+        return 0.0f;
+    }
+
+    public int getOutlineTranslation() {
+        return 0;
+    }
+
+    public void setChangingPosition(boolean changingPosition) {
+        mChangingPosition = changingPosition;
+    }
+
+    public boolean isChangingPosition() {
+        return mChangingPosition;
+    }
+
+    public void setTransientContainer(ViewGroup transientContainer) {
+        mTransientContainer = transientContainer;
+    }
+
+    public ViewGroup getTransientContainer() {
+        return mTransientContainer;
+    }
+
+    /**
+     * @return padding used to alter how much of the view is clipped.
+     */
+    public int getExtraBottomPadding() {
+        return 0;
+    }
+
+    /**
+     * @return true if the group's expansion state is changing, false otherwise.
+     */
+    public boolean isGroupExpansionChanging() {
+        return false;
+    }
+
+    public boolean isGroupExpanded() {
+        return false;
+    }
+
+    public boolean isChildInGroup() {
+        return false;
+    }
+
+    public void setActualHeightAnimating(boolean animating) {}
+
     /**
      * A listener notifying when {@link #getActualHeight} changes.
      */
@@ -306,8 +446,9 @@ public abstract class ExpandableView extends FrameLayout {
         /**
          * @param view the view for which the height changed, or {@code null} if just the top
          *             padding or the padding between the elements changed
+         * @param needsAnimation whether the view height needs to be animated
          */
-        void onHeightChanged(ExpandableView view);
+        void onHeightChanged(ExpandableView view, boolean needsAnimation);
 
         /**
          * Called when the view is reset and therefore the height will change abruptly

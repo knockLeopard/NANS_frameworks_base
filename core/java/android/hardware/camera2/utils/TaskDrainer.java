@@ -29,8 +29,9 @@ import static com.android.internal.util.Preconditions.*;
  * (and new ones won't begin).
  *
  * <p>The initial state is to allow all tasks to be started and finished. A task may only be started
- * once, after which it must be finished before starting again. Likewise, finishing a task
- * that hasn't been started is also not allowed.</p>
+ * once, after which it must be finished before starting again. Likewise, a task may only be
+ * finished once, after which it must be started before finishing again. It is okay to finish a
+ * task before starting it due to different threads handling starting and finishing.</p>
  *
  * <p>When draining begins, no more new tasks can be started. This guarantees that at some
  * point when all the tasks are finished there will be no more collective new tasks,
@@ -52,7 +53,7 @@ public class TaskDrainer<T> {
     }
 
     private static final String TAG = "TaskDrainer";
-    private final boolean VERBOSE = Log.isLoggable(TAG, Log.VERBOSE);
+    private final boolean DEBUG = false;
 
     private final Handler mHandler;
     private final DrainListener mListener;
@@ -60,6 +61,11 @@ public class TaskDrainer<T> {
 
     /** Set of tasks which have been started but not yet finished with #taskFinished */
     private final Set<T> mTaskSet = new HashSet<T>();
+    /**
+     * Set of tasks which have been finished but not yet started with #taskStarted. This may happen
+     * if taskStarted and taskFinished are called from two different threads.
+     */
+    private final Set<T> mEarlyFinishedTaskSet = new HashSet<T>();
     private final Object mLock = new Object();
 
     private boolean mDraining = false;
@@ -110,7 +116,7 @@ public class TaskDrainer<T> {
      */
     public void taskStarted(T task) {
         synchronized (mLock) {
-            if (VERBOSE) {
+            if (DEBUG) {
                 Log.v(TAG + "[" + mName + "]", "taskStarted " + task);
             }
 
@@ -118,8 +124,12 @@ public class TaskDrainer<T> {
                 throw new IllegalStateException("Can't start more tasks after draining has begun");
             }
 
-            if (!mTaskSet.add(task)) {
-                throw new IllegalStateException("Task " + task + " was already started");
+            // Try to remove the task from the early finished set.
+            if (!mEarlyFinishedTaskSet.remove(task)) {
+                // The task is not finished early. Add it to the started set.
+                if (!mTaskSet.add(task)) {
+                    throw new IllegalStateException("Task " + task + " was already started");
+                }
             }
         }
     }
@@ -128,8 +138,7 @@ public class TaskDrainer<T> {
     /**
      * Mark an asynchronous task as having finished.
      *
-     * <p>A task cannot be finished if it hasn't started. Once finished, a task
-     * cannot be finished again (unless it's started again).</p>
+     * <p>A task cannot be finished more than once without first having started.</p>
      *
      * @param task a key to identify a task
      *
@@ -137,16 +146,20 @@ public class TaskDrainer<T> {
      * @see #beginDrain
      *
      * @throws IllegalStateException
-     *          If attempting to start a task which is already finished (and not re-started),
+     *          If attempting to finish a task which is already finished (and not started),
      */
     public void taskFinished(T task) {
         synchronized (mLock) {
-            if (VERBOSE) {
+            if (DEBUG) {
                 Log.v(TAG + "[" + mName + "]", "taskFinished " + task);
             }
 
+            // Try to remove the task from started set.
             if (!mTaskSet.remove(task)) {
-                throw new IllegalStateException("Task " + task + " was already finished");
+                // Task is not started yet. Add it to the early finished set.
+                if (!mEarlyFinishedTaskSet.add(task)) {
+                    throw new IllegalStateException("Task " + task + " was already finished");
+                }
             }
 
             // If this is the last finished task and draining has already begun, fire #onDrained
@@ -163,7 +176,7 @@ public class TaskDrainer<T> {
     public void beginDrain() {
         synchronized (mLock) {
             if (!mDraining) {
-                if (VERBOSE) {
+                if (DEBUG) {
                     Log.v(TAG + "[" + mName + "]", "beginDrain started");
                 }
 
@@ -172,7 +185,7 @@ public class TaskDrainer<T> {
                 // If all tasks that had started had already finished by now, fire #onDrained
                 checkIfDrainFinished();
             } else {
-                if (VERBOSE) {
+                if (DEBUG) {
                     Log.v(TAG + "[" + mName + "]", "beginDrain ignored");
                 }
             }
@@ -190,7 +203,7 @@ public class TaskDrainer<T> {
         mHandler.post(new Runnable() {
             @Override
             public void run() {
-                if (VERBOSE) {
+                if (DEBUG) {
                     Log.v(TAG + "[" + mName + "]", "onDrained");
                 }
 

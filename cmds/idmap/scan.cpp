@@ -1,6 +1,11 @@
+#include <dirent.h>
+#include <inttypes.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+
 #include "idmap.h"
 
-#include <UniquePtr.h>
+#include <memory>
 #include <androidfw/ResourceTypes.h>
 #include <androidfw/StreamingZipInflater.h>
 #include <androidfw/ZipFileRO.h>
@@ -8,8 +13,6 @@
 #include <utils/SortedVector.h>
 #include <utils/String16.h>
 #include <utils/String8.h>
-
-#include <dirent.h>
 
 #define NO_OVERLAY_TAG (-1000)
 
@@ -23,8 +26,7 @@ namespace {
 
         bool operator<(Overlay const& rhs) const
         {
-            // Note: order is reversed by design
-            return rhs.priority < priority;
+            return rhs.priority > priority;
         }
 
         String8 apk_path;
@@ -34,8 +36,21 @@ namespace {
 
     bool writePackagesList(const char *filename, const SortedVector<Overlay>& overlayVector)
     {
-        FILE* fout = fopen(filename, "w");
+        // the file is opened for appending so that it doesn't get truncated
+        // before we can guarantee mutual exclusion via the flock
+        FILE* fout = fopen(filename, "a");
         if (fout == NULL) {
+            return false;
+        }
+
+        if (TEMP_FAILURE_RETRY(flock(fileno(fout), LOCK_EX)) != 0) {
+            fclose(fout);
+            return false;
+        }
+
+        if (TEMP_FAILURE_RETRY(ftruncate(fileno(fout), 0)) != 0) {
+            TEMP_FAILURE_RETRY(flock(fileno(fout), LOCK_UN));
+            fclose(fout);
             return false;
         }
 
@@ -44,6 +59,8 @@ namespace {
             fprintf(fout, "%s %s\n", overlay.apk_path.string(), overlay.idmap_path.string());
         }
 
+        TEMP_FAILURE_RETRY(fflush(fout));
+        TEMP_FAILURE_RETRY(flock(fileno(fout), LOCK_UN));
         fclose(fout);
 
         // Make file world readable since Zygote (running as root) will read
@@ -64,30 +81,6 @@ namespace {
         return String8(tmp);
     }
 
-    int mkdir_p(const String8& path, uid_t uid, gid_t gid)
-    {
-        static const mode_t mode =
-            S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP | S_IXGRP | S_IROTH | S_IXOTH;
-        struct stat st;
-
-        if (stat(path.string(), &st) == 0) {
-            return 0;
-        }
-        if (mkdir_p(path.getPathDir(), uid, gid) < 0) {
-            return -1;
-        }
-        if (mkdir(path.string(), 0755) != 0) {
-            return -1;
-        }
-        if (chown(path.string(), uid, gid) == -1) {
-            return -1;
-        }
-        if (chmod(path.string(), mode) == -1) {
-            return -1;
-        }
-        return 0;
-    }
-
     int parse_overlay_tag(const ResXMLTree& parser, const char *target_package_name)
     {
         const size_t N = parser.getAttributeCount();
@@ -97,8 +90,8 @@ namespace {
             size_t len;
             String16 key(parser.getAttributeName(i, &len));
             if (key == String16("targetPackage")) {
-                const uint16_t *p = parser.getAttributeStringValue(i, &len);
-                if (p) {
+                const char16_t *p = parser.getAttributeStringValue(i, &len);
+                if (p != NULL) {
                     target = String16(p, len);
                 }
             } else if (key == String16("priority")) {
@@ -143,7 +136,7 @@ namespace {
 
     int parse_apk(const char *path, const char *target_package_name)
     {
-        UniquePtr<ZipFileRO> zip(ZipFileRO::open(path));
+        std::unique_ptr<ZipFileRO> zip(ZipFileRO::open(path));
         if (zip.get() == NULL) {
             ALOGW("%s: failed to open zip %s\n", __FUNCTION__, path);
             return -1;
@@ -153,89 +146,90 @@ namespace {
             ALOGW("%s: failed to find entry AndroidManifest.xml\n", __FUNCTION__);
             return -1;
         }
-        size_t uncompLen = 0;
-        int method;
+        uint32_t uncompLen = 0;
+        uint16_t method;
         if (!zip->getEntryInfo(entry, &method, &uncompLen, NULL, NULL, NULL, NULL)) {
             ALOGW("%s: failed to read entry info\n", __FUNCTION__);
             return -1;
         }
         if (method != ZipFileRO::kCompressDeflated) {
-            ALOGW("%s: cannot handle zip compression method %d\n", __FUNCTION__, method);
+            ALOGW("%s: cannot handle zip compression method %" PRIu16 "\n", __FUNCTION__, method);
             return -1;
         }
         FileMap *dataMap = zip->createEntryFileMap(entry);
-        if (!dataMap) {
+        if (dataMap == NULL) {
             ALOGW("%s: failed to create FileMap\n", __FUNCTION__);
             return -1;
         }
         char *buf = new char[uncompLen];
         if (NULL == buf) {
-            ALOGW("%s: failed to allocate %d byte\n", __FUNCTION__, uncompLen);
-            dataMap->release();
+            ALOGW("%s: failed to allocate %" PRIu32 " byte\n", __FUNCTION__, uncompLen);
+            delete dataMap;
             return -1;
         }
         StreamingZipInflater inflater(dataMap, uncompLen);
         if (inflater.read(buf, uncompLen) < 0) {
-            ALOGW("%s: failed to inflate %d byte\n", __FUNCTION__, uncompLen);
+            ALOGW("%s: failed to inflate %" PRIu32 " byte\n", __FUNCTION__, uncompLen);
             delete[] buf;
-            dataMap->release();
+            delete dataMap;
             return -1;
         }
 
-        int priority = parse_manifest(buf, uncompLen, target_package_name);
+        int priority = parse_manifest(buf, static_cast<size_t>(uncompLen), target_package_name);
         delete[] buf;
-        dataMap->release();
+        delete dataMap;
         return priority;
     }
 }
 
-int idmap_scan(const char *overlay_dir, const char *target_package_name,
-        const char *target_apk_path, const char *idmap_dir)
+int idmap_scan(const char *target_package_name, const char *target_apk_path,
+        const char *idmap_dir, const android::Vector<const char *> *overlay_dirs)
 {
     String8 filename = String8(idmap_dir);
     filename.appendPath("overlays.list");
-    if (unlink(filename.string()) != 0 && errno != ENOENT) {
-        return EXIT_FAILURE;
-    }
-
-    DIR *dir = opendir(overlay_dir);
-    if (dir == NULL) {
-        return EXIT_FAILURE;
-    }
 
     SortedVector<Overlay> overlayVector;
-    struct dirent *dirent;
-    while ((dirent = readdir(dir)) != NULL) {
-        struct stat st;
-        char overlay_apk_path[PATH_MAX + 1];
-        snprintf(overlay_apk_path, PATH_MAX, "%s/%s", overlay_dir, dirent->d_name);
-        if (stat(overlay_apk_path, &st) < 0) {
-            continue;
-        }
-        if (!S_ISREG(st.st_mode)) {
-            continue;
+    const size_t N = overlay_dirs->size();
+    for (size_t i = 0; i < N; ++i) {
+        const char *overlay_dir = overlay_dirs->itemAt(i);
+        DIR *dir = opendir(overlay_dir);
+        if (dir == NULL) {
+            return EXIT_FAILURE;
         }
 
-        int priority = parse_apk(overlay_apk_path, target_package_name);
-        if (priority < 0) {
-            continue;
+        struct dirent *dirent;
+        while ((dirent = readdir(dir)) != NULL) {
+            struct stat st;
+            char overlay_apk_path[PATH_MAX + 1];
+            snprintf(overlay_apk_path, PATH_MAX, "%s/%s", overlay_dir, dirent->d_name);
+            if (stat(overlay_apk_path, &st) < 0) {
+                continue;
+            }
+            if (!S_ISREG(st.st_mode)) {
+                continue;
+            }
+
+            int priority = parse_apk(overlay_apk_path, target_package_name);
+            if (priority < 0) {
+                continue;
+            }
+
+            String8 idmap_path(idmap_dir);
+            idmap_path.appendPath(flatten_path(overlay_apk_path + 1));
+            idmap_path.append("@idmap");
+
+            if (idmap_create_path(target_apk_path, overlay_apk_path, idmap_path.string()) != 0) {
+                ALOGE("error: failed to create idmap for target=%s overlay=%s idmap=%s\n",
+                        target_apk_path, overlay_apk_path, idmap_path.string());
+                continue;
+            }
+
+            Overlay overlay(String8(overlay_apk_path), idmap_path, priority);
+            overlayVector.add(overlay);
         }
 
-        String8 idmap_path(idmap_dir);
-        idmap_path.appendPath(flatten_path(overlay_apk_path + 1));
-        idmap_path.append("@idmap");
-
-        if (idmap_create_path(target_apk_path, overlay_apk_path, idmap_path.string()) != 0) {
-            ALOGE("error: failed to create idmap for target=%s overlay=%s idmap=%s\n",
-                    target_apk_path, overlay_apk_path, idmap_path.string());
-            continue;
-        }
-
-        Overlay overlay(String8(overlay_apk_path), idmap_path, priority);
-        overlayVector.add(overlay);
+        closedir(dir);
     }
-
-    closedir(dir);
 
     if (!writePackagesList(filename.string(), overlayVector)) {
         return EXIT_FAILURE;

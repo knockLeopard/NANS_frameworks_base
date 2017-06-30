@@ -45,7 +45,7 @@ struct DirtyStack {
 };
 
 DamageAccumulator::DamageAccumulator() {
-    mHead = (DirtyStack*) mAllocator.alloc(sizeof(DirtyStack));
+    mHead = mAllocator.create_trivial<DirtyStack>();
     memset(mHead, 0, sizeof(DirtyStack));
     // Create a root that we will not pop off
     mHead->prev = mHead;
@@ -78,8 +78,8 @@ void DamageAccumulator::computeCurrentTransform(Matrix4* outMatrix) const {
 
 void DamageAccumulator::pushCommon() {
     if (!mHead->next) {
-        DirtyStack* nextFrame = (DirtyStack*) mAllocator.alloc(sizeof(DirtyStack));
-        nextFrame->next = 0;
+        DirtyStack* nextFrame = mAllocator.create_trivial<DirtyStack>();
+        nextFrame->next = nullptr;
         nextFrame->prev = mHead;
         mHead->next = nextFrame;
     }
@@ -121,7 +121,14 @@ void DamageAccumulator::popTransform() {
 static inline void mapRect(const Matrix4* matrix, const SkRect& in, SkRect* out) {
     if (in.isEmpty()) return;
     Rect temp(in);
-    matrix->mapRect(temp);
+    if (CC_LIKELY(!matrix->isPerspective())) {
+        matrix->mapRect(temp);
+    } else {
+        // Don't attempt to calculate damage for a perspective transform
+        // as the numbers this works with can break the perspective
+        // calculations. Just give up and expand to DIRTY_MIN/DIRTY_MAX
+        temp.set(DIRTY_MIN, DIRTY_MIN, DIRTY_MAX, DIRTY_MAX);
+    }
     out->join(RECT_ARGS(temp));
 }
 
@@ -134,7 +141,14 @@ static inline void mapRect(const RenderProperties& props, const SkRect& in, SkRe
     const SkMatrix* transform = props.getTransformMatrix();
     SkRect temp(in);
     if (transform && !transform->isIdentity()) {
-        transform->mapRect(&temp);
+        if (CC_LIKELY(!transform->hasPerspective())) {
+            transform->mapRect(&temp);
+        } else {
+            // Don't attempt to calculate damage for a perspective transform
+            // as the numbers this works with can break the perspective
+            // calculations. Just give up and expand to DIRTY_MIN/DIRTY_MAX
+            temp.set(DIRTY_MIN, DIRTY_MIN, DIRTY_MAX, DIRTY_MAX);
+        }
     }
     temp.offset(props.getLeft(), props.getTop());
     out->join(temp);
@@ -147,7 +161,7 @@ static DirtyStack* findParentRenderNode(DirtyStack* frame) {
             return frame;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 static DirtyStack* findProjectionReceiver(DirtyStack* frame) {
@@ -160,7 +174,7 @@ static DirtyStack* findProjectionReceiver(DirtyStack* frame) {
             }
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 static void applyTransforms(DirtyStack* frame, DirtyStack* end) {
@@ -222,7 +236,7 @@ void DamageAccumulator::finish(SkRect* totalDirty) {
     LOG_ALWAYS_FATAL_IF(mHead->prev != mHead, "Cannot finish, mismatched push/pop calls! %p vs. %p", mHead->prev, mHead);
     // Root node never has a transform, so this is the fully mapped dirty rect
     *totalDirty = mHead->pendingDirty;
-    totalDirty->roundOut();
+    totalDirty->roundOut(totalDirty);
     mHead->pendingDirty.setEmpty();
 }
 

@@ -16,33 +16,48 @@
 
 package android.view;
 
-import com.android.ide.common.rendering.api.IProjectCallback;
 import com.android.ide.common.rendering.api.LayoutLog;
+import com.android.ide.common.rendering.api.LayoutlibCallback;
 import com.android.ide.common.rendering.api.MergeCookie;
 import com.android.ide.common.rendering.api.ResourceReference;
 import com.android.ide.common.rendering.api.ResourceValue;
 import com.android.layoutlib.bridge.Bridge;
+import com.android.layoutlib.bridge.BridgeConstants;
+import com.android.layoutlib.bridge.MockView;
 import com.android.layoutlib.bridge.android.BridgeContext;
 import com.android.layoutlib.bridge.android.BridgeXmlBlockParser;
+import com.android.layoutlib.bridge.android.support.DrawerLayoutUtil;
+import com.android.layoutlib.bridge.android.support.RecyclerViewUtil;
 import com.android.layoutlib.bridge.impl.ParserFactory;
+import com.android.layoutlib.bridge.util.ReflectionUtils;
 import com.android.resources.ResourceType;
 import com.android.util.Pair;
 
 import org.xmlpull.v1.XmlPullParser;
 
+import android.annotation.NonNull;
 import android.content.Context;
+import android.content.res.TypedArray;
 import android.util.AttributeSet;
 
 import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
+
+import static com.android.layoutlib.bridge.android.BridgeContext.getBaseContext;
 
 /**
  * Custom implementation of {@link LayoutInflater} to handle custom views.
  */
 public final class BridgeInflater extends LayoutInflater {
 
-    private final IProjectCallback mProjectCallback;
+    private final LayoutlibCallback mLayoutlibCallback;
     private boolean mIsInMerge = false;
     private ResourceReference mResourceReference;
+    private Map<View, String> mOpenDrawerLayouts;
+
+    // Keep in sync with the same value in LayoutInflater.
+    private static final int[] ATTRS_THEME = new int[] {com.android.internal.R.attr.theme };
 
     /**
      * List of class prefixes which are tried first by default.
@@ -51,23 +66,33 @@ public final class BridgeInflater extends LayoutInflater {
      */
     private static final String[] sClassPrefixList = {
         "android.widget.",
-        "android.webkit."
+        "android.webkit.",
+        "android.app."
     };
+
+    public static String[] getClassPrefixList() {
+        return sClassPrefixList;
+    }
 
     protected BridgeInflater(LayoutInflater original, Context newContext) {
         super(original, newContext);
-        mProjectCallback = null;
+        newContext = getBaseContext(newContext);
+        if (newContext instanceof BridgeContext) {
+            mLayoutlibCallback = ((BridgeContext) newContext).getLayoutlibCallback();
+        } else {
+            mLayoutlibCallback = null;
+        }
     }
 
     /**
-     * Instantiate a new BridgeInflater with an {@link IProjectCallback} object.
+     * Instantiate a new BridgeInflater with an {@link LayoutlibCallback} object.
      *
      * @param context The Android application context.
-     * @param projectCallback the {@link IProjectCallback} object.
+     * @param layoutlibCallback the {@link LayoutlibCallback} object.
      */
-    public BridgeInflater(Context context, IProjectCallback projectCallback) {
+    public BridgeInflater(Context context, LayoutlibCallback layoutlibCallback) {
         super(context);
-        mProjectCallback = projectCallback;
+        mLayoutlibCallback = layoutlibCallback;
         mConstructorArgs[0] = context;
     }
 
@@ -99,20 +124,16 @@ public final class BridgeInflater extends LayoutInflater {
             }
 
             // Finally try again using the custom view loader
-            try {
-                if (view == null) {
-                    view = loadCustomView(name, attrs);
-                }
-            } catch (ClassNotFoundException e) {
-                // If the class was not found, we throw the exception directly, because this
-                // method is already expected to throw it.
-                throw e;
+            if (view == null) {
+                view = loadCustomView(name, attrs);
             }
+        } catch (InflateException e) {
+            // Don't catch the InflateException below as that results in hiding the real cause.
+            throw e;
         } catch (Exception e) {
             // Wrap the real exception in a ClassNotFoundException, so that the calling method
             // can deal with it.
-            ClassNotFoundException exception = new ClassNotFoundException("onCreateView", e);
-            throw exception;
+            throw new ClassNotFoundException("onCreateView", e);
         }
 
         setupViewInContext(view, attrs);
@@ -121,25 +142,46 @@ public final class BridgeInflater extends LayoutInflater {
     }
 
     @Override
-    public View createViewFromTag(View parent, String name, AttributeSet attrs,
-            boolean inheritContext) {
-        View view = null;
+    public View createViewFromTag(View parent, String name, Context context, AttributeSet attrs,
+            boolean ignoreThemeAttr) {
+        View view;
         try {
-            view = super.createViewFromTag(parent, name, attrs, inheritContext);
+            view = super.createViewFromTag(parent, name, context, attrs, ignoreThemeAttr);
         } catch (InflateException e) {
-            // try to load the class from using the custom view loader
-            try {
-                view = loadCustomView(name, attrs);
-            } catch (Exception e2) {
-                // Wrap the real exception in an InflateException so that the calling
-                // method can deal with it.
-                InflateException exception = new InflateException();
-                if (e2.getClass().equals(ClassNotFoundException.class) == false) {
-                    exception.initCause(e2);
-                } else {
-                    exception.initCause(e);
+            // Creation of ContextThemeWrapper code is same as in the super method.
+            // Apply a theme wrapper, if allowed and one is specified.
+            if (!ignoreThemeAttr) {
+                final TypedArray ta = context.obtainStyledAttributes(attrs, ATTRS_THEME);
+                final int themeResId = ta.getResourceId(0, 0);
+                if (themeResId != 0) {
+                    context = new ContextThemeWrapper(context, themeResId);
                 }
-                throw exception;
+                ta.recycle();
+            }
+            if (!(e.getCause() instanceof ClassNotFoundException)) {
+                // There is some unknown inflation exception in inflating a View that was found.
+                view = new MockView(context, attrs);
+                ((MockView) view).setText(name);
+                Bridge.getLog().error(LayoutLog.TAG_BROKEN, e.getMessage(), e, null);
+            } else {
+                final Object lastContext = mConstructorArgs[0];
+                mConstructorArgs[0] = context;
+                // try to load the class from using the custom view loader
+                try {
+                    view = loadCustomView(name, attrs);
+                } catch (Exception e2) {
+                    // Wrap the real exception in an InflateException so that the calling
+                    // method can deal with it.
+                    InflateException exception = new InflateException();
+                    if (!e2.getClass().equals(ClassNotFoundException.class)) {
+                        exception.initCause(e2);
+                    } else {
+                        exception.initCause(e);
+                    }
+                    throw exception;
+                } finally {
+                    mConstructorArgs[0] = lastContext;
+                }
             }
         }
 
@@ -151,20 +193,19 @@ public final class BridgeInflater extends LayoutInflater {
     @Override
     public View inflate(int resource, ViewGroup root) {
         Context context = getContext();
-        while (context instanceof ContextThemeWrapper) {
-            context = ((ContextThemeWrapper) context).getBaseContext();
-        }
+        context = getBaseContext(context);
         if (context instanceof BridgeContext) {
             BridgeContext bridgeContext = (BridgeContext)context;
 
             ResourceValue value = null;
 
+            @SuppressWarnings("deprecation")
             Pair<ResourceType, String> layoutInfo = Bridge.resolveResourceId(resource);
             if (layoutInfo != null) {
                 value = bridgeContext.getRenderResources().getFrameworkResource(
                         ResourceType.LAYOUT, layoutInfo.getSecond());
             } else {
-                layoutInfo = mProjectCallback.resolveResourceId(resource);
+                layoutInfo = mLayoutlibCallback.resolveResourceId(resource);
 
                 if (layoutInfo != null) {
                     value = bridgeContext.getRenderResources().getProjectResource(
@@ -176,15 +217,15 @@ public final class BridgeInflater extends LayoutInflater {
                 File f = new File(value.getValue());
                 if (f.isFile()) {
                     try {
-                        XmlPullParser parser = ParserFactory.create(f);
+                        XmlPullParser parser = ParserFactory.create(f, true);
 
                         BridgeXmlBlockParser bridgeParser = new BridgeXmlBlockParser(
-                                parser, bridgeContext, false);
+                                parser, bridgeContext, value.isFramework());
 
                         return inflate(bridgeParser, root);
                     } catch (Exception e) {
                         Bridge.getLog().error(LayoutLog.TAG_RESOURCES_READ,
-                                "Failed to parse file " + f.getAbsolutePath(), e, null /*data*/);
+                                "Failed to parse file " + f.getAbsolutePath(), e, null);
 
                         return null;
                     }
@@ -194,9 +235,8 @@ public final class BridgeInflater extends LayoutInflater {
         return null;
     }
 
-    private View loadCustomView(String name, AttributeSet attrs) throws ClassNotFoundException,
-            Exception{
-        if (mProjectCallback != null) {
+    private View loadCustomView(String name, AttributeSet attrs) throws Exception {
+        if (mLayoutlibCallback != null) {
             // first get the classname in case it's not the node name
             if (name.equals("view")) {
                 name = attrs.getAttributeValue(null, "class");
@@ -204,7 +244,7 @@ public final class BridgeInflater extends LayoutInflater {
 
             mConstructorArgs[1] = attrs;
 
-            Object customView = mProjectCallback.loadView(name, mConstructorSignature,
+            Object customView = mLayoutlibCallback.loadView(name, mConstructorSignature,
                     mConstructorArgs);
 
             if (customView instanceof View) {
@@ -217,9 +257,7 @@ public final class BridgeInflater extends LayoutInflater {
 
     private void setupViewInContext(View view, AttributeSet attrs) {
         Context context = getContext();
-        while (context instanceof ContextThemeWrapper) {
-            context = ((ContextThemeWrapper) context).getBaseContext();
-        }
+        context = getBaseContext(context);
         if (context instanceof BridgeContext) {
             BridgeContext bc = (BridgeContext) context;
             // get the view key
@@ -227,6 +265,42 @@ public final class BridgeInflater extends LayoutInflater {
             if (viewKey != null) {
                 bc.addViewKey(view, viewKey);
             }
+            String scrollPosX = attrs.getAttributeValue(BridgeConstants.NS_RESOURCES, "scrollX");
+            if (scrollPosX != null && scrollPosX.endsWith("px")) {
+                int value = Integer.parseInt(scrollPosX.substring(0, scrollPosX.length() - 2));
+                bc.setScrollXPos(view, value);
+            }
+            String scrollPosY = attrs.getAttributeValue(BridgeConstants.NS_RESOURCES, "scrollY");
+            if (scrollPosY != null && scrollPosY.endsWith("px")) {
+                int value = Integer.parseInt(scrollPosY.substring(0, scrollPosY.length() - 2));
+                bc.setScrollYPos(view, value);
+            }
+            if (ReflectionUtils.isInstanceOf(view, RecyclerViewUtil.CN_RECYCLER_VIEW)) {
+                Integer resourceId = null;
+                String attrVal = attrs.getAttributeValue(BridgeConstants.NS_TOOLS_URI,
+                        BridgeConstants.ATTR_LIST_ITEM);
+                if (attrVal != null && !attrVal.isEmpty()) {
+                    ResourceValue resValue = bc.getRenderResources().findResValue(attrVal, false);
+                    if (resValue.isFramework()) {
+                        resourceId = Bridge.getResourceId(resValue.getResourceType(),
+                                resValue.getName());
+                    } else {
+                        resourceId = mLayoutlibCallback.getResourceId(resValue.getResourceType(),
+                                resValue.getName());
+                    }
+                }
+                if (resourceId == null) {
+                    resourceId = 0;
+                }
+                RecyclerViewUtil.setAdapter(view, bc, mLayoutlibCallback, resourceId);
+            } else if (ReflectionUtils.isInstanceOf(view, DrawerLayoutUtil.CN_DRAWER_LAYOUT)) {
+                String attrVal = attrs.getAttributeValue(BridgeConstants.NS_TOOLS_URI,
+                        BridgeConstants.ATTR_OPEN_DRAWER);
+                if (attrVal != null) {
+                    getDrawerLayoutMap().put(view, attrVal);
+                }
+            }
+
         }
     }
 
@@ -281,5 +355,29 @@ public final class BridgeInflater extends LayoutInflater {
         }
 
         return viewKey;
+    }
+
+    public void postInflateProcess(View view) {
+        if (mOpenDrawerLayouts != null) {
+            String gravity = mOpenDrawerLayouts.get(view);
+            if (gravity != null) {
+                DrawerLayoutUtil.openDrawer(view, gravity);
+            }
+            mOpenDrawerLayouts.remove(view);
+        }
+    }
+
+    @NonNull
+    private Map<View, String> getDrawerLayoutMap() {
+        if (mOpenDrawerLayouts == null) {
+            mOpenDrawerLayouts = new HashMap<View, String>(4);
+        }
+        return mOpenDrawerLayouts;
+    }
+
+    public void onDoneInflation() {
+        if (mOpenDrawerLayouts != null) {
+            mOpenDrawerLayouts.clear();
+        }
     }
 }

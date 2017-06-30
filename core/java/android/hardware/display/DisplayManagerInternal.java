@@ -125,11 +125,26 @@ public abstract class DisplayManagerInternal {
      * mirroring.
      * @param requestedRefreshRate The preferred refresh rate for the top-most visible window that
      * has a preference.
+     * @param requestedModeId The preferred mode id for the top-most visible window that has a
+     * preference.
      * @param inTraversal True if called from WindowManagerService during a window traversal
      * prior to call to performTraversalInTransactionFromWindowManager.
      */
     public abstract void setDisplayProperties(int displayId, boolean hasContent,
-            float requestedRefreshRate, boolean inTraversal);
+            float requestedRefreshRate, int requestedModeId, boolean inTraversal);
+
+    /**
+     * Applies an offset to the contents of a display, for example to avoid burn-in.
+     * <p>
+     * TODO: Technically this should be associated with a physical rather than logical
+     * display but this is good enough for now.
+     * </p>
+     *
+     * @param displayId The logical display id to update.
+     * @param x The X offset by which to shift the contents of the display.
+     * @param y The Y offset by which to shift the contents of the display.
+     */
+    public abstract void setDisplayOffsets(int displayId, int x, int y);
 
     /**
      * Describes the requested power state of the display.
@@ -152,6 +167,8 @@ public abstract class DisplayManagerInternal {
         public static final int POLICY_DIM = 2;
         // Policy: Make the screen bright as usual.
         public static final int POLICY_BRIGHT = 3;
+        // Policy: Keep the screen and display optimized for VR mode.
+        public static final int POLICY_VR = 4;
 
         // The basic overall policy to apply: off, doze, dim or bright.
         public int policy;
@@ -168,6 +185,10 @@ public abstract class DisplayManagerInternal {
 
         // The screen auto-brightness adjustment factor in the range -1 (dimmer) to 1 (brighter).
         public float screenAutoBrightnessAdjustment;
+
+        // Set to true if screenBrightness and screenAutoBrightnessAdjustment were both
+        // set by the user as opposed to being programmatically controlled by apps.
+        public boolean brightnessSetByUser;
 
         // If true, enables automatic brightness control.
         public boolean useAutoBrightness;
@@ -211,11 +232,16 @@ public abstract class DisplayManagerInternal {
             return policy == POLICY_BRIGHT || policy == POLICY_DIM;
         }
 
+        public boolean isVr() {
+            return policy == POLICY_VR;
+        }
+
         public void copyFrom(DisplayPowerRequest other) {
             policy = other.policy;
             useProximitySensor = other.useProximitySensor;
             screenBrightness = other.screenBrightness;
             screenAutoBrightnessAdjustment = other.screenAutoBrightnessAdjustment;
+            brightnessSetByUser = other.brightnessSetByUser;
             useAutoBrightness = other.useAutoBrightness;
             blockScreenOn = other.blockScreenOn;
             lowPowerMode = other.lowPowerMode;
@@ -236,6 +262,7 @@ public abstract class DisplayManagerInternal {
                     && useProximitySensor == other.useProximitySensor
                     && screenBrightness == other.screenBrightness
                     && screenAutoBrightnessAdjustment == other.screenAutoBrightnessAdjustment
+                    && brightnessSetByUser == other.brightnessSetByUser
                     && useAutoBrightness == other.useAutoBrightness
                     && blockScreenOn == other.blockScreenOn
                     && lowPowerMode == other.lowPowerMode
@@ -255,6 +282,7 @@ public abstract class DisplayManagerInternal {
                     + ", useProximitySensor=" + useProximitySensor
                     + ", screenBrightness=" + screenBrightness
                     + ", screenAutoBrightnessAdjustment=" + screenAutoBrightnessAdjustment
+                    + ", brightnessSetByUser=" + brightnessSetByUser
                     + ", useAutoBrightness=" + useAutoBrightness
                     + ", blockScreenOn=" + blockScreenOn
                     + ", lowPowerMode=" + lowPowerMode
@@ -273,6 +301,8 @@ public abstract class DisplayManagerInternal {
                     return "DIM";
                 case POLICY_BRIGHT:
                     return "BRIGHT";
+                case POLICY_VR:
+                    return "VR";
                 default:
                     return Integer.toString(policy);
             }

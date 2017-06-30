@@ -143,6 +143,8 @@ public class ImsCallProfile implements Parcelable {
     public static final int OIR_DEFAULT = 0;    // "user subscription default value"
     public static final int OIR_PRESENTATION_RESTRICTED = 1;
     public static final int OIR_PRESENTATION_NOT_RESTRICTED = 2;
+    public static final int OIR_PRESENTATION_UNKNOWN = 3;
+    public static final int OIR_PRESENTATION_PAYPHONE = 4;
 
     /**
      * Values for EXTRA_DIALSTRING
@@ -172,11 +174,44 @@ public class ImsCallProfile implements Parcelable {
      *  cna : Calling name
      *  ussd : For network-initiated USSD, MT only
      *  remote_uri : Connected user identity (it can be used for the conference)
+     *  ChildNum: Child number info.
+     *  Codec: Codec info.
+     *  DisplayText: Display text for the call.
+     *  AdditionalCallInfo: Additional call info.
+     *  CallPull: Boolean value specifying if the call is a pulled call.
      */
     public static final String EXTRA_OI = "oi";
     public static final String EXTRA_CNA = "cna";
     public static final String EXTRA_USSD = "ussd";
     public static final String EXTRA_REMOTE_URI = "remote_uri";
+    public static final String EXTRA_CHILD_NUMBER = "ChildNum";
+    public static final String EXTRA_CODEC = "Codec";
+    public static final String EXTRA_DISPLAY_TEXT = "DisplayText";
+    public static final String EXTRA_ADDITIONAL_CALL_INFO = "AdditionalCallInfo";
+    public static final String EXTRA_IS_CALL_PULL = "CallPull";
+
+    /**
+     * Extra key which the RIL can use to indicate the radio technology used for a call.
+     * Valid values are:
+     * {@link android.telephony.ServiceState#RIL_RADIO_TECHNOLOGY_LTE},
+     * {@link android.telephony.ServiceState#RIL_RADIO_TECHNOLOGY_IWLAN}, and the other defined
+     * {@code RIL_RADIO_TECHNOLOGY_*} constants.
+     * Note: Despite the fact the {@link android.telephony.ServiceState} values are integer
+     * constants, the values passed for the {@link #EXTRA_CALL_RAT_TYPE} should be strings (e.g.
+     * "14" vs (int) 14).
+     * Note: This is used by {@link com.android.internal.telephony.imsphone.ImsPhoneConnection#
+     *      updateWifiStateFromExtras(Bundle)} to determine whether to set the
+     * {@link android.telecom.Connection#PROPERTY_WIFI} property on a connection.
+     */
+    public static final String EXTRA_CALL_RAT_TYPE = "CallRadioTech";
+
+    /**
+     * Similar to {@link #EXTRA_CALL_RAT_TYPE}, except with a lowercase 'c'.  Used to ensure
+     * compatibility with modems that are non-compliant with the {@link #EXTRA_CALL_RAT_TYPE}
+     * extra key.  Should be removed when the non-compliant modems are fixed.
+     * @hide
+     */
+    public static final String EXTRA_CALL_RAT_TYPE_ALT = "callRadioTech";
 
     public int mServiceType;
     public int mCallType;
@@ -270,7 +305,6 @@ public class ImsCallProfile implements Parcelable {
         return "{ serviceType=" + mServiceType +
                 ", callType=" + mCallType +
                 ", restrictCause=" + mRestrictCause +
-                ", callExtras=" + mCallExtras.toString() +
                 ", mediaProfile=" + mMediaProfile.toString() + " }";
     }
 
@@ -310,25 +344,44 @@ public class ImsCallProfile implements Parcelable {
      * Converts from the call types defined in {@link com.android.ims.ImsCallProfile} to the
      * video state values defined in {@link VideoProfile}.
      *
+     * @param callProfile The call profile.
+     * @return The video state.
+     */
+    public static int getVideoStateFromImsCallProfile(ImsCallProfile callProfile) {
+        int videostate = getVideoStateFromCallType(callProfile.mCallType);
+        if (callProfile.isVideoPaused() && !VideoProfile.isAudioOnly(videostate)) {
+            videostate |= VideoProfile.STATE_PAUSED;
+        } else {
+            videostate &= ~VideoProfile.STATE_PAUSED;
+        }
+        return videostate;
+    }
+
+    /**
+     * Translates a {@link ImsCallProfile} {@code CALL_TYPE_*} constant into a video state.
      * @param callType The call type.
      * @return The video state.
      */
     public static int getVideoStateFromCallType(int callType) {
+        int videostate = VideoProfile.STATE_AUDIO_ONLY;
         switch (callType) {
-            case CALL_TYPE_VT_NODIR:
-                return VideoProfile.VideoState.PAUSED |
-                        VideoProfile.VideoState.BIDIRECTIONAL;
             case CALL_TYPE_VT_TX:
-                return VideoProfile.VideoState.TX_ENABLED;
+                videostate = VideoProfile.STATE_TX_ENABLED;
+                break;
             case CALL_TYPE_VT_RX:
-                return VideoProfile.VideoState.RX_ENABLED;
+                videostate = VideoProfile.STATE_RX_ENABLED;
+                break;
             case CALL_TYPE_VT:
-                return VideoProfile.VideoState.BIDIRECTIONAL;
+                videostate = VideoProfile.STATE_BIDIRECTIONAL;
+                break;
             case CALL_TYPE_VOICE:
-                return VideoProfile.VideoState.AUDIO_ONLY;
+                videostate = VideoProfile.STATE_AUDIO_ONLY;
+                break;
             default:
-                return VideoProfile.VideoState.AUDIO_ONLY;
+                videostate = VideoProfile.STATE_AUDIO_ONLY;
+                break;
         }
+        return videostate;
     }
 
     /**
@@ -339,9 +392,9 @@ public class ImsCallProfile implements Parcelable {
      * @return The call type.
      */
     public static int getCallTypeFromVideoState(int videoState) {
-        boolean videoTx = isVideoStateSet(videoState, VideoProfile.VideoState.TX_ENABLED);
-        boolean videoRx = isVideoStateSet(videoState, VideoProfile.VideoState.RX_ENABLED);
-        boolean isPaused = isVideoStateSet(videoState, VideoProfile.VideoState.PAUSED);
+        boolean videoTx = isVideoStateSet(videoState, VideoProfile.STATE_TX_ENABLED);
+        boolean videoRx = isVideoStateSet(videoState, VideoProfile.STATE_RX_ENABLED);
+        boolean isPaused = isVideoStateSet(videoState, VideoProfile.STATE_PAUSED);
         if (isPaused) {
             return ImsCallProfile.CALL_TYPE_VT_NODIR;
         } else if (videoTx && !videoRx) {
@@ -365,6 +418,10 @@ public class ImsCallProfile implements Parcelable {
                 return ImsCallProfile.OIR_PRESENTATION_RESTRICTED;
             case PhoneConstants.PRESENTATION_ALLOWED:
                 return ImsCallProfile.OIR_PRESENTATION_NOT_RESTRICTED;
+            case PhoneConstants.PRESENTATION_PAYPHONE:
+                return ImsCallProfile.OIR_PRESENTATION_PAYPHONE;
+            case PhoneConstants.PRESENTATION_UNKNOWN:
+                return ImsCallProfile.OIR_PRESENTATION_UNKNOWN;
             default:
                 return ImsCallProfile.OIR_DEFAULT;
         }
@@ -381,9 +438,30 @@ public class ImsCallProfile implements Parcelable {
                 return PhoneConstants.PRESENTATION_RESTRICTED;
             case ImsCallProfile.OIR_PRESENTATION_NOT_RESTRICTED:
                 return PhoneConstants.PRESENTATION_ALLOWED;
+            case ImsCallProfile.OIR_PRESENTATION_PAYPHONE:
+                return PhoneConstants.PRESENTATION_PAYPHONE;
+            case ImsCallProfile.OIR_PRESENTATION_UNKNOWN:
+                return PhoneConstants.PRESENTATION_UNKNOWN;
             default:
                 return PhoneConstants.PRESENTATION_UNKNOWN;
         }
+    }
+
+    /**
+     * Checks if video call is paused
+     * @return true if call is video paused
+     */
+    public boolean isVideoPaused() {
+        return mMediaProfile.mVideoDirection == ImsStreamMediaProfile.DIRECTION_INACTIVE;
+    }
+
+    /**
+     * Determines if the {@link ImsCallProfile} represents a video call.
+     *
+     * @return {@code true} if the profile is for a video call, {@code false} otherwise.
+     */
+    public boolean isVideoCall() {
+        return VideoProfile.isVideo(getVideoStateFromCallType(mCallType));
     }
 
     /**

@@ -23,23 +23,20 @@ import android.app.Service;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.IBinder;
-import android.os.Parcel;
-import android.os.Parcelable;
 import android.os.RemoteException;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * A service that receives calls from the system when new SMS and MMS are
  * sent or received.
  * <p>To extend this class, you must declare the service in your manifest file with
- * the {@link android.Manifest.permission#BIND_CARRIER_MESSAGING_SERVICE} permission
+ * the {@link android.Manifest.permission#BIND_CARRIER_SERVICES} permission
  * and include an intent filter with the {@link #SERVICE_INTERFACE} action. For example:</p>
  * <pre>
  * &lt;service android:name=".MyMessagingService"
  *          android:label="&#64;string/service_name"
- *          android:permission="android.permission.BIND_CARRIER_MESSAGING_SERVICE">
+ *          android:permission="android.permission.BIND_CARRIER_SERVICES">
  *     &lt;intent-filter>
  *         &lt;action android:name="android.service.carrier.CarrierMessagingService" />
  *     &lt;/intent-filter>
@@ -52,6 +49,30 @@ public abstract class CarrierMessagingService extends Service {
     @SdkConstant(SdkConstant.SdkConstantType.SERVICE_ACTION)
     public static final String SERVICE_INTERFACE
             = "android.service.carrier.CarrierMessagingService";
+
+    /**
+     * The default bitmask value passed to the callback of {@link #onReceiveTextSms} with all
+     * {@code RECEIVE_OPTIONS_x} flags cleared to indicate that the message should be kept and a
+     * new message notification should be shown.
+     *
+     * @see #RECEIVE_OPTIONS_DROP
+     * @see #RECEIVE_OPTIONS_SKIP_NOTIFY_WHEN_CREDENTIAL_PROTECTED_STORAGE_UNAVAILABLE
+     */
+    public static final int RECEIVE_OPTIONS_DEFAULT = 0;
+
+    /**
+     * Used to set the flag in the bitmask passed to the callback of {@link #onReceiveTextSms} to
+     * indicate that the inbound SMS should be dropped.
+     */
+    public static final int RECEIVE_OPTIONS_DROP = 0x1;
+
+    /**
+     * Used to set the flag in the bitmask passed to the callback of {@link #onReceiveTextSms} to
+     * indicate that a new message notification should not be shown to the user when the
+     * credential-encrypted storage of the device is not available before the user unlocks the
+     * phone. It is only applicable to devices that support file-based encryption.
+     */
+    public static final int RECEIVE_OPTIONS_SKIP_NOTIFY_WHEN_CREDENTIAL_PROTECTED_STORAGE_UNAVAILABLE = 0x2;
 
     /**
      * Indicates that an SMS or MMS message was successfully sent.
@@ -83,6 +104,11 @@ public abstract class CarrierMessagingService extends Service {
      */
     public static final int DOWNLOAD_STATUS_ERROR = 2;
 
+    /**
+     * Flag to request SMS delivery status report.
+     */
+    public static final int SEND_FLAG_REQUEST_DELIVERY_STATUS = 1;
+
     private final ICarrierMessagingWrapper mWrapper = new ICarrierMessagingWrapper();
 
     /**
@@ -94,7 +120,9 @@ public abstract class CarrierMessagingService extends Service {
      * @param subId SMS subscription ID of the SIM
      * @param callback result callback. Call with {@code true} to keep an inbound SMS message and
      *        deliver to SMS apps, and {@code false} to drop the message.
+     * @deprecated Use {@link #onReceiveTextSms} instead.
      */
+    @Deprecated
     public void onFilterSms(@NonNull MessagePdu pdu, @NonNull String format, int destPort,
             int subId, @NonNull ResultCallback<Boolean> callback) {
         // optional
@@ -105,15 +133,85 @@ public abstract class CarrierMessagingService extends Service {
     }
 
     /**
+     * Override this method to filter inbound SMS messages.
+     *
+     * <p>This method will be called once for every incoming text SMS. You can invoke the callback
+     * with a bitmask to tell the platform how to handle the SMS. For a SMS received on a
+     * file-based encryption capable device while the credential-encrypted storage is not available,
+     * this method will be called for the second time when the credential-encrypted storage becomes
+     * available after the user unlocks the phone, if the bit {@link #RECEIVE_OPTIONS_DROP} is not
+     * set when invoking the callback.
+     *
+     * @param pdu the PDUs of the message
+     * @param format the format of the PDUs, typically "3gpp" or "3gpp2"
+     * @param destPort the destination port of a binary SMS, this will be -1 for text SMS
+     * @param subId SMS subscription ID of the SIM
+     * @param callback result callback. Call with a bitmask integer to indicate how the incoming
+     *        text SMS should be handled by the platform. Use {@link #RECEIVE_OPTIONS_DROP} and
+     *        {@link #RECEIVE_OPTIONS_SKIP_NOTIFY_WHEN_CREDENTIAL_PROTECTED_STORAGE_UNAVAILABLE}
+     *        to set the flags in the bitmask.
+     */
+    public void onReceiveTextSms(@NonNull MessagePdu pdu, @NonNull String format,
+            int destPort, int subId, @NonNull final ResultCallback<Integer> callback) {
+        onFilterSms(pdu, format, destPort, subId, new ResultCallback<Boolean>() {
+            @Override
+            public void onReceiveResult(Boolean result) throws RemoteException {
+                callback.onReceiveResult(result ? RECEIVE_OPTIONS_DEFAULT : RECEIVE_OPTIONS_DROP
+                    | RECEIVE_OPTIONS_SKIP_NOTIFY_WHEN_CREDENTIAL_PROTECTED_STORAGE_UNAVAILABLE);
+            }
+        });
+    }
+
+    /**
      * Override this method to intercept text SMSs sent from the device.
+     * @deprecated Override {@link #onSendTextSms} below instead.
      *
      * @param text the text to send
      * @param subId SMS subscription ID of the SIM
      * @param destAddress phone number of the recipient of the message
      * @param callback result callback. Call with a {@link SendSmsResult}.
      */
+    @Deprecated
     public void onSendTextSms(
             @NonNull String text, int subId, @NonNull String destAddress,
+            @NonNull ResultCallback<SendSmsResult> callback) {
+        // optional
+        try {
+            callback.onReceiveResult(new SendSmsResult(SEND_STATUS_RETRY_ON_CARRIER_NETWORK, 0));
+        } catch (RemoteException ex) {
+        }
+    }
+
+    /**
+     * Override this method to intercept text SMSs sent from the device.
+     *
+     * @param text the text to send
+     * @param subId SMS subscription ID of the SIM
+     * @param destAddress phone number of the recipient of the message
+     * @param sendSmsFlag Flag for sending SMS. Acceptable values are 0 and
+     *        {@link #SEND_FLAG_REQUEST_DELIVERY_STATUS}.
+     * @param callback result callback. Call with a {@link SendSmsResult}.
+     */
+    public void onSendTextSms(
+            @NonNull String text, int subId, @NonNull String destAddress,
+            int sendSmsFlag, @NonNull ResultCallback<SendSmsResult> callback) {
+        // optional
+        onSendTextSms(text, subId, destAddress, callback);
+    }
+
+    /**
+     * Override this method to intercept binary SMSs sent from the device.
+     * @deprecated Override {@link #onSendDataSms} below instead.
+     *
+     * @param data the binary content
+     * @param subId SMS subscription ID of the SIM
+     * @param destAddress phone number of the recipient of the message
+     * @param destPort the destination port
+     * @param callback result callback. Call with a {@link SendSmsResult}.
+     */
+    @Deprecated
+    public void onSendDataSms(@NonNull byte[] data, int subId,
+            @NonNull String destAddress, int destPort,
             @NonNull ResultCallback<SendSmsResult> callback) {
         // optional
         try {
@@ -129,14 +227,34 @@ public abstract class CarrierMessagingService extends Service {
      * @param subId SMS subscription ID of the SIM
      * @param destAddress phone number of the recipient of the message
      * @param destPort the destination port
+     * @param sendSmsFlag Flag for sending SMS. Acceptable values are 0 and
+     *        {@link #SEND_FLAG_REQUEST_DELIVERY_STATUS}.
      * @param callback result callback. Call with a {@link SendSmsResult}.
      */
     public void onSendDataSms(@NonNull byte[] data, int subId,
-            @NonNull String destAddress, int destPort,
+            @NonNull String destAddress, int destPort, int sendSmsFlag,
             @NonNull ResultCallback<SendSmsResult> callback) {
         // optional
+        onSendDataSms(data, subId, destAddress, destPort, callback);
+    }
+
+    /**
+     * Override this method to intercept long SMSs sent from the device.
+     * @deprecated Override {@link #onSendMultipartTextSms} below instead.
+     *
+     * @param parts a {@link List} of the message parts
+     * @param subId SMS subscription ID of the SIM
+     * @param destAddress phone number of the recipient of the message
+     * @param callback result callback. Call with a {@link SendMultipartSmsResult}.
+     */
+    @Deprecated
+    public void onSendMultipartTextSms(@NonNull List<String> parts,
+            int subId, @NonNull String destAddress,
+            @NonNull ResultCallback<SendMultipartSmsResult> callback) {
+        // optional
         try {
-            callback.onReceiveResult(new SendSmsResult(SEND_STATUS_RETRY_ON_CARRIER_NETWORK, 0));
+            callback.onReceiveResult(
+                    new SendMultipartSmsResult(SEND_STATUS_RETRY_ON_CARRIER_NETWORK, null));
         } catch (RemoteException ex) {
         }
     }
@@ -147,17 +265,15 @@ public abstract class CarrierMessagingService extends Service {
      * @param parts a {@link List} of the message parts
      * @param subId SMS subscription ID of the SIM
      * @param destAddress phone number of the recipient of the message
+     * @param sendSmsFlag Flag for sending SMS. Acceptable values are 0 and
+     *        {@link #SEND_FLAG_REQUEST_DELIVERY_STATUS}.
      * @param callback result callback. Call with a {@link SendMultipartSmsResult}.
      */
     public void onSendMultipartTextSms(@NonNull List<String> parts,
-            int subId, @NonNull String destAddress,
+            int subId, @NonNull String destAddress, int sendSmsFlag,
             @NonNull ResultCallback<SendMultipartSmsResult> callback) {
         // optional
-        try {
-            callback.onReceiveResult(
-                    new SendMultipartSmsResult(SEND_STATUS_RETRY_ON_CARRIER_NETWORK, null));
-        } catch (RemoteException ex) {
-        }
+        onSendMultipartTextSms(parts, subId, destAddress, callback);
     }
 
     /**
@@ -348,18 +464,20 @@ public abstract class CarrierMessagingService extends Service {
         @Override
         public void filterSms(MessagePdu pdu, String format, int destPort,
                               int subId, final ICarrierMessagingCallback callback) {
-            onFilterSms(pdu, format, destPort, subId, new ResultCallback<Boolean>() {
+            onReceiveTextSms(pdu, format, destPort, subId,
+                new ResultCallback<Integer>() {
                     @Override
-                    public void onReceiveResult(final Boolean result) throws RemoteException {
-                        callback.onFilterComplete(result);
+                    public void onReceiveResult(Integer options) throws RemoteException {
+                        callback.onFilterComplete(options);
                     }
                 });
         }
 
         @Override
         public void sendTextSms(String text, int subId, String destAddress,
-                                final ICarrierMessagingCallback callback) {
-            onSendTextSms(text, subId, destAddress, new ResultCallback<SendSmsResult>() {
+                int sendSmsFlag, final ICarrierMessagingCallback callback) {
+            onSendTextSms(text, subId, destAddress, sendSmsFlag,
+                    new ResultCallback<SendSmsResult>() {
                     @Override
                     public void onReceiveResult(final SendSmsResult result) throws RemoteException {
                         callback.onSendSmsComplete(result.getSendStatus(), result.getMessageRef());
@@ -369,8 +487,9 @@ public abstract class CarrierMessagingService extends Service {
 
         @Override
         public void sendDataSms(byte[] data, int subId, String destAddress, int destPort,
-                                final ICarrierMessagingCallback callback) {
-            onSendDataSms(data, subId, destAddress, destPort, new ResultCallback<SendSmsResult>() {
+                int sendSmsFlag, final ICarrierMessagingCallback callback) {
+            onSendDataSms(data, subId, destAddress, destPort, sendSmsFlag,
+                    new ResultCallback<SendSmsResult>() {
                     @Override
                     public void onReceiveResult(final SendSmsResult result) throws RemoteException {
                         callback.onSendSmsComplete(result.getSendStatus(), result.getMessageRef());
@@ -380,8 +499,8 @@ public abstract class CarrierMessagingService extends Service {
 
         @Override
         public void sendMultipartTextSms(List<String> parts, int subId, String destAddress,
-                                         final ICarrierMessagingCallback callback) {
-                onSendMultipartTextSms(parts, subId, destAddress,
+                int sendSmsFlag, final ICarrierMessagingCallback callback) {
+            onSendMultipartTextSms(parts, subId, destAddress, sendSmsFlag,
                         new ResultCallback<SendMultipartSmsResult>() {
                                 @Override
                                 public void onReceiveResult(final SendMultipartSmsResult result)

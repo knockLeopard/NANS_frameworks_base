@@ -19,6 +19,8 @@ package android.bluetooth;
 import android.os.Parcel;
 import android.os.Parcelable;
 
+import java.util.UUID;
+
 /**
  * This class represents a single call, its state and properties.
  * It implements {@link Parcelable} for inter-process message passing.
@@ -61,18 +63,27 @@ public final class BluetoothHeadsetClientCall implements Parcelable {
      */
     public static final int CALL_STATE_TERMINATED = 7;
 
+    private final BluetoothDevice mDevice;
     private final int mId;
     private int mState;
     private String mNumber;
     private boolean mMultiParty;
     private final boolean mOutgoing;
+    private final UUID mUUID;
 
     /**
      * Creates BluetoothHeadsetClientCall instance.
      */
-    public BluetoothHeadsetClientCall(int id, int state, String number, boolean multiParty,
-            boolean outgoing) {
+    public BluetoothHeadsetClientCall(BluetoothDevice device, int id, int state, String number,
+            boolean multiParty, boolean outgoing) {
+        this(device, id, UUID.randomUUID(), state, number, multiParty, outgoing);
+    }
+
+    public BluetoothHeadsetClientCall(BluetoothDevice device, int id, UUID uuid, int state,
+            String number, boolean multiParty, boolean outgoing) {
+        mDevice = device;
         mId = id;
+        mUUID = uuid;
         mState = state;
         mNumber = number != null ? number : "";
         mMultiParty = multiParty;
@@ -114,12 +125,31 @@ public final class BluetoothHeadsetClientCall implements Parcelable {
     }
 
     /**
+     * Gets call's device.
+     *
+     * @return call device.
+     */
+    public BluetoothDevice getDevice() {
+        return mDevice;
+    }
+
+    /**
      * Gets call's Id.
      *
      * @return call id.
      */
     public int getId() {
         return mId;
+    }
+
+    /**
+     * Gets call's UUID.
+     *
+     * @return call uuid
+     * @hide
+     */
+    public UUID getUUID() {
+        return mUUID;
     }
 
     /**
@@ -161,8 +191,16 @@ public final class BluetoothHeadsetClientCall implements Parcelable {
     }
 
     public String toString() {
-        StringBuilder builder = new StringBuilder("BluetoothHeadsetClientCall{mId: ");
+        return toString(false);
+    }
+
+    public String toString(boolean loggable) {
+        StringBuilder builder = new StringBuilder("BluetoothHeadsetClientCall{mDevice: ");
+        builder.append(loggable ? mDevice : mDevice.hashCode());
+        builder.append(", mId: ");
         builder.append(mId);
+        builder.append(", mUUID: ");
+        builder.append(mUUID);
         builder.append(", mState: ");
         switch (mState) {
             case CALL_STATE_ACTIVE: builder.append("ACTIVE"); break;
@@ -176,7 +214,7 @@ public final class BluetoothHeadsetClientCall implements Parcelable {
             default: builder.append(mState); break;
         }
         builder.append(", mNumber: ");
-        builder.append(mNumber);
+        builder.append(loggable ? mNumber : mNumber.hashCode());
         builder.append(", mMultiParty: ");
         builder.append(mMultiParty);
         builder.append(", mOutgoing: ");
@@ -192,7 +230,8 @@ public final class BluetoothHeadsetClientCall implements Parcelable {
             new Parcelable.Creator<BluetoothHeadsetClientCall>() {
                 @Override
                 public BluetoothHeadsetClientCall createFromParcel(Parcel in) {
-                    return new BluetoothHeadsetClientCall(in.readInt(), in.readInt(),
+                    return new BluetoothHeadsetClientCall((BluetoothDevice)in.readParcelable(null),
+                            in.readInt(), UUID.fromString(in.readString()), in.readInt(),
                             in.readString(), in.readInt() == 1, in.readInt() == 1);
                 }
 
@@ -204,7 +243,9 @@ public final class BluetoothHeadsetClientCall implements Parcelable {
 
     @Override
     public void writeToParcel(Parcel out, int flags) {
+        out.writeParcelable(mDevice, 0);
         out.writeInt(mId);
+        out.writeString(mUUID.toString());
         out.writeInt(mState);
         out.writeString(mNumber);
         out.writeInt(mMultiParty ? 1 : 0);

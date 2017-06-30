@@ -18,8 +18,11 @@ package com.android.internal.app;
 
 import android.animation.ValueAnimator;
 import android.content.res.TypedArray;
+import android.view.View.OnFocusChangeListener;
+import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.widget.Toolbar;
+
 import com.android.internal.R;
 import com.android.internal.view.ActionBarPolicy;
 import com.android.internal.view.menu.MenuBuilder;
@@ -88,21 +91,25 @@ public class WindowDecorActionBar extends ActionBar implements
 
     private TabImpl mSelectedTab;
     private int mSavedTabPosition = INVALID_POSITION;
-    
+
     private boolean mDisplayHomeAsUpSet;
 
-    ActionModeImpl mActionMode;
+    ActionMode mActionMode;
     ActionMode mDeferredDestroyActionMode;
     ActionMode.Callback mDeferredModeDestroyCallback;
-    
+
     private boolean mLastMenuVisibility;
     private ArrayList<OnMenuVisibilityListener> mMenuVisibilityListeners =
             new ArrayList<OnMenuVisibilityListener>();
 
     private static final int CONTEXT_DISPLAY_NORMAL = 0;
     private static final int CONTEXT_DISPLAY_SPLIT = 1;
-    
+
     private static final int INVALID_POSITION = -1;
+
+    // The fade duration for toolbar and action bar when entering/exiting action mode.
+    private static final long FADE_OUT_DURATION_MS = 100;
+    private static final long FADE_IN_DURATION_MS = 200;
 
     private int mContextDisplayMode;
     private boolean mHasEmbeddedTabs;
@@ -498,6 +505,9 @@ public class WindowDecorActionBar extends ActionBar implements
         mContextView.killMode();
         ActionModeImpl mode = new ActionModeImpl(mContextView.getContext(), callback);
         if (mode.dispatchOnCreate()) {
+            // This needs to be set before invalidate() so that it calls
+            // onPrepareActionMode()
+            mActionMode = mode;
             mode.invalidate();
             mContextView.initForMode(mode);
             animateToMode(true);
@@ -511,7 +521,6 @@ public class WindowDecorActionBar extends ActionBar implements
                 }
             }
             mContextView.sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
-            mActionMode = mode;
             return mode;
         }
         return null;
@@ -864,9 +873,38 @@ public class WindowDecorActionBar extends ActionBar implements
             hideForActionMode();
         }
 
-        mDecorToolbar.animateToVisibility(toActionMode ? View.GONE : View.VISIBLE);
-        mContextView.animateToVisibility(toActionMode ? View.VISIBLE : View.GONE);
+        if (shouldAnimateContextView()) {
+            Animator fadeIn, fadeOut;
+            if (toActionMode) {
+                fadeOut = mDecorToolbar.setupAnimatorToVisibility(View.GONE,
+                        FADE_OUT_DURATION_MS);
+                fadeIn = mContextView.setupAnimatorToVisibility(View.VISIBLE,
+                        FADE_IN_DURATION_MS);
+            } else {
+                fadeIn = mDecorToolbar.setupAnimatorToVisibility(View.VISIBLE,
+                        FADE_IN_DURATION_MS);
+                fadeOut = mContextView.setupAnimatorToVisibility(View.GONE,
+                        FADE_OUT_DURATION_MS);
+            }
+            AnimatorSet set = new AnimatorSet();
+            set.playSequentially(fadeOut, fadeIn);
+            set.start();
+        } else {
+            if (toActionMode) {
+                mDecorToolbar.setVisibility(View.GONE);
+                mContextView.setVisibility(View.VISIBLE);
+            } else {
+                mDecorToolbar.setVisibility(View.VISIBLE);
+                mContextView.setVisibility(View.GONE);
+            }
+        }
         // mTabScrollView's visibility is not affected by action mode.
+    }
+
+    private boolean shouldAnimateContextView() {
+        // We only to animate the action mode in if the container view has already been laid out.
+        // If it hasn't been laid out, it hasn't been drawn to screen yet.
+        return mContainerView.isLaidOut();
     }
 
     public Context getThemedContext() {
@@ -932,6 +970,12 @@ public class WindowDecorActionBar extends ActionBar implements
         return false;
     }
 
+    /** @hide */
+    @Override
+    public boolean requestFocus() {
+        return requestFocus(mDecorToolbar.getViewGroup());
+    }
+
     /**
      * @hide
      */
@@ -942,11 +986,12 @@ public class WindowDecorActionBar extends ActionBar implements
         private ActionMode.Callback mCallback;
         private WeakReference<View> mCustomView;
 
-        public ActionModeImpl(Context context, ActionMode.Callback callback) {
+        public ActionModeImpl(
+                Context context, ActionMode.Callback callback) {
             mActionModeContext = context;
             mCallback = callback;
             mMenu = new MenuBuilder(context)
-                    .setDefaultShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
+                        .setDefaultShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
             mMenu.setCallback(this);
         }
 

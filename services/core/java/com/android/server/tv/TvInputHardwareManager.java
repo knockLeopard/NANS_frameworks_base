@@ -23,6 +23,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.hardware.hdmi.HdmiControlManager;
 import android.hardware.hdmi.HdmiDeviceInfo;
 import android.hardware.hdmi.HdmiHotplugEvent;
@@ -38,11 +39,13 @@ import android.media.AudioManager;
 import android.media.AudioPatch;
 import android.media.AudioPort;
 import android.media.AudioPortConfig;
+import android.media.AudioSystem;
 import android.media.tv.ITvInputHardware;
 import android.media.tv.ITvInputHardwareCallback;
 import android.media.tv.TvInputHardwareInfo;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvStreamConfig;
+import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -55,9 +58,11 @@ import android.util.SparseBooleanArray;
 import android.view.KeyEvent;
 import android.view.Surface;
 
-import com.android.internal.os.SomeArgs;
+import com.android.internal.util.IndentingPrintWriter;
 import com.android.server.SystemService;
 
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -90,7 +95,6 @@ class TvInputHardwareManager implements TvInputHal.Callback {
     private final Map<String, TvInputInfo> mInputMap = new ArrayMap<>();
 
     private final AudioManager mAudioManager;
-    private IHdmiControlService mHdmiControlService;
     private final IHdmiHotplugEventListener mHdmiHotplugEventListener =
             new HdmiHotplugEventListener();
     private final IHdmiDeviceEventListener mHdmiDeviceEventListener = new HdmiDeviceEventListener();
@@ -104,7 +108,6 @@ class TvInputHardwareManager implements TvInputHal.Callback {
     };
     private int mCurrentIndex = 0;
     private int mCurrentMaxIndex = 0;
-    private final boolean mUseMasterVolume;
 
     // TODO: Should handle STANDBY case.
     private final SparseBooleanArray mHdmiStateMap = new SparseBooleanArray();
@@ -119,34 +122,30 @@ class TvInputHardwareManager implements TvInputHal.Callback {
         mContext = context;
         mListener = listener;
         mAudioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-        mUseMasterVolume = mContext.getResources().getBoolean(
-                com.android.internal.R.bool.config_useMasterVolume);
         mHal.init();
     }
 
     public void onBootPhase(int phase) {
         if (phase == SystemService.PHASE_SYSTEM_SERVICES_READY) {
-            mHdmiControlService = IHdmiControlService.Stub.asInterface(ServiceManager.getService(
-                    Context.HDMI_CONTROL_SERVICE));
-            if (mHdmiControlService != null) {
+            IHdmiControlService hdmiControlService = IHdmiControlService.Stub.asInterface(
+                    ServiceManager.getService(Context.HDMI_CONTROL_SERVICE));
+            if (hdmiControlService != null) {
                 try {
-                    mHdmiControlService.addHotplugEventListener(mHdmiHotplugEventListener);
-                    mHdmiControlService.addDeviceEventListener(mHdmiDeviceEventListener);
-                    mHdmiControlService.addSystemAudioModeChangeListener(
+                    hdmiControlService.addHotplugEventListener(mHdmiHotplugEventListener);
+                    hdmiControlService.addDeviceEventListener(mHdmiDeviceEventListener);
+                    hdmiControlService.addSystemAudioModeChangeListener(
                             mHdmiSystemAudioModeChangeListener);
-                    mHdmiDeviceList.addAll(mHdmiControlService.getInputDevices());
+                    mHdmiDeviceList.addAll(hdmiControlService.getInputDevices());
                 } catch (RemoteException e) {
                     Slog.w(TAG, "Error registering listeners to HdmiControlService:", e);
                 }
             } else {
                 Slog.w(TAG, "HdmiControlService is not available");
             }
-            if (!mUseMasterVolume) {
-                final IntentFilter filter = new IntentFilter();
-                filter.addAction(AudioManager.VOLUME_CHANGED_ACTION);
-                filter.addAction(AudioManager.STREAM_MUTE_CHANGED_ACTION);
-                mContext.registerReceiver(mVolumeReceiver, filter);
-            }
+            final IntentFilter filter = new IntentFilter();
+            filter.addAction(AudioManager.VOLUME_CHANGED_ACTION);
+            filter.addAction(AudioManager.STREAM_MUTE_CHANGED_ACTION);
+            mContext.registerReceiver(mVolumeReceiver, filter);
             updateVolume();
         }
     }
@@ -260,13 +259,8 @@ class TvInputHardwareManager implements TvInputHal.Callback {
             Connection connection, int callingUid, int resolvedUserId) {
         Integer connectionCallingUid = connection.getCallingUidLocked();
         Integer connectionResolvedUserId = connection.getResolvedUserIdLocked();
-        if (connectionCallingUid == null || connectionResolvedUserId == null) {
-            return true;
-        }
-        if (connectionCallingUid != callingUid || connectionResolvedUserId != resolvedUserId) {
-            return true;
-        }
-        return false;
+        return connectionCallingUid == null || connectionResolvedUserId == null
+                || connectionCallingUid != callingUid || connectionResolvedUserId != resolvedUserId;
     }
 
     private int convertConnectedToState(boolean connected) {
@@ -277,7 +271,7 @@ class TvInputHardwareManager implements TvInputHal.Callback {
         }
     }
 
-    public void addHardwareTvInput(int deviceId, TvInputInfo info) {
+    public void addHardwareInput(int deviceId, TvInputInfo info) {
         synchronized (mLock) {
             String oldInputId = mHardwareInputIdMap.get(deviceId);
             if (oldInputId != null) {
@@ -311,7 +305,6 @@ class TvInputHardwareManager implements TvInputHal.Callback {
                 mHandler.obtainMessage(ListenerHandler.STATE_CHANGED,
                         convertConnectedToState(connection.getConfigsLocked().length > 0), 0,
                         info.getId()).sendToTarget();
-                return;
             }
         }
     }
@@ -332,7 +325,7 @@ class TvInputHardwareManager implements TvInputHal.Callback {
         return false;
     }
 
-    public void addHdmiTvInput(int id, TvInputInfo info) {
+    public void addHdmiInput(int id, TvInputInfo info) {
         if (info.getType() != TvInputInfo.TYPE_HDMI) {
             throw new IllegalArgumentException("info (" + info + ") has non-HDMI type.");
         }
@@ -353,7 +346,7 @@ class TvInputHardwareManager implements TvInputHal.Callback {
         }
     }
 
-    public void removeTvInput(String inputId) {
+    public void removeHardwareInput(String inputId) {
         synchronized (mLock) {
             mInputMap.remove(inputId);
             int hardwareIndex = indexOfEqualValue(mHardwareInputIdMap, inputId);
@@ -443,7 +436,7 @@ class TvInputHardwareManager implements TvInputHal.Callback {
      */
     public List<TvStreamConfig> getAvailableTvStreamConfigList(String inputId, int callingUid,
             int resolvedUserId) {
-        List<TvStreamConfig> configsList = new ArrayList<TvStreamConfig>();
+        List<TvStreamConfig> configsList = new ArrayList<>();
         synchronized (mLock) {
             int deviceId = findDeviceIdForInputIdLocked(inputId);
             if (deviceId < 0) {
@@ -516,25 +509,31 @@ class TvInputHardwareManager implements TvInputHal.Callback {
 
     private void handleVolumeChange(Context context, Intent intent) {
         String action = intent.getAction();
-        if (action.equals(AudioManager.VOLUME_CHANGED_ACTION)) {
-            int streamType = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, -1);
-            if (streamType != AudioManager.STREAM_MUSIC) {
-                return;
+        switch (action) {
+            case AudioManager.VOLUME_CHANGED_ACTION: {
+                int streamType = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, -1);
+                if (streamType != AudioManager.STREAM_MUSIC) {
+                    return;
+                }
+                int index = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_VALUE, 0);
+                if (index == mCurrentIndex) {
+                    return;
+                }
+                mCurrentIndex = index;
+                break;
             }
-            int index = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_VALUE, 0);
-            if (index == mCurrentIndex) {
-                return;
+            case AudioManager.STREAM_MUTE_CHANGED_ACTION: {
+                int streamType = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, -1);
+                if (streamType != AudioManager.STREAM_MUSIC) {
+                    return;
+                }
+                // volume index will be updated at onMediaStreamVolumeChanged() through
+                // updateVolume().
+                break;
             }
-            mCurrentIndex = index;
-        } else if (action.equals(AudioManager.STREAM_MUTE_CHANGED_ACTION)) {
-            int streamType = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, -1);
-            if (streamType != AudioManager.STREAM_MUSIC) {
+            default:
+                Slog.w(TAG, "Unrecognized intent: " + intent);
                 return;
-            }
-            // volume index will be updated at onMediaStreamVolumeChanged() through updateVolume().
-        } else {
-            Slog.w(TAG, "Unrecognized intent: " + intent);
-            return;
         }
         synchronized (mLock) {
             for (int i = 0; i < mConnections.size(); ++i) {
@@ -547,7 +546,71 @@ class TvInputHardwareManager implements TvInputHal.Callback {
     }
 
     private float getMediaStreamVolume() {
-        return mUseMasterVolume ? 1.0f : ((float) mCurrentIndex / (float) mCurrentMaxIndex);
+        return (float) mCurrentIndex / (float) mCurrentMaxIndex;
+    }
+
+    public void dump(FileDescriptor fd, final PrintWriter writer, String[] args) {
+        final IndentingPrintWriter pw = new IndentingPrintWriter(writer, "  ");
+        if (mContext.checkCallingOrSelfPermission(android.Manifest.permission.DUMP)
+                != PackageManager.PERMISSION_GRANTED) {
+            pw.println("Permission Denial: can't dump TvInputHardwareManager from pid="
+                    + Binder.getCallingPid() + ", uid=" + Binder.getCallingUid());
+            return;
+        }
+
+        synchronized (mLock) {
+            pw.println("TvInputHardwareManager Info:");
+            pw.increaseIndent();
+            pw.println("mConnections: deviceId -> Connection");
+            pw.increaseIndent();
+            for (int i = 0; i < mConnections.size(); i++) {
+                int deviceId = mConnections.keyAt(i);
+                Connection mConnection = mConnections.valueAt(i);
+                pw.println(deviceId + ": " + mConnection);
+
+            }
+            pw.decreaseIndent();
+
+            pw.println("mHardwareList:");
+            pw.increaseIndent();
+            for (TvInputHardwareInfo tvInputHardwareInfo : mHardwareList) {
+                pw.println(tvInputHardwareInfo);
+            }
+            pw.decreaseIndent();
+
+            pw.println("mHdmiDeviceList:");
+            pw.increaseIndent();
+            for (HdmiDeviceInfo hdmiDeviceInfo : mHdmiDeviceList) {
+                pw.println(hdmiDeviceInfo);
+            }
+            pw.decreaseIndent();
+
+            pw.println("mHardwareInputIdMap: deviceId -> inputId");
+            pw.increaseIndent();
+            for (int i = 0 ; i < mHardwareInputIdMap.size(); i++) {
+                int deviceId = mHardwareInputIdMap.keyAt(i);
+                String inputId = mHardwareInputIdMap.valueAt(i);
+                pw.println(deviceId + ": " + inputId);
+            }
+            pw.decreaseIndent();
+
+            pw.println("mHdmiInputIdMap: id -> inputId");
+            pw.increaseIndent();
+            for (int i = 0; i < mHdmiInputIdMap.size(); i++) {
+                int id = mHdmiInputIdMap.keyAt(i);
+                String inputId = mHdmiInputIdMap.valueAt(i);
+                pw.println(id + ": " + inputId);
+            }
+            pw.decreaseIndent();
+
+            pw.println("mInputMap: inputId -> inputInfo");
+            pw.increaseIndent();
+            for(Map.Entry<String, TvInputInfo> entry : mInputMap.entrySet()) {
+                pw.println(entry.getKey() + ": " + entry.getValue());
+            }
+            pw.decreaseIndent();
+            pw.decreaseIndent();
+        }
     }
 
     private class Connection implements IBinder.DeathRecipient {
@@ -642,6 +705,17 @@ class TvInputHardwareManager implements TvInputHal.Callback {
                 resetLocked(null, null, null, null, null);
             }
         }
+
+        public String toString() {
+            return "Connection{"
+                    + " mHardwareInfo: " + mHardwareInfo
+                    + ", mInfo: " + mInfo
+                    + ", mCallback: " + mCallback
+                    + ", mConfigs: " + Arrays.toString(mConfigs)
+                    + ", mCallingUid: " + mCallingUid
+                    + ", mResolvedUserId: " + mResolvedUserId
+                    + " }";
+        }
     }
 
     private class TvInputHardwareImpl extends ITvInputHardware.Stub {
@@ -668,7 +742,10 @@ class TvInputHardwareManager implements TvInputHal.Callback {
                 synchronized (mImplLock) {
                     mAudioSource = null;
                     mAudioSink.clear();
-                    mAudioPatch = null;
+                    if (mAudioPatch != null) {
+                        mAudioManager.releaseAudioPatch(mAudioPatch);
+                        mAudioPatch = null;
+                    }
                 }
             }
         };
@@ -699,15 +776,15 @@ class TvInputHardwareManager implements TvInputHal.Callback {
 
         private void findAudioSinkFromAudioPolicy(List<AudioDevicePort> sinks) {
             sinks.clear();
-            ArrayList<AudioPort> devicePorts = new ArrayList<AudioPort>();
+            ArrayList<AudioDevicePort> devicePorts = new ArrayList<>();
             if (mAudioManager.listAudioDevicePorts(devicePorts) != AudioManager.SUCCESS) {
                 return;
             }
             int sinkDevice = mAudioManager.getDevicesForStream(AudioManager.STREAM_MUSIC);
-            for (AudioPort port : devicePorts) {
-                AudioDevicePort devicePort = (AudioDevicePort) port;
-                if ((devicePort.type() & sinkDevice) != 0) {
-                    sinks.add(devicePort);
+            for (AudioDevicePort port : devicePorts) {
+                if ((port.type() & sinkDevice) != 0 &&
+                    (port.type() & AudioSystem.DEVICE_BIT_IN) == 0) {
+                    sinks.add(port);
                 }
             }
         }
@@ -716,14 +793,13 @@ class TvInputHardwareManager implements TvInputHal.Callback {
             if (type == AudioManager.DEVICE_NONE) {
                 return null;
             }
-            ArrayList<AudioPort> devicePorts = new ArrayList<AudioPort>();
+            ArrayList<AudioDevicePort> devicePorts = new ArrayList<>();
             if (mAudioManager.listAudioDevicePorts(devicePorts) != AudioManager.SUCCESS) {
                 return null;
             }
-            for (AudioPort port : devicePorts) {
-                AudioDevicePort devicePort = (AudioDevicePort) port;
-                if (devicePort.type() == type && devicePort.address().equals(address)) {
-                    return devicePort;
+            for (AudioDevicePort port : devicePorts) {
+                if (port.type() == type && port.address().equals(address)) {
+                    return port;
                 }
             }
             return null;
@@ -907,10 +983,13 @@ class TvInputHardwareManager implements TvInputHal.Callback {
             }
             if (shouldRecreateAudioPatch) {
                 mCommittedVolume = volume;
+                if (mAudioPatch != null) {
+                    mAudioManager.releaseAudioPatch(mAudioPatch);
+                }
                 mAudioManager.createAudioPatch(
                         audioPatchArray,
                         new AudioPortConfig[] { sourceConfig },
-                        sinkConfigs.toArray(new AudioPortConfig[0]));
+                        sinkConfigs.toArray(new AudioPortConfig[sinkConfigs.size()]));
                 mAudioPatch = audioPatchArray[0];
                 if (sourceGainConfig != null) {
                     mAudioManager.setAudioPortGain(mAudioSource, sourceGainConfig);
@@ -1037,12 +1116,12 @@ class TvInputHardwareManager implements TvInputHal.Callback {
     }
 
     interface Listener {
-        public void onStateChanged(String inputId, int state);
-        public void onHardwareDeviceAdded(TvInputHardwareInfo info);
-        public void onHardwareDeviceRemoved(TvInputHardwareInfo info);
-        public void onHdmiDeviceAdded(HdmiDeviceInfo device);
-        public void onHdmiDeviceRemoved(HdmiDeviceInfo device);
-        public void onHdmiDeviceUpdated(String inputId, HdmiDeviceInfo device);
+        void onStateChanged(String inputId, int state);
+        void onHardwareDeviceAdded(TvInputHardwareInfo info);
+        void onHardwareDeviceRemoved(TvInputHardwareInfo info);
+        void onHdmiDeviceAdded(HdmiDeviceInfo device);
+        void onHdmiDeviceRemoved(HdmiDeviceInfo device);
+        void onHdmiDeviceUpdated(String inputId, HdmiDeviceInfo device);
     }
 
     private class ListenerHandler extends Handler {
@@ -1084,7 +1163,7 @@ class TvInputHardwareManager implements TvInputHal.Callback {
                 }
                 case HDMI_DEVICE_UPDATED: {
                     HdmiDeviceInfo info = (HdmiDeviceInfo) msg.obj;
-                    String inputId = null;
+                    String inputId;
                     synchronized (mLock) {
                         inputId = mHdmiInputIdMap.get(info.getId());
                     }

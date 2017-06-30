@@ -37,7 +37,7 @@ public class TimeAnimator extends ValueAnimator {
     }
 
     @Override
-    boolean animationFrame(long currentTime) {
+    boolean animateBasedOnTime(long currentTime) {
         if (mListener != null) {
             long totalTime = currentTime - mStartTime;
             long deltaTime = (mPreviousTime < 0) ? 0 : (currentTime - mPreviousTime);
@@ -51,7 +51,8 @@ public class TimeAnimator extends ValueAnimator {
     public void setCurrentPlayTime(long playTime) {
         long currentTime = AnimationUtils.currentAnimationTimeMillis();
         mStartTime = Math.max(mStartTime, currentTime - playTime);
-        animationFrame(currentTime);
+        mStartTimeCommitted = true; // do not allow start time to be compensated for jank
+        animateBasedOnTime(currentTime);
     }
 
     /**

@@ -16,6 +16,8 @@
 
 package android.hardware;
 
+import android.annotation.SystemApi;
+import android.os.Build;
 import android.os.Handler;
 import android.util.Log;
 import android.util.SparseArray;
@@ -44,7 +46,7 @@ import java.util.List;
  * is an example of a trigger sensor.
  * </p>
  * <pre class="prettyprint">
- * public class SensorActivity extends Activity, implements SensorEventListener {
+ * public class SensorActivity extends Activity implements SensorEventListener {
  *     private final SensorManager mSensorManager;
  *     private final Sensor mAccelerometer;
  *
@@ -375,6 +377,12 @@ public abstract class SensorManager {
     protected abstract List<Sensor> getFullSensorList();
 
     /**
+     * Gets the full list of dynamic sensors that are available.
+     * @hide
+     */
+    protected abstract List<Sensor> getFullDynamicSensorList();
+
+    /**
      * @return available sensors.
      * @deprecated This method is deprecated, use
      *             {@link SensorManager#getSensorList(int)} instead
@@ -428,6 +436,38 @@ public abstract class SensorManager {
     }
 
     /**
+     * Use this method to get a list of available dynamic sensors of a certain type.
+     * Make multiple calls to get sensors of different types or use
+     * {@link android.hardware.Sensor#TYPE_ALL Sensor.TYPE_ALL} to get all dynamic sensors.
+     *
+     * <p class="note">
+     * NOTE: Both wake-up and non wake-up sensors matching the given type are
+     * returned. Check {@link Sensor#isWakeUpSensor()} to know the wake-up properties
+     * of the returned {@link Sensor}.
+     * </p>
+     *
+     * @param type of sensors requested
+     *
+     * @return a list of dynamic sensors matching the requested type.
+     *
+     * @see Sensor
+     */
+    public List<Sensor> getDynamicSensorList(int type) {
+        // cache the returned lists the first time
+        final List<Sensor> fullList = getFullDynamicSensorList();
+        if (type == Sensor.TYPE_ALL) {
+            return Collections.unmodifiableList(fullList);
+        } else {
+            List<Sensor> list = new ArrayList();
+            for (Sensor i : fullList) {
+                if (i.getType() == type)
+                    list.add(i);
+            }
+            return Collections.unmodifiableList(list);
+        }
+    }
+
+    /**
      * Use this method to get the default sensor for a given type. Note that the
      * returned sensor could be a composite sensor, and its data could be
      * averaged or filtered. If you need to access the raw sensors use
@@ -451,7 +491,8 @@ public abstract class SensorManager {
         // non_wake-up version.
         if (type == Sensor.TYPE_PROXIMITY || type == Sensor.TYPE_SIGNIFICANT_MOTION ||
                 type == Sensor.TYPE_TILT_DETECTOR || type == Sensor.TYPE_WAKE_GESTURE ||
-                type == Sensor.TYPE_GLANCE_GESTURE || type == Sensor.TYPE_PICK_UP_GESTURE) {
+                type == Sensor.TYPE_GLANCE_GESTURE || type == Sensor.TYPE_PICK_UP_GESTURE ||
+                type == Sensor.TYPE_WRIST_TILT_GESTURE) {
             wakeUpSensor = true;
         }
 
@@ -838,6 +879,97 @@ public abstract class SensorManager {
     /** @hide */
     protected abstract boolean flushImpl(SensorEventListener listener);
 
+
+    /**
+     * Used for receiving notifications from the SensorManager when dynamic sensors are connected or
+     * disconnected.
+     */
+    public static abstract class DynamicSensorCallback {
+        /**
+         * Called when there is a dynamic sensor being connected to the system.
+         *
+         * @param sensor the newly connected sensor. See {@link android.hardware.Sensor Sensor}.
+         */
+        public void onDynamicSensorConnected(Sensor sensor) {}
+
+        /**
+         * Called when there is a dynamic sensor being disconnected from the system.
+         *
+         * @param sensor the disconnected sensor. See {@link android.hardware.Sensor Sensor}.
+         */
+        public void onDynamicSensorDisconnected(Sensor sensor) {}
+    }
+
+
+    /**
+     * Add a {@link android.hardware.SensorManager.DynamicSensorCallback
+     * DynamicSensorCallback} to receive dynamic sensor connection callbacks. Repeat
+     * registration with the already registered callback object will have no additional effect.
+     *
+     * @param callback An object that implements the
+     *        {@link android.hardware.SensorManager.DynamicSensorCallback
+     *        DynamicSensorCallback}
+     *        interface for receiving callbacks.
+     * @see #addDynamicSensorCallback(DynamicSensorCallback, Handler)
+     *
+     * @throws IllegalArgumentException when callback is null.
+     */
+    public void registerDynamicSensorCallback(DynamicSensorCallback callback) {
+        registerDynamicSensorCallback(callback, null);
+    }
+
+    /**
+     * Add a {@link android.hardware.SensorManager.DynamicSensorCallback
+     * DynamicSensorCallback} to receive dynamic sensor connection callbacks. Repeat
+     * registration with the already registered callback object will have no additional effect.
+     *
+     * @param callback An object that implements the
+     *        {@link android.hardware.SensorManager.DynamicSensorCallback
+     *        DynamicSensorCallback} interface for receiving callbacks.
+     * @param handler The {@link android.os.Handler Handler} the {@link
+     *        android.hardware.SensorManager.DynamicSensorCallback
+     *        sensor connection events} will be delivered to.
+     *
+     * @throws IllegalArgumentException when callback is null.
+     */
+    public void registerDynamicSensorCallback(
+            DynamicSensorCallback callback, Handler handler) {
+        registerDynamicSensorCallbackImpl(callback, handler);
+    }
+
+    /**
+     * Remove a {@link android.hardware.SensorManager.DynamicSensorCallback
+     * DynamicSensorCallback} to stop sending dynamic sensor connection events to that
+     * callback.
+     *
+     * @param callback An object that implements the
+     *        {@link android.hardware.SensorManager.DynamicSensorCallback
+     *        DynamicSensorCallback}
+     *        interface for receiving callbacks.
+     */
+    public void unregisterDynamicSensorCallback(DynamicSensorCallback callback) {
+        unregisterDynamicSensorCallbackImpl(callback);
+    }
+
+    /**
+     * Tell if dynamic sensor discovery feature is supported by system.
+     *
+     * @return <code>true</code> if dynamic sensor discovery is supported, <code>false</code>
+     * otherwise.
+     */
+    public boolean isDynamicSensorDiscoverySupported() {
+        List<Sensor> sensors = getSensorList(Sensor.TYPE_DYNAMIC_SENSOR_META);
+        return sensors.size() > 0;
+    }
+
+    /** @hide */
+    protected abstract void registerDynamicSensorCallbackImpl(
+            DynamicSensorCallback callback, Handler handler);
+
+    /** @hide */
+    protected abstract void unregisterDynamicSensorCallbackImpl(
+            DynamicSensorCallback callback);
+
     /**
      * <p>
      * Computes the inclination matrix <b>I</b> as well as the rotation matrix
@@ -963,8 +1095,9 @@ public abstract class SensorManager {
      *        TYPE_MAGNETIC_FIELD}.
      *
      * @return <code>true</code> on success, <code>false</code> on failure (for
-     *         instance, if the device is in free fall). On failure the output
-     *         matrices are not modified.
+     *         instance, if the device is in free fall). Free fall is defined as
+     *         condition when the magnitude of the gravity is less than 1/10 of
+     *         the nominal value. On failure the output matrices are not modified.
      *
      * @see #getInclination(float[])
      * @see #getOrientation(float[], float[])
@@ -977,6 +1110,15 @@ public abstract class SensorManager {
         float Ax = gravity[0];
         float Ay = gravity[1];
         float Az = gravity[2];
+
+        final float normsqA = (Ax*Ax + Ay*Ay + Az*Az);
+        final float g = 9.81f;
+        final float freeFallGravitySquared = 0.01f * g * g;
+        if (normsqA < freeFallGravitySquared) {
+            // gravity less than 10% of normal value
+            return false;
+        }
+
         final float Ex = geomagnetic[0];
         final float Ey = geomagnetic[1];
         final float Ez = geomagnetic[2];
@@ -984,6 +1126,7 @@ public abstract class SensorManager {
         float Hy = Ez*Ax - Ex*Az;
         float Hz = Ex*Ay - Ey*Ax;
         final float normH = (float)Math.sqrt(Hx*Hx + Hy*Hy + Hz*Hz);
+
         if (normH < 0.1f) {
             // device is close to free fall (or in space?), or close to
             // magnetic north pole. Typical values are  > 100.
@@ -1113,12 +1256,12 @@ public abstract class SensorManager {
      *        returned by {@link #getRotationMatrix}.
      *
      * @param X
-     *        defines on which world axis and direction the X axis of the device
-     *        is mapped.
+     *        defines the axis of the new cooridinate system that coincide with the X axis of the
+     *        original coordinate system.
      *
      * @param Y
-     *        defines on which world axis and direction the Y axis of the device
-     *        is mapped.
+     *        defines the axis of the new cooridinate system that coincide with the Y axis of the
+     *        original coordinate system.
      *
      * @param outR
      *        the transformed rotation matrix. inR and outR should not be the same
@@ -1213,29 +1356,35 @@ public abstract class SensorManager {
     /**
      * Computes the device's orientation based on the rotation matrix.
      * <p>
-     * When it returns, the array values is filled with the result:
+     * When it returns, the array values are as follows:
      * <ul>
-     * <li>values[0]: <i>azimuth</i>, rotation around the Z axis.</li>
-     * <li>values[1]: <i>pitch</i>, rotation around the X axis.</li>
-     * <li>values[2]: <i>roll</i>, rotation around the Y axis.</li>
+     * <li>values[0]: <i>Azimuth</i>, angle of rotation about the -z axis.
+     *                This value represents the angle between the device's y
+     *                axis and the magnetic north pole. When facing north, this
+     *                angle is 0, when facing south, this angle is &pi;.
+     *                Likewise, when facing east, this angle is &pi;/2, and
+     *                when facing west, this angle is -&pi;/2. The range of
+     *                values is -&pi; to &pi;.</li>
+     * <li>values[1]: <i>Pitch</i>, angle of rotation about the x axis.
+     *                This value represents the angle between a plane parallel
+     *                to the device's screen and a plane parallel to the ground.
+     *                Assuming that the bottom edge of the device faces the
+     *                user and that the screen is face-up, tilting the top edge
+     *                of the device toward the ground creates a positive pitch
+     *                angle. The range of values is -&pi; to &pi;.</li>
+     * <li>values[2]: <i>Roll</i>, angle of rotation about the y axis. This
+     *                value represents the angle between a plane perpendicular
+     *                to the device's screen and a plane perpendicular to the
+     *                ground. Assuming that the bottom edge of the device faces
+     *                the user and that the screen is face-up, tilting the left
+     *                edge of the device toward the ground creates a positive
+     *                roll angle. The range of values is -&pi;/2 to &pi;/2.</li>
      * </ul>
-     * <p>The reference coordinate-system used is different from the world
-     * coordinate-system defined for the rotation matrix:</p>
-     * <ul>
-     * <li>X is defined as the vector product <b>Y.Z</b> (It is tangential to
-     * the ground at the device's current location and roughly points West).</li>
-     * <li>Y is tangential to the ground at the device's current location and
-     * points towards the magnetic North Pole.</li>
-     * <li>Z points towards the center of the Earth and is perpendicular to the ground.</li>
-     * </ul>
-     *
      * <p>
-     * <center><img src="../../../images/axis_globe_inverted.png"
-     * alt="Inverted world coordinate-system diagram." border="0" /></center>
-     * </p>
-     * <p>
-     * All three angles above are in <b>radians</b> and <b>positive</b> in the
-     * <b>counter-clockwise</b> direction.
+     * Applying these three rotations in the azimuth, pitch, roll order
+     * transforms an identity matrix to the rotation matrix passed into this
+     * method. Also, note that all three orientation angles are expressed in
+     * <b>radians</b>.
      *
      * @param R
      *        rotation matrix see {@link #getRotationMatrix}.
@@ -1271,6 +1420,7 @@ public abstract class SensorManager {
             values[1] = (float)Math.asin(-R[9]);
             values[2] = (float)Math.atan2(-R[8], R[10]);
         }
+
         return values;
     }
 
@@ -1310,9 +1460,9 @@ public abstract class SensorManager {
 
     /** Helper function to compute the angle change between two rotation matrices.
      *  Given a current rotation matrix (R) and a previous rotation matrix
-     *  (prevR) computes the rotation around the z,x, and y axes which
+     *  (prevR) computes the intrinsic rotation around the z, x, and y axes which
      *  transforms prevR to R.
-     *  outputs a 3 element vector containing the z,x, and y angle
+     *  outputs a 3 element vector containing the z, x, and y angle
      *  change at indexes 0, 1, and 2 respectively.
      * <p> Each input matrix is either as a 3x3 or 4x4 row-major matrix
      * depending on the length of the passed array:
@@ -1329,9 +1479,13 @@ public abstract class SensorManager {
      *   |  R[ 8]   R[ 9]   R[10]   R[11]  |
      *   \  R[12]   R[13]   R[14]   R[15]  /
      *</pre>
+     *
+     * See {@link #getOrientation} for more detailed definition of the output.
+     *
      * @param R current rotation matrix
      * @param prevR previous rotation matrix
-     * @param angleChange an an array of floats (z, x, and y) in which the angle change is stored
+     * @param angleChange an an array of floats (z, x, and y) in which the angle change
+     *        (in radians) is stored
      */
 
     public static void getAngleChange( float[] angleChange, float[] R, float[] prevR) {
@@ -1553,6 +1707,94 @@ public abstract class SensorManager {
     protected abstract boolean cancelTriggerSensorImpl(TriggerEventListener listener,
             Sensor sensor, boolean disable);
 
+
+    /**
+     * For testing purposes only. Not for third party applications.
+     *
+     * Initialize data injection mode and create a client for data injection. SensorService should
+     * already be operating in DATA_INJECTION mode for this call succeed. To set SensorService into
+     * DATA_INJECTION mode "adb shell dumpsys sensorservice data_injection" needs to be called
+     * through adb. Typically this is done using a host side test.  This mode is expected to be used
+     * only for testing purposes. If the HAL is set to data injection mode, it will ignore the input
+     * from physical sensors and read sensor data that is injected from the test application. This
+     * mode is used for testing vendor implementations for various algorithms like Rotation Vector,
+     * Significant Motion, Step Counter etc. Not all HALs support DATA_INJECTION. This method will
+     * fail in those cases. Once this method succeeds, the test can call
+     * {@link injectSensorData(Sensor, float[], int, long)} to inject sensor data into the HAL.
+     *
+     * @param enable True to initialize a client in DATA_INJECTION mode.
+     *               False to clean up the native resources.
+     *
+     * @return true if the HAL supports data injection and false
+     *         otherwise.
+     * @hide
+     */
+    @SystemApi
+    public boolean initDataInjection(boolean enable) {
+          return initDataInjectionImpl(enable);
+    }
+
+    /**
+     * @hide
+     */
+    protected abstract boolean initDataInjectionImpl(boolean enable);
+
+    /**
+     * For testing purposes only. Not for third party applications.
+     *
+     * This method is used to inject raw sensor data into the HAL.  Call {@link
+     * initDataInjection(boolean)} before this method to set the HAL in data injection mode. This
+     * method should be called only if a previous call to initDataInjection has been successful and
+     * the HAL and SensorService are already opreating in data injection mode.
+     *
+     * @param sensor The sensor to inject.
+     * @param values Sensor values to inject. The length of this
+     *               array must be exactly equal to the number of
+     *               values reported by the sensor type.
+     * @param accuracy Accuracy of the sensor.
+     * @param timestamp Sensor timestamp associated with the event.
+     *
+     * @return boolean True if the data injection succeeds, false
+     *         otherwise.
+     * @throws IllegalArgumentException when the sensor is null,
+     *         data injection is not supported by the sensor, values
+     *         are null, incorrect number of values for the sensor,
+     *         sensor accuracy is incorrect or timestamps are
+     *         invalid.
+     * @hide
+     */
+    @SystemApi
+    public boolean injectSensorData(Sensor sensor, float[] values, int accuracy,
+                long timestamp) {
+        if (sensor == null) {
+            throw new IllegalArgumentException("sensor cannot be null");
+        }
+        if (!sensor.isDataInjectionSupported()) {
+            throw new IllegalArgumentException("sensor does not support data injection");
+        }
+        if (values == null) {
+            throw new IllegalArgumentException("sensor data cannot be null");
+        }
+        int expectedNumValues = Sensor.getMaxLengthValuesArray(sensor, Build.VERSION_CODES.M);
+        if (values.length != expectedNumValues) {
+            throw new  IllegalArgumentException ("Wrong number of values for sensor " +
+                    sensor.getName() + " actual=" + values.length + " expected=" +
+                                                  expectedNumValues);
+        }
+        if (accuracy < SENSOR_STATUS_NO_CONTACT || accuracy > SENSOR_STATUS_ACCURACY_HIGH) {
+            throw new IllegalArgumentException("Invalid sensor accuracy");
+        }
+        if (timestamp <= 0) {
+            throw new IllegalArgumentException("Negative or zero sensor timestamp");
+        }
+        return injectSensorDataImpl(sensor, values, accuracy, timestamp);
+    }
+
+    /**
+     * @hide
+     */
+    protected abstract boolean injectSensorDataImpl(Sensor sensor, float[] values, int accuracy,
+                long timestamp);
 
     private LegacySensorManager getLegacySensorManager() {
         synchronized (mSensorListByType) {

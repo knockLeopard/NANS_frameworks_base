@@ -16,16 +16,18 @@
 package com.android.systemui.statusbar.policy;
 
 public interface SecurityController {
-
-    boolean hasDeviceOwner();
+    /** Whether the device has device owner, even if not on this user. */
+    boolean isDeviceManaged();
     boolean hasProfileOwner();
     String getDeviceOwnerName();
     String getProfileOwnerName();
+    boolean isNetworkLoggingEnabled();
     boolean isVpnEnabled();
-    String getVpnApp();
-    boolean isLegacyVpn();
-    String getLegacyVpnName();
-    void disconnectFromVpn();
+    boolean isVpnRestricted();
+    /** Whether the VPN app should use branded VPN iconography.  */
+    boolean isVpnBranded();
+    String getPrimaryVpnName();
+    String getProfileVpnName();
     void onUserSwitched(int newUserId);
 
     void addCallback(SecurityControllerCallback callback);

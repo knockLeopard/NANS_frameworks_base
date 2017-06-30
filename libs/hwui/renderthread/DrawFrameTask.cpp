@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#define ATRACE_TAG ATRACE_TAG_VIEW
-
 #include "DrawFrameTask.h"
 
 #include <utils/Log.h>
@@ -32,20 +30,19 @@ namespace uirenderer {
 namespace renderthread {
 
 DrawFrameTask::DrawFrameTask()
-        : mRenderThread(NULL)
-        , mContext(NULL)
-        , mFrameTimeNanos(0)
-        , mRecordDurationNanos(0)
-        , mDensity(1.0f) // safe enough default
-        , mSyncResult(kSync_OK) {
+        : mRenderThread(nullptr)
+        , mContext(nullptr)
+        , mSyncResult(SyncResult::OK) {
 }
 
 DrawFrameTask::~DrawFrameTask() {
 }
 
-void DrawFrameTask::setContext(RenderThread* thread, CanvasContext* context) {
+void DrawFrameTask::setContext(RenderThread* thread, CanvasContext* context,
+        RenderNode* targetNode) {
     mRenderThread = thread;
     mContext = context;
+    mTargetNode = targetNode;
 }
 
 void DrawFrameTask::pushLayerUpdate(DeferredLayerUpdater* layer) {
@@ -68,17 +65,13 @@ void DrawFrameTask::removeLayerUpdate(DeferredLayerUpdater* layer) {
     }
 }
 
-int DrawFrameTask::drawFrame(nsecs_t frameTimeNanos, nsecs_t recordDurationNanos) {
+int DrawFrameTask::drawFrame(TreeObserver* observer) {
     LOG_ALWAYS_FATAL_IF(!mContext, "Cannot drawFrame with no CanvasContext!");
 
-    mSyncResult = kSync_OK;
-    mFrameTimeNanos = frameTimeNanos;
-    mRecordDurationNanos = recordDurationNanos;
+    mSyncResult = SyncResult::OK;
+    mSyncQueued = systemTime(CLOCK_MONOTONIC);
+    mObserver = observer;
     postAndWait();
-
-    // Reset the single-frame data
-    mFrameTimeNanos = 0;
-    mRecordDurationNanos = 0;
 
     return mSyncResult;
 }
@@ -92,13 +85,11 @@ void DrawFrameTask::postAndWait() {
 void DrawFrameTask::run() {
     ATRACE_NAME("DrawFrame");
 
-    mContext->profiler().setDensity(mDensity);
-    mContext->profiler().startFrame(mRecordDurationNanos);
-
     bool canUnblockUiThread;
     bool canDrawThisFrame;
     {
-        TreeInfo info(TreeInfo::MODE_FULL, mRenderThread->renderState());
+        TreeInfo info(TreeInfo::MODE_FULL, *mContext);
+        info.observer = mObserver;
         canUnblockUiThread = syncFrameState(info);
         canDrawThisFrame = info.out.canDrawThisFrame;
     }
@@ -113,6 +104,9 @@ void DrawFrameTask::run() {
 
     if (CC_LIKELY(canDrawThisFrame)) {
         context->draw();
+    } else {
+        // wait on fences so tasks don't overlap next frame
+        context->waitOnFences();
     }
 
     if (!canUnblockUiThread) {
@@ -122,25 +116,32 @@ void DrawFrameTask::run() {
 
 bool DrawFrameTask::syncFrameState(TreeInfo& info) {
     ATRACE_CALL();
-    mRenderThread->timeLord().vsyncReceived(mFrameTimeNanos);
-    mContext->makeCurrent();
-    Caches::getInstance().textureCache.resetMarkInUse();
+    int64_t vsync = mFrameInfo[static_cast<int>(FrameInfoIndex::Vsync)];
+    mRenderThread->timeLord().vsyncReceived(vsync);
+    bool canDraw = mContext->makeCurrent();
+    Caches::getInstance().textureCache.resetMarkInUse(mContext);
 
     for (size_t i = 0; i < mLayers.size(); i++) {
-        mContext->processLayerUpdate(mLayers[i].get());
+        mLayers[i]->apply();
     }
     mLayers.clear();
-    mContext->prepareTree(info);
+    mContext->prepareTree(info, mFrameInfo, mSyncQueued, mTargetNode);
 
     // This is after the prepareTree so that any pending operations
     // (RenderNode tree state, prefetched layers, etc...) will be flushed.
-    if (CC_UNLIKELY(!mContext->hasSurface())) {
-        mSyncResult |= kSync_LostSurfaceRewardIfFound;
+    if (CC_UNLIKELY(!mContext->hasSurface() || !canDraw)) {
+        if (!mContext->hasSurface()) {
+            mSyncResult |= SyncResult::LostSurfaceRewardIfFound;
+        } else {
+            // If we have a surface but can't draw we must be stopped
+            mSyncResult |= SyncResult::ContextIsStopped;
+        }
+        info.out.canDrawThisFrame = false;
     }
 
     if (info.out.hasAnimations) {
         if (info.out.requiresUiRedraw) {
-            mSyncResult |= kSync_UIRedrawRequired;
+            mSyncResult |= SyncResult::UIRedrawRequired;
         }
     }
     // If prepareTextures is false, we ran out of texture cache space

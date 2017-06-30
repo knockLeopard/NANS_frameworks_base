@@ -16,12 +16,19 @@
 
 package android.view.inputmethod;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
+import android.content.res.Configuration;
+import android.icu.text.DisplayContext;
+import android.icu.text.LocaleDisplayNames;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.TextUtils;
 import android.util.Slog;
+
+import com.android.internal.inputmethod.InputMethodUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -38,7 +45,7 @@ import java.util.Locale;
  * the specified subtype of the designated IME directly.
  *
  * <p>It should be defined in an XML resource file of the input method with the
- * <code>&lt;subtype&gt;</code> element, which resides within an {@code &lt;input-method>} element.
+ * <code>&lt;subtype&gt;</code> element, which resides within an {@code <input-method>} element.
  * For more information, see the guide to
  * <a href="{@docRoot}guide/topics/text/creating-input-method.html">
  * Creating an Input Method</a>.</p>
@@ -47,6 +54,7 @@ import java.util.Locale;
  *
  * @attr ref android.R.styleable#InputMethod_Subtype_label
  * @attr ref android.R.styleable#InputMethod_Subtype_icon
+ * @attr ref android.R.styleable#InputMethod_Subtype_languageTag
  * @attr ref android.R.styleable#InputMethod_Subtype_imeSubtypeLocale
  * @attr ref android.R.styleable#InputMethod_Subtype_imeSubtypeMode
  * @attr ref android.R.styleable#InputMethod_Subtype_imeSubtypeExtraValue
@@ -57,11 +65,13 @@ import java.util.Locale;
  */
 public final class InputMethodSubtype implements Parcelable {
     private static final String TAG = InputMethodSubtype.class.getSimpleName();
+    private static final String LANGUAGE_TAG_NONE = "";
     private static final String EXTRA_VALUE_PAIR_SEPARATOR = ",";
     private static final String EXTRA_VALUE_KEY_VALUE_SEPARATOR = "=";
     // TODO: remove this
     private static final String EXTRA_KEY_UNTRANSLATABLE_STRING_IN_SUBTYPE_NAME =
             "UntranslatableReplacementStringInSubtypeName";
+    private static final int SUBTYPE_ID_NONE = 0;
 
     private final boolean mIsAuxiliary;
     private final boolean mOverridesImplicitlyEnabledSubtype;
@@ -71,6 +81,7 @@ public final class InputMethodSubtype implements Parcelable {
     private final int mSubtypeNameResId;
     private final int mSubtypeId;
     private final String mSubtypeLocale;
+    private final String mSubtypeLanguageTag;
     private final String mSubtypeMode;
     private final String mSubtypeExtraValue;
     private volatile HashMap<String, String> mExtraValueHashMapCache;
@@ -150,13 +161,13 @@ public final class InputMethodSubtype implements Parcelable {
          * track of enabled subtypes by ID. When the IME package gets upgraded, enabled IDs will
          * stay enabled even if other attributes are different. If the ID is unspecified or 0,
          * Arrays.hashCode(new Object[] {locale, mode, extraValue,
-         * isAuxiliary, overridesImplicitlyEnabledSubtype}) will be used instead.
+         * isAuxiliary, overridesImplicitlyEnabledSubtype, isAsciiCapable}) will be used instead.
          */
         public InputMethodSubtypeBuilder setSubtypeId(int subtypeId) {
             mSubtypeId = subtypeId;
             return this;
         }
-        private int mSubtypeId = 0;
+        private int mSubtypeId = SUBTYPE_ID_NONE;
 
         /**
          * @param subtypeLocale is the locale supported by this subtype.
@@ -166,6 +177,15 @@ public final class InputMethodSubtype implements Parcelable {
             return this;
         }
         private String mSubtypeLocale = "";
+
+        /**
+         * @param languageTag is the BCP-47 Language Tag supported by this subtype.
+         */
+        public InputMethodSubtypeBuilder setLanguageTag(String languageTag) {
+            mSubtypeLanguageTag = languageTag == null ? LANGUAGE_TAG_NONE : languageTag;
+            return this;
+        }
+        private String mSubtypeLanguageTag = LANGUAGE_TAG_NONE;
 
         /**
          * @param subtypeMode is the mode supported by this subtype.
@@ -252,7 +272,7 @@ public final class InputMethodSubtype implements Parcelable {
      * subtypes by ID. When the IME package gets upgraded, enabled IDs will stay enabled even if
      * other attributes are different. If the ID is unspecified or 0,
      * Arrays.hashCode(new Object[] {locale, mode, extraValue,
-     * isAuxiliary, overridesImplicitlyEnabledSubtype}) will be used instead.
+     * isAuxiliary, overridesImplicitlyEnabledSubtype, isAsciiCapable}) will be used instead.
      */
     public InputMethodSubtype(int nameId, int iconId, String locale, String mode, String extraValue,
             boolean isAuxiliary, boolean overridesImplicitlyEnabledSubtype, int id) {
@@ -268,6 +288,7 @@ public final class InputMethodSubtype implements Parcelable {
         mSubtypeNameResId = builder.mSubtypeNameResId;
         mSubtypeIconResId = builder.mSubtypeIconResId;
         mSubtypeLocale = builder.mSubtypeLocale;
+        mSubtypeLanguageTag = builder.mSubtypeLanguageTag;
         mSubtypeMode = builder.mSubtypeMode;
         mSubtypeExtraValue = builder.mSubtypeExtraValue;
         mIsAuxiliary = builder.mIsAuxiliary;
@@ -276,9 +297,12 @@ public final class InputMethodSubtype implements Parcelable {
         mIsAsciiCapable = builder.mIsAsciiCapable;
         // If hashCode() of this subtype is 0 and you want to specify it as an id of this subtype,
         // just specify 0 as this subtype's id. Then, this subtype's id is treated as 0.
-        mSubtypeHashCode = mSubtypeId != 0 ? mSubtypeId : hashCodeInternal(mSubtypeLocale,
-                mSubtypeMode, mSubtypeExtraValue, mIsAuxiliary, mOverridesImplicitlyEnabledSubtype,
-                mIsAsciiCapable);
+        if (mSubtypeId != SUBTYPE_ID_NONE) {
+            mSubtypeHashCode = mSubtypeId;
+        } else {
+            mSubtypeHashCode = hashCodeInternal(mSubtypeLocale, mSubtypeMode, mSubtypeExtraValue,
+                    mIsAuxiliary, mOverridesImplicitlyEnabledSubtype, mIsAsciiCapable);
+        }
     }
 
     InputMethodSubtype(Parcel source) {
@@ -287,6 +311,8 @@ public final class InputMethodSubtype implements Parcelable {
         mSubtypeIconResId = source.readInt();
         s = source.readString();
         mSubtypeLocale = s != null ? s : "";
+        s = source.readString();
+        mSubtypeLanguageTag = s != null ? s : LANGUAGE_TAG_NONE;
         s = source.readString();
         mSubtypeMode = s != null ? s : "";
         s = source.readString();
@@ -315,9 +341,39 @@ public final class InputMethodSubtype implements Parcelable {
     /**
      * @return The locale of the subtype. This method returns the "locale" string parameter passed
      * to the constructor.
+     *
+     * @deprecated Use {@link #getLanguageTag()} instead.
      */
+    @Deprecated
+    @NonNull
     public String getLocale() {
         return mSubtypeLocale;
+    }
+
+    /**
+     * @return the BCP-47 Language Tag of the subtype.  Returns an empty string when no Language Tag
+     * is specified.
+     *
+     * @see Locale#forLanguageTag(String)
+     */
+    @NonNull
+    public String getLanguageTag() {
+        return mSubtypeLanguageTag;
+    }
+
+    /**
+     * @return {@link Locale} constructed from {@link #getLanguageTag()}. If the Language Tag is not
+     * specified, then try to construct from {@link #getLocale()}
+     *
+     * <p>TODO: Consider to make this a public API, or move this to support lib.</p>
+     * @hide
+     */
+    @Nullable
+    public Locale getLocaleObject() {
+        if (!TextUtils.isEmpty(mSubtypeLanguageTag)) {
+            return Locale.forLanguageTag(mSubtypeLanguageTag);
+        }
+        return InputMethodUtils.constructLocaleFromString(mSubtypeLocale);
     }
 
     /**
@@ -368,39 +424,97 @@ public final class InputMethodSubtype implements Parcelable {
     }
 
     /**
-     * @param context Context will be used for getting Locale and PackageManager.
-     * @param packageName The package name of the IME
-     * @param appInfo The application info of the IME
-     * @return a display name for this subtype. The string resource of the label (mSubtypeNameResId)
-     * may have exactly one %s in it. If there is, the %s part will be replaced with the locale's
-     * display name by the formatter. If there is not, this method returns the string specified by
-     * mSubtypeNameResId. If mSubtypeNameResId is not specified (== 0), it's up to the framework to
-     * generate an appropriate display name.
+     * Returns a display name for this subtype.
+     *
+     * <p>If {@code subtypeNameResId} is specified (!= 0) text generated from that resource will
+     * be returned. The localized string resource of the label should be capitalized for inclusion
+     * in UI lists. The string resource may contain at most one {@code %s}. If present, the
+     * {@code %s} will be replaced with the display name of the subtype locale in the user's locale.
+     *
+     * <p>If {@code subtypeNameResId} is not specified (== 0) the framework returns the display name
+     * of the subtype locale, as capitalized for use in UI lists, in the user's locale.
+     *
+     * @param context {@link Context} will be used for getting {@link Locale} and
+     * {@link android.content.pm.PackageManager}.
+     * @param packageName The package name of the input method.
+     * @param appInfo The {@link ApplicationInfo} of the input method.
+     * @return a display name for this subtype.
      */
+    @NonNull
     public CharSequence getDisplayName(
             Context context, String packageName, ApplicationInfo appInfo) {
-        final Locale locale = constructLocaleFromString(mSubtypeLocale);
-        final String localeStr = locale != null ? locale.getDisplayName() : mSubtypeLocale;
         if (mSubtypeNameResId == 0) {
-            return localeStr;
+            return getLocaleDisplayName(getLocaleFromContext(context), getLocaleObject(),
+                    DisplayContext.CAPITALIZATION_FOR_UI_LIST_OR_MENU);
         }
+
         final CharSequence subtypeName = context.getPackageManager().getText(
                 packageName, mSubtypeNameResId, appInfo);
-        if (!TextUtils.isEmpty(subtypeName)) {
-            final String replacementString =
-                    containsExtraValueKey(EXTRA_KEY_UNTRANSLATABLE_STRING_IN_SUBTYPE_NAME)
-                            ? getExtraValueOf(EXTRA_KEY_UNTRANSLATABLE_STRING_IN_SUBTYPE_NAME)
-                            : localeStr;
-            try {
-                return String.format(
-                        subtypeName.toString(), replacementString != null ? replacementString : "");
-            } catch (IllegalFormatException e) {
-                Slog.w(TAG, "Found illegal format in subtype name("+ subtypeName + "): " + e);
-                return "";
-            }
-        } else {
-            return localeStr;
+        if (TextUtils.isEmpty(subtypeName)) {
+            return "";
         }
+        final String subtypeNameString = subtypeName.toString();
+        String replacementString;
+        if (containsExtraValueKey(EXTRA_KEY_UNTRANSLATABLE_STRING_IN_SUBTYPE_NAME)) {
+            replacementString = getExtraValueOf(
+                    EXTRA_KEY_UNTRANSLATABLE_STRING_IN_SUBTYPE_NAME);
+        } else {
+            final DisplayContext displayContext;
+            if (TextUtils.equals(subtypeNameString, "%s")) {
+                displayContext = DisplayContext.CAPITALIZATION_FOR_UI_LIST_OR_MENU;
+            } else if (subtypeNameString.startsWith("%s")) {
+                displayContext = DisplayContext.CAPITALIZATION_FOR_BEGINNING_OF_SENTENCE;
+            } else {
+                displayContext = DisplayContext.CAPITALIZATION_FOR_MIDDLE_OF_SENTENCE;
+            }
+            replacementString = getLocaleDisplayName(getLocaleFromContext(context),
+                    getLocaleObject(), displayContext);
+        }
+        if (replacementString == null) {
+            replacementString = "";
+        }
+        try {
+            return String.format(subtypeNameString, replacementString);
+        } catch (IllegalFormatException e) {
+            Slog.w(TAG, "Found illegal format in subtype name("+ subtypeName + "): " + e);
+            return "";
+        }
+    }
+
+    @Nullable
+    private static Locale getLocaleFromContext(@Nullable final Context context) {
+        if (context == null) {
+            return null;
+        }
+        if (context.getResources() == null) {
+            return null;
+        }
+        final Configuration configuration = context.getResources().getConfiguration();
+        if (configuration == null) {
+            return null;
+        }
+        return configuration.getLocales().get(0);
+    }
+
+    /**
+     * @param displayLocale {@link Locale} to be used to display {@code localeToDisplay}
+     * @param localeToDisplay {@link Locale} to be displayed in {@code displayLocale}
+     * @param displayContext context parameter to be used to display {@code localeToDisplay} in
+     * {@code displayLocale}
+     * @return Returns the name of the {@code localeToDisplay} in the user's current locale.
+     */
+    @NonNull
+    private static String getLocaleDisplayName(
+            @Nullable Locale displayLocale, @Nullable Locale localeToDisplay,
+            final DisplayContext displayContext) {
+        if (localeToDisplay == null) {
+            return "";
+        }
+        final Locale nonNullDisplayLocale =
+                displayLocale != null ? displayLocale : Locale.getDefault();
+        return LocaleDisplayNames
+                .getInstance(nonNullDisplayLocale, displayContext)
+                .localeDisplayName(localeToDisplay);
     }
 
     private HashMap<String, String> getExtraValueHashMap() {
@@ -452,6 +566,22 @@ public final class InputMethodSubtype implements Parcelable {
         return mSubtypeHashCode;
     }
 
+    /**
+     * @hide
+     * @return {@code true} if a valid subtype ID exists.
+     */
+    public final boolean hasSubtypeId() {
+        return mSubtypeId != SUBTYPE_ID_NONE;
+    }
+
+    /**
+     * @hide
+     * @return subtype ID. {@code 0} means that not subtype ID is specified.
+     */
+    public final int getSubtypeId() {
+        return mSubtypeId;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (o instanceof InputMethodSubtype) {
@@ -460,13 +590,14 @@ public final class InputMethodSubtype implements Parcelable {
                 return (subtype.hashCode() == hashCode());
             }
             return (subtype.hashCode() == hashCode())
-                && (subtype.getLocale().equals(getLocale()))
-                && (subtype.getMode().equals(getMode()))
-                && (subtype.getExtraValue().equals(getExtraValue()))
-                && (subtype.isAuxiliary() == isAuxiliary())
-                && (subtype.overridesImplicitlyEnabledSubtype()
-                        == overridesImplicitlyEnabledSubtype())
-                && (subtype.isAsciiCapable() == isAsciiCapable());
+                    && (subtype.getLocale().equals(getLocale()))
+                    && (subtype.getLanguageTag().equals(getLanguageTag()))
+                    && (subtype.getMode().equals(getMode()))
+                    && (subtype.getExtraValue().equals(getExtraValue()))
+                    && (subtype.isAuxiliary() == isAuxiliary())
+                    && (subtype.overridesImplicitlyEnabledSubtype()
+                            == overridesImplicitlyEnabledSubtype())
+                    && (subtype.isAsciiCapable() == isAsciiCapable());
         }
         return false;
     }
@@ -481,6 +612,7 @@ public final class InputMethodSubtype implements Parcelable {
         dest.writeInt(mSubtypeNameResId);
         dest.writeInt(mSubtypeIconResId);
         dest.writeString(mSubtypeLocale);
+        dest.writeString(mSubtypeLanguageTag);
         dest.writeString(mSubtypeMode);
         dest.writeString(mSubtypeExtraValue);
         dest.writeInt(mIsAuxiliary ? 1 : 0);
@@ -502,22 +634,6 @@ public final class InputMethodSubtype implements Parcelable {
             return new InputMethodSubtype[size];
         }
     };
-
-    private static Locale constructLocaleFromString(String localeStr) {
-        if (TextUtils.isEmpty(localeStr))
-            return null;
-        String[] localeParams = localeStr.split("_", 3);
-        // The length of localeStr is guaranteed to always return a 1 <= value <= 3
-        // because localeStr is not empty.
-        if (localeParams.length == 1) {
-            return new Locale(localeParams[0]);
-        } else if (localeParams.length == 2) {
-            return new Locale(localeParams[0], localeParams[1]);
-        } else if (localeParams.length == 3) {
-            return new Locale(localeParams[0], localeParams[1], localeParams[2]);
-        }
-        return null;
-    }
 
     private static int hashCodeInternal(String locale, String mode, String extraValue,
             boolean isAuxiliary, boolean overridesImplicitlyEnabledSubtype,

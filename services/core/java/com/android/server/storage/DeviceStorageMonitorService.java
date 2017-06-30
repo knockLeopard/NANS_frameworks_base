@@ -18,8 +18,7 @@ package com.android.server.storage;
 
 import com.android.server.EventLogTags;
 import com.android.server.SystemService;
-import com.android.server.pm.PackageManagerService;
-
+import com.android.server.pm.InstructionSets;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -75,6 +74,8 @@ import dalvik.system.VMRuntime;
 public class DeviceStorageMonitorService extends SystemService {
     static final String TAG = "DeviceStorageMonitorService";
 
+    // TODO: extend to watch and manage caches on all private volumes
+
     static final boolean DEBUG = false;
     static final boolean localLOGV = false;
 
@@ -85,6 +86,11 @@ public class DeviceStorageMonitorService extends SystemService {
     private static final int DEFAULT_FREE_STORAGE_LOG_INTERVAL_IN_MINUTES = 12*60; //in minutes
     private static final long DEFAULT_DISK_FREE_CHANGE_REPORTING_THRESHOLD = 2 * 1024 * 1024; // 2MB
     private static final long DEFAULT_CHECK_INTERVAL = MONITOR_INTERVAL*60*1000;
+
+    // com.android.internal.R.string.low_internal_storage_view_text_no_boot
+    // hard codes 250MB in the message as the storage space required for the
+    // boot image.
+    private static final long BOOT_IMAGE_STORAGE_REQUIREMENT = 250 * 1024 * 1024;
 
     private long mFreeMem;  // on /data
     private long mFreeMemAfterLastCacheClear;  // on /data
@@ -221,7 +227,7 @@ public class DeviceStorageMonitorService extends SystemService {
         try {
             if (localLOGV) Slog.i(TAG, "Clearing cache");
             IPackageManager.Stub.asInterface(ServiceManager.getService("package")).
-                    freeStorageAndNotify(mMemCacheTrimToThreshold, mClearCacheObserver);
+                    freeStorageAndNotify(null, mMemCacheTrimToThreshold, mClearCacheObserver);
         } catch (RemoteException e) {
             Slog.w(TAG, "Failed to get handle for PackageManger Exception: "+e);
             mClearingCache = false;
@@ -289,9 +295,10 @@ public class DeviceStorageMonitorService extends SystemService {
                     mLowMemFlag = false;
                 }
             }
-            if (!mLowMemFlag && !mIsBootImageOnDisk) {
+            if (!mLowMemFlag && !mIsBootImageOnDisk && mFreeMem < BOOT_IMAGE_STORAGE_REQUIREMENT) {
                 Slog.i(TAG, "No boot image on disk due to lack of space. Sending notification");
                 sendNotification();
+                mLowMemFlag = true;
             }
             if (mFreeMem < mMemFullThreshold) {
                 if (!mMemFullFlag) {
@@ -341,7 +348,7 @@ public class DeviceStorageMonitorService extends SystemService {
     }
 
     private static boolean isBootImageOnDisk() {
-        for (String instructionSet : PackageManagerService.getAllDexCodeInstructionSets()) {
+        for (String instructionSet : InstructionSets.getAllDexCodeInstructionSets()) {
             if (!VMRuntime.isBootClassPathOnDisk(instructionSet)) {
                 return false;
             }
@@ -382,7 +389,7 @@ public class DeviceStorageMonitorService extends SystemService {
 
         @Override
         public boolean isMemoryLow() {
-            return mLowMemFlag || !mIsBootImageOnDisk;
+            return mLowMemFlag;
         }
 
         @Override
@@ -454,9 +461,7 @@ public class DeviceStorageMonitorService extends SystemService {
         //log the event to event log with the amount of free storage(in bytes) left on the device
         EventLog.writeEvent(EventLogTags.LOW_STORAGE, mFreeMem);
         //  Pack up the values and broadcast them to everyone
-        Intent lowMemIntent = new Intent(Environment.isExternalStorageEmulated()
-                ? Settings.ACTION_INTERNAL_STORAGE_SETTINGS
-                : Intent.ACTION_MANAGE_PACKAGE_STORAGE);
+        Intent lowMemIntent = new Intent(StorageManager.ACTION_MANAGE_STORAGE);
         lowMemIntent.putExtra("memory", mFreeMem);
         lowMemIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         NotificationManager mNotificationMgr =
@@ -472,7 +477,7 @@ public class DeviceStorageMonitorService extends SystemService {
         Notification notification = new Notification.Builder(context)
                 .setSmallIcon(com.android.internal.R.drawable.stat_notify_disk_full)
                 .setTicker(title)
-                .setColor(context.getResources().getColor(
+                .setColor(context.getColor(
                     com.android.internal.R.color.system_notification_accent_color))
                 .setContentTitle(title)
                 .setContentText(details)

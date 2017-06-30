@@ -17,14 +17,21 @@
 package android.app.admin;
 
 import android.accounts.AccountManager;
+import android.annotation.IntDef;
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
+import android.annotation.SystemApi;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
+import android.security.KeyChain;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 
 /**
  * Base class for implementing a device administration component.  This
@@ -110,8 +117,8 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
             = "android.app.action.DEVICE_ADMIN_DISABLED";
 
     /**
-     * Action sent to a device administrator when the user has changed the
-     * password of their device.  You can at this point check the characteristics
+     * Action sent to a device administrator when the user has changed the password of their device
+     * or profile challenge.  You can at this point check the characteristics
      * of the new password with {@link DevicePolicyManager#isActivePasswordSufficient()
      * DevicePolicyManager.isActivePasswordSufficient()}.
      * You will generally
@@ -126,8 +133,8 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
             = "android.app.action.ACTION_PASSWORD_CHANGED";
 
     /**
-     * Action sent to a device administrator when the user has failed at
-     * attempted to enter the password.  You can at this point check the
+     * Action sent to a device administrator when the user has entered an incorrect device
+     * or profile challenge password.  You can at this point check the
      * number of failed password attempts there have been with
      * {@link DevicePolicyManager#getCurrentFailedPasswordAttempts
      * DevicePolicyManager.getCurrentFailedPasswordAttempts()}.  You will generally
@@ -142,8 +149,9 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
             = "android.app.action.ACTION_PASSWORD_FAILED";
 
     /**
-     * Action sent to a device administrator when the user has successfully
-     * entered their password, after failing one or more times.
+     * Action sent to a device administrator when the user has successfully entered their device
+     * or profile challenge password, after failing one or more times.  You will generally
+     * handle this in {@link DeviceAdminReceiver#onPasswordSucceeded}.
      *
      * <p>The calling device admin must have requested
      * {@link DeviceAdminInfo#USES_POLICY_WATCH_LOGIN} to receive
@@ -154,8 +162,9 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
             = "android.app.action.ACTION_PASSWORD_SUCCEEDED";
 
     /**
-     * Action periodically sent to a device administrator when the device password
-     * is expiring.
+     * Action periodically sent to a device administrator when the device or profile challenge
+     * password is expiring.  You will generally
+     * handle this in {@link DeviceAdminReceiver#onPasswordExpiring}.
      *
      * <p>The calling device admin must have requested
      * {@link DeviceAdminInfo#USES_POLICY_EXPIRE_PASSWORD} to receive
@@ -167,8 +176,8 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
 
     /**
      * Action sent to a device administrator to notify that the device is entering
-     * lock task mode from an authorized package.  The extra {@link #EXTRA_LOCK_TASK_PACKAGE}
-     * will describe the authorized package using lock task mode.
+     * lock task mode.  The extra {@link #EXTRA_LOCK_TASK_PACKAGE}
+     * will describe the package using lock task mode.
      *
      * <p>The calling device admin must be the device owner or profile
      * owner to receive this broadcast.
@@ -181,7 +190,7 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
 
     /**
      * Action sent to a device administrator to notify that the device is exiting
-     * lock task mode from an authorized package.
+     * lock task mode.
      *
      * <p>The calling device admin must be the device owner or profile
      * owner to receive this broadcast.
@@ -208,12 +217,14 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
      * requested provisioning. In the device owner case the profile is the primary user.
      * The broadcast will also be limited to the {@link DeviceAdminReceiver} component
      * specified in the original intent or NFC bump that started the provisioning process
-     * (@see DevicePolicyManager#ACTION_PROVISION_MANAGED_PROFILE).
+     * (see {@link DevicePolicyManager#ACTION_PROVISION_MANAGED_PROFILE
+     * DevicePolicyManager.ACTION_PROVISION_MANAGED_PROFILE}).
      *
      * <p>A device admin application which listens to this intent can find out if the device was
      * provisioned for the device owner or profile owner case by calling respectively
      * {@link android.app.admin.DevicePolicyManager#isDeviceOwnerApp} and
-     * {@link android.app.admin.DevicePolicyManager#isProfileOwnerApp}.
+     * {@link android.app.admin.DevicePolicyManager#isProfileOwnerApp}. You will generally handle
+     * this in {@link DeviceAdminReceiver#onProfileProvisioningComplete}.
      *
      * <p>Input: Nothing.</p>
      * <p>Output: Nothing</p>
@@ -223,10 +234,163 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
             "android.app.action.PROFILE_PROVISIONING_COMPLETE";
 
     /**
+     * Action sent to a device administrator to notify that the device user
+     * has declined sharing a bugreport.
+     *
+     * <p>The calling device admin must be the device owner to receive this broadcast.
+     * @see DevicePolicyManager#requestBugreport
+     * @hide
+     */
+    @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
+    public static final String ACTION_BUGREPORT_SHARING_DECLINED =
+            "android.app.action.BUGREPORT_SHARING_DECLINED";
+
+    /**
+     * Action sent to a device administrator to notify that the collection of a bugreport
+     * has failed.
+     *
+     * <p>The calling device admin must be the device owner to receive this broadcast.
+     * @see DevicePolicyManager#requestBugreport
+     * @hide
+     */
+    @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
+    public static final String ACTION_BUGREPORT_FAILED = "android.app.action.BUGREPORT_FAILED";
+
+    /**
+     * Action sent to a device administrator to share the bugreport.
+     *
+     * <p>The calling device admin must be the device owner to receive this broadcast.
+     * @see DevicePolicyManager#requestBugreport
+     * @hide
+     */
+    @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
+    public static final String ACTION_BUGREPORT_SHARE =
+            "android.app.action.BUGREPORT_SHARE";
+
+    /**
+     * Broadcast action: notify that a new batch of security logs is ready to be collected.
+     * @hide
+     */
+    @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
+    public static final String ACTION_SECURITY_LOGS_AVAILABLE
+            = "android.app.action.SECURITY_LOGS_AVAILABLE";
+
+    /**
+     * Broadcast action: notify that a new batch of network logs is ready to be collected.
+     * @see DeviceAdminReceiver#onNetworkLogsAvailable
+     * @hide
+     */
+    @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
+    public static final String ACTION_NETWORK_LOGS_AVAILABLE
+            = "android.app.action.NETWORK_LOGS_AVAILABLE";
+
+    /**
+     * A {@code long} containing a token of the current batch of network logs, that has to be used
+     * to retrieve the batch of logs by the device owner.
+     *
+     * @see #ACTION_NETWORK_LOGS_AVAILABLE
+     * @see DevicePolicyManager#retrieveNetworkLogs
+     * @hide
+     */
+    public static final String EXTRA_NETWORK_LOGS_TOKEN =
+            "android.app.extra.EXTRA_NETWORK_LOGS_TOKEN";
+
+    /**
+     * An {@code int} count representing a total count of network logs inside the current batch of
+     * network logs.
+     *
+     * @see #ACTION_NETWORK_LOGS_AVAILABLE
+     * @hide
+     */
+    public static final String EXTRA_NETWORK_LOGS_COUNT =
+            "android.app.extra.EXTRA_NETWORK_LOGS_COUNT";
+
+    /**
+     * A string containing the SHA-256 hash of the bugreport file.
+     *
+     * @see #ACTION_BUGREPORT_SHARE
+     * @hide
+     */
+    public static final String EXTRA_BUGREPORT_HASH = "android.app.extra.BUGREPORT_HASH";
+
+    /**
+     * An {@code int} failure code representing the reason of the bugreport failure. One of
+     * {@link #BUGREPORT_FAILURE_FAILED_COMPLETING}
+     * or {@link #BUGREPORT_FAILURE_FILE_NO_LONGER_AVAILABLE}
+     *
+     * @see #ACTION_BUGREPORT_FAILED
+     * @hide
+     */
+    public static final String EXTRA_BUGREPORT_FAILURE_REASON =
+            "android.app.extra.BUGREPORT_FAILURE_REASON";
+
+    /**
+     * An interface representing reason of bugreport failure.
+     *
+     * @see #EXTRA_BUGREPORT_FAILURE_REASON
+     * @hide
+     */
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef({
+        BUGREPORT_FAILURE_FAILED_COMPLETING,
+        BUGREPORT_FAILURE_FILE_NO_LONGER_AVAILABLE
+    })
+    public @interface BugreportFailureCode {}
+
+    /**
+     * Bugreport completion process failed.
+     *
+     * <p>If this error code is received, the requesting of bugreport can be retried.
+     * @see DevicePolicyManager#requestBugreport
+     */
+    public static final int BUGREPORT_FAILURE_FAILED_COMPLETING = 0;
+
+    /**
+     * Bugreport has been created, but is no longer available for collection.
+     *
+     * <p>This error likely occurs because the user of the device hasn't consented to share
+     * the bugreport for a long period after its creation.
+     *
+     * <p>If this error code is received, the requesting of bugreport can be retried.
+     * @see DevicePolicyManager#requestBugreport
+     */
+    public static final int BUGREPORT_FAILURE_FILE_NO_LONGER_AVAILABLE = 1;
+
+    /** @hide */
+    public static final String ACTION_CHOOSE_PRIVATE_KEY_ALIAS = "android.app.action.CHOOSE_PRIVATE_KEY_ALIAS";
+
+    /** @hide */
+    public static final String EXTRA_CHOOSE_PRIVATE_KEY_SENDER_UID = "android.app.extra.CHOOSE_PRIVATE_KEY_SENDER_UID";
+
+    /** @hide */
+    public static final String EXTRA_CHOOSE_PRIVATE_KEY_URI = "android.app.extra.CHOOSE_PRIVATE_KEY_URI";
+
+    /** @hide */
+    public static final String EXTRA_CHOOSE_PRIVATE_KEY_ALIAS = "android.app.extra.CHOOSE_PRIVATE_KEY_ALIAS";
+
+    /** @hide */
+    public static final String EXTRA_CHOOSE_PRIVATE_KEY_RESPONSE = "android.app.extra.CHOOSE_PRIVATE_KEY_RESPONSE";
+
+    /**
+     * Broadcast action: notify device owner that there is a pending system update.
+     * @hide
+     */
+    @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
+    public static final String ACTION_NOTIFY_PENDING_SYSTEM_UPDATE = "android.app.action.NOTIFY_PENDING_SYSTEM_UPDATE";
+
+    /**
+     * A long type extra for {@link #onSystemUpdatePending} recording the system time as given by
+     * {@link System#currentTimeMillis()} when the current pending system update is first available.
+     * @hide
+     */
+    public static final String EXTRA_SYSTEM_UPDATE_RECEIVED_TIME = "android.app.extra.SYSTEM_UPDATE_RECEIVED_TIME";
+
+    /**
      * Name under which a DevicePolicy component publishes information
      * about itself.  This meta-data must reference an XML resource containing
-     * a device-admin tag.  XXX TO DO: describe syntax.
+     * a device-admin tag.
      */
+    //  TO DO: describe syntax.
     public static final String DEVICE_ADMIN_META_DATA = "android.app.device_admin";
 
     private DevicePolicyManager mManager;
@@ -265,8 +429,8 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
      *
      * <p> If the admin is activated by a device owner, then the intent
      * may contain private extras that are relevant to user setup.
-     * {@see DevicePolicyManager#createAndInitializeUser(ComponentName, String, String,
-     *      ComponentName, Intent)}
+     * {@see DevicePolicyManager#createAndManageUser(ComponentName, String, ComponentName,
+     *      PersistableBundle, int)}
      *
      * @param context The running context as per {@link #onReceive}.
      * @param intent The received intent as per {@link #onReceive}.
@@ -301,10 +465,9 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
     }
 
     /**
-     * Called after the user has changed their password, as a result of
+     * Called after the user has changed their device or profile challenge password, as a result of
      * receiving {@link #ACTION_PASSWORD_CHANGED}.  At this point you
-     * can use {@link DevicePolicyManager#getCurrentFailedPasswordAttempts()
-     * DevicePolicyManager.getCurrentFailedPasswordAttempts()}
+     * can use {@link DevicePolicyManager#getPasswordQuality(android.content.ComponentName)}
      * to retrieve the active password characteristics.
      * @param context The running context as per {@link #onReceive}.
      * @param intent The received intent as per {@link #onReceive}.
@@ -313,10 +476,10 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
     }
 
     /**
-     * Called after the user has failed at entering their current password, as a result of
-     * receiving {@link #ACTION_PASSWORD_FAILED}.  At this point you
-     * can use {@link DevicePolicyManager} to retrieve the number of failed
-     * password attempts.
+     * Called after the user has failed at entering their device or profile challenge password,
+     * as a result of receiving {@link #ACTION_PASSWORD_FAILED}.  At this point you can use
+     * {@link DevicePolicyManager#getCurrentFailedPasswordAttempts()} to retrieve the number of
+     * failed password attempts.
      * @param context The running context as per {@link #onReceive}.
      * @param intent The received intent as per {@link #onReceive}.
      */
@@ -324,7 +487,7 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
     }
 
     /**
-     * Called after the user has succeeded at entering their current password,
+     * Called after the user has succeeded at entering their device or profile challenge password,
      * as a result of receiving {@link #ACTION_PASSWORD_SUCCEEDED}.  This will
      * only be received the first time they succeed after having previously
      * failed.
@@ -335,9 +498,9 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
     }
 
     /**
-     * Called periodically when the password is about to expire or has expired.  It will typically
-     * be called at these times: on device boot, once per day before the password expires,
-     * and at the time when the password expires.
+     * Called periodically when the device or profile challenge password is about to expire
+     * or has expired.  It will typically be called at these times: on device boot, once per day
+     * before the password expires, and at the time when the password expires.
      *
      * <p>If the password is not updated by the user, this method will continue to be called
      * once per day until the password is changed or the device admin disables password expiration.
@@ -358,20 +521,20 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
     /**
      * Called when provisioning of a managed profile or managed device has completed successfully.
      *
-     * <p> As a prerequisit for the execution of this callback the (@link DeviceAdminReceiver} has
+     * <p> As a prerequisite for the execution of this callback the {@link DeviceAdminReceiver} has
      * to declare an intent filter for {@link #ACTION_PROFILE_PROVISIONING_COMPLETE}.
      * Its component must also be specified in the {@link DevicePolicyManager#EXTRA_DEVICE_ADMIN}
      * of the {@link DevicePolicyManager#ACTION_PROVISION_MANAGED_PROFILE} intent that started the
      * managed provisioning.
      *
-     * <p>When provisioning is complete, the managed profile is hidden until the profile owner
-     * calls {DevicePolicyManager#setProfileEnabled(ComponentName admin)}. Typically a profile
-     * owner will enable the profile when it has finished any additional setup such as adding an
-     * account by using the {@link AccountManager} and calling apis to bring the profile into the
-     * desired state.
+     * <p>When provisioning of a managed profile is complete, the managed profile is hidden until
+     * the profile owner calls {DevicePolicyManager#setProfileEnabled(ComponentName admin)}.
+     * Typically a profile owner will enable the profile when it has finished any additional setup
+     * such as adding an account by using the {@link AccountManager} and calling apis to bring the
+     * profile into the desired state.
      *
      * <p> Note that provisioning completes without waiting for any server interactions, so the
-     * profile owner needs to wait for data to be available if required (e.g android device ids or
+     * profile owner needs to wait for data to be available if required (e.g. android device ids or
      * other data that is set as a result of server interactions).
      *
      * @param context The running context as per {@link #onReceive}.
@@ -381,8 +544,20 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
     }
 
     /**
-     * Called when a device is entering lock task mode by a package authorized
-     * by {@link DevicePolicyManager#isLockTaskPermitted(String)}
+     * Called during provisioning of a managed device to allow the device initializer to perform
+     * user setup steps.
+     *
+     * @param context The running context as per {@link #onReceive}.
+     * @param intent The received intent as per {@link #onReceive}.
+     * @deprecated Do not use
+     */
+    @Deprecated
+    @SystemApi
+    public void onReadyForUserInitialization(Context context, Intent intent) {
+    }
+
+    /**
+     * Called when a device is entering lock task mode.
      *
      * @param context The running context as per {@link #onReceive}.
      * @param intent The received intent as per {@link #onReceive}.
@@ -392,13 +567,120 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
     }
 
     /**
-     * Called when a device is exiting lock task mode by a package authorized
-     * by {@link DevicePolicyManager#isLockTaskPermitted(String)}
+     * Called when a device is exiting lock task mode.
      *
      * @param context The running context as per {@link #onReceive}.
      * @param intent The received intent as per {@link #onReceive}.
      */
     public void onLockTaskModeExiting(Context context, Intent intent) {
+    }
+
+    /**
+     * Allows this receiver to select the alias for a private key and certificate pair for
+     * authentication. If this method returns null, the default {@link android.app.Activity} will be
+     * shown that lets the user pick a private key and certificate pair.
+     *
+     * @param context The running context as per {@link #onReceive}.
+     * @param intent The received intent as per {@link #onReceive}.
+     * @param uid The uid asking for the private key and certificate pair.
+     * @param uri The URI to authenticate, may be null.
+     * @param alias The alias preselected by the client, or null.
+     * @return The private key alias to return and grant access to.
+     * @see KeyChain#choosePrivateKeyAlias
+     */
+    public String onChoosePrivateKeyAlias(Context context, Intent intent, int uid, Uri uri,
+            String alias) {
+        return null;
+    }
+
+    /**
+     * Allows the receiver to be notified when information about a pending system update is
+     * available from the system update service. The same pending system update can trigger multiple
+     * calls to this method, so it is necessary to examine the incoming parameters for details about
+     * the update.
+     * <p>
+     * This callback is only applicable to device owners.
+     *
+     * @param context The running context as per {@link #onReceive}.
+     * @param intent The received intent as per {@link #onReceive}.
+     * @param receivedTime The time as given by {@link System#currentTimeMillis()} indicating when
+     *        the current pending update was first available. -1 if no pending update is available.
+     */
+    public void onSystemUpdatePending(Context context, Intent intent, long receivedTime) {
+    }
+
+    /**
+     * Called when sharing a bugreport has been cancelled by the user of the device.
+     *
+     * <p>This callback is only applicable to device owners.
+     *
+     * @param context The running context as per {@link #onReceive}.
+     * @param intent The received intent as per {@link #onReceive}.
+     * @see DevicePolicyManager#requestBugreport
+     */
+    public void onBugreportSharingDeclined(Context context, Intent intent) {
+    }
+
+    /**
+     * Called when the bugreport has been shared with the device administrator app.
+     *
+     * <p>This callback is only applicable to device owners.
+     *
+     * @param context The running context as per {@link #onReceive}.
+     * @param intent The received intent as per {@link #onReceive}. Contains the URI of
+     * the bugreport file (with MIME type "application/vnd.android.bugreport"), that can be accessed
+     * by calling {@link Intent#getData()}
+     * @param bugreportHash SHA-256 hash of the bugreport file.
+     * @see DevicePolicyManager#requestBugreport
+     */
+    public void onBugreportShared(Context context, Intent intent, String bugreportHash) {
+    }
+
+    /**
+     * Called when the bugreport collection flow has failed.
+     *
+     * <p>This callback is only applicable to device owners.
+     *
+     * @param context The running context as per {@link #onReceive}.
+     * @param intent The received intent as per {@link #onReceive}.
+     * @param failureCode int containing failure code. One of
+     * {@link #BUGREPORT_FAILURE_FAILED_COMPLETING}
+     * or {@link #BUGREPORT_FAILURE_FILE_NO_LONGER_AVAILABLE}
+     * @see DevicePolicyManager#requestBugreport
+     */
+    public void onBugreportFailed(Context context, Intent intent,
+            @BugreportFailureCode int failureCode) {
+    }
+
+    /**
+     * Called when a new batch of security logs can be retrieved.
+     *
+     * <p>This callback is only applicable to device owners.
+     *
+     * @param context The running context as per {@link #onReceive}.
+     * @param intent The received intent as per {@link #onReceive}.
+     * @see DevicePolicyManager#retrieveSecurityLogs(ComponentName)
+     */
+    public void onSecurityLogsAvailable(Context context, Intent intent) {
+    }
+
+    /**
+     * Called each time a new batch of network logs can be retrieved. This callback method will only
+     * ever be called when network logging is enabled. The logs can only be retrieved while network
+     * logging is enabled.
+     *
+     * <p>This callback is only applicable to device owners.
+     *
+     * @param context The running context as per {@link #onReceive}.
+     * @param intent The received intent as per {@link #onReceive}.
+     * @param batchToken The token representing the current batch of network logs.
+     * @param networkLogsCount The total count of events in the current batch of network logs.
+     * @see DevicePolicyManager#retrieveNetworkLogs(ComponentName)
+     *
+     * @hide
+     */
+    public void onNetworkLogsAvailable(Context context, Intent intent, long batchToken,
+            int networkLogsCount) {
     }
 
     /**
@@ -430,11 +712,35 @@ public class DeviceAdminReceiver extends BroadcastReceiver {
             onPasswordExpiring(context, intent);
         } else if (ACTION_PROFILE_PROVISIONING_COMPLETE.equals(action)) {
             onProfileProvisioningComplete(context, intent);
+        } else if (ACTION_CHOOSE_PRIVATE_KEY_ALIAS.equals(action)) {
+            int uid = intent.getIntExtra(EXTRA_CHOOSE_PRIVATE_KEY_SENDER_UID, -1);
+            Uri uri = intent.getParcelableExtra(EXTRA_CHOOSE_PRIVATE_KEY_URI);
+            String alias = intent.getStringExtra(EXTRA_CHOOSE_PRIVATE_KEY_ALIAS);
+            String chosenAlias = onChoosePrivateKeyAlias(context, intent, uid, uri, alias);
+            setResultData(chosenAlias);
         } else if (ACTION_LOCK_TASK_ENTERING.equals(action)) {
             String pkg = intent.getStringExtra(EXTRA_LOCK_TASK_PACKAGE);
             onLockTaskModeEntering(context, intent, pkg);
         } else if (ACTION_LOCK_TASK_EXITING.equals(action)) {
             onLockTaskModeExiting(context, intent);
+        } else if (ACTION_NOTIFY_PENDING_SYSTEM_UPDATE.equals(action)) {
+            long receivedTime = intent.getLongExtra(EXTRA_SYSTEM_UPDATE_RECEIVED_TIME, -1);
+            onSystemUpdatePending(context, intent, receivedTime);
+        } else if (ACTION_BUGREPORT_SHARING_DECLINED.equals(action)) {
+            onBugreportSharingDeclined(context, intent);
+        } else if (ACTION_BUGREPORT_SHARE.equals(action)) {
+            String bugreportFileHash = intent.getStringExtra(EXTRA_BUGREPORT_HASH);
+            onBugreportShared(context, intent, bugreportFileHash);
+        } else if (ACTION_BUGREPORT_FAILED.equals(action)) {
+            int failureCode = intent.getIntExtra(EXTRA_BUGREPORT_FAILURE_REASON,
+                    BUGREPORT_FAILURE_FAILED_COMPLETING);
+            onBugreportFailed(context, intent, failureCode);
+        } else if (ACTION_SECURITY_LOGS_AVAILABLE.equals(action)) {
+            onSecurityLogsAvailable(context, intent);
+        } else if (ACTION_NETWORK_LOGS_AVAILABLE.equals(action)) {
+            long batchToken = intent.getLongExtra(EXTRA_NETWORK_LOGS_TOKEN, -1);
+            int networkLogsCount = intent.getIntExtra(EXTRA_NETWORK_LOGS_COUNT, 0);
+            onNetworkLogsAvailable(context, intent, batchToken, networkLogsCount);
         }
     }
 }

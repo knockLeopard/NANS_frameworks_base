@@ -16,12 +16,10 @@
 
 package android.media.audiopolicy;
 
-import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioManager;
-import android.media.audiopolicy.AudioMixingRule.AttributeMatchCriterion;
-import android.os.Binder;
-import android.os.IBinder;
+import android.media.AudioPatch;
+import android.media.audiopolicy.AudioMixingRule.AudioMixMatchCriterion;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.util.Log;
@@ -63,6 +61,10 @@ public class AudioPolicyConfig implements Parcelable {
         mMixes.add(mix);
     }
 
+    public ArrayList<AudioMix> getMixes() {
+        return mMixes;
+    }
+
     @Override
     public int hashCode() {
         return Objects.hash(mMixes);
@@ -79,14 +81,19 @@ public class AudioPolicyConfig implements Parcelable {
         for (AudioMix mix : mMixes) {
             // write mix route flags
             dest.writeInt(mix.getRouteFlags());
+            // write callback flags
+            dest.writeInt(mix.mCallbackFlags);
+            // write device information
+            dest.writeInt(mix.mDeviceSystemType);
+            dest.writeString(mix.mDeviceAddress);
             // write mix format
             dest.writeInt(mix.getFormat().getSampleRate());
             dest.writeInt(mix.getFormat().getEncoding());
             dest.writeInt(mix.getFormat().getChannelMask());
             // write mix rules
-            final ArrayList<AttributeMatchCriterion> criteria = mix.getRule().getCriteria();
+            final ArrayList<AudioMixMatchCriterion> criteria = mix.getRule().getCriteria();
             dest.writeInt(criteria.size());
-            for (AttributeMatchCriterion criterion : criteria) {
+            for (AudioMixMatchCriterion criterion : criteria) {
                 criterion.writeToParcel(dest);
             }
         }
@@ -100,6 +107,10 @@ public class AudioPolicyConfig implements Parcelable {
             // read mix route flags
             int routeFlags = in.readInt();
             mixBuilder.setRouteFlags(routeFlags);
+            // read callback flags
+            mixBuilder.setCallbackFlags(in.readInt());
+            // read device information
+            mixBuilder.setDevice(in.readInt(), in.readString());
             // read mix format
             int sampleRate = in.readInt();
             int encoding = in.readInt();
@@ -146,8 +157,8 @@ public class AudioPolicyConfig implements Parcelable {
             textDump += "  channels=0x";
             textDump += Integer.toHexString(mix.getFormat().getChannelMask()).toUpperCase() +"\n";
             // write mix rules
-            final ArrayList<AttributeMatchCriterion> criteria = mix.getRule().getCriteria();
-            for (AttributeMatchCriterion criterion : criteria) {
+            final ArrayList<AudioMixMatchCriterion> criteria = mix.getRule().getCriteria();
+            for (AudioMixMatchCriterion criterion : criteria) {
                 switch(criterion.mRule) {
                     case AudioMixingRule.RULE_EXCLUDE_ATTRIBUTE_USAGE:
                         textDump += "  exclude usage ";
@@ -164,6 +175,14 @@ public class AudioPolicyConfig implements Parcelable {
                     case AudioMixingRule.RULE_MATCH_ATTRIBUTE_CAPTURE_PRESET:
                         textDump += "  match capture preset ";
                         textDump += criterion.mAttr.getCapturePreset();
+                        break;
+                    case AudioMixingRule.RULE_MATCH_UID:
+                        textDump += "  match UID ";
+                        textDump += criterion.mIntProp;
+                        break;
+                    case AudioMixingRule.RULE_EXCLUDE_UID:
+                        textDump += "  exclude UID ";
+                        textDump += criterion.mIntProp;
                         break;
                     default:
                         textDump += "invalid rule!";
@@ -185,8 +204,14 @@ public class AudioPolicyConfig implements Parcelable {
         int mixIndex = 0;
         for (AudioMix mix : mMixes) {
             if (!mRegistrationId.isEmpty()) {
-                mix.setRegistration(mRegistrationId + "mix" + mixTypeId(mix.getMixType()) + ":"
-                        + mixIndex++);
+                if ((mix.getRouteFlags() & AudioMix.ROUTE_FLAG_LOOP_BACK) ==
+                        AudioMix.ROUTE_FLAG_LOOP_BACK) {
+                    mix.setRegistration(mRegistrationId + "mix" + mixTypeId(mix.getMixType()) + ":"
+                            + mixIndex++);
+                } else if ((mix.getRouteFlags() & AudioMix.ROUTE_FLAG_RENDER) ==
+                        AudioMix.ROUTE_FLAG_RENDER) {
+                    mix.setRegistration(mix.mDeviceAddress);
+                }
             } else {
                 mix.setRegistration("");
             }

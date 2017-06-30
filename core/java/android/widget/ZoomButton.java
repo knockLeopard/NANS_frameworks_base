@@ -17,23 +17,19 @@
 package android.widget;
 
 import android.content.Context;
-import android.os.Handler;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnLongClickListener;
-import android.view.accessibility.AccessibilityEvent;
-import android.view.accessibility.AccessibilityNodeInfo;
 
 public class ZoomButton extends ImageButton implements OnLongClickListener {
 
-    private final Handler mHandler;
     private final Runnable mRunnable = new Runnable() {
         public void run() {
             if (hasOnClickListeners() && mIsInLongpress && isEnabled()) {
                 callOnClick();
-                mHandler.postDelayed(this, mZoomSpeed);
+                postDelayed(this, mZoomSpeed);
             }
         }
     };
@@ -55,7 +51,6 @@ public class ZoomButton extends ImageButton implements OnLongClickListener {
 
     public ZoomButton(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
-        mHandler = new Handler();
         setOnLongClickListener(this);
     }
 
@@ -74,7 +69,7 @@ public class ZoomButton extends ImageButton implements OnLongClickListener {
 
     public boolean onLongClick(View v) {
         mIsInLongpress = true;
-        mHandler.post(mRunnable);
+        post(mRunnable);
         return true;
     }
         
@@ -104,14 +99,7 @@ public class ZoomButton extends ImageButton implements OnLongClickListener {
     }
 
     @Override
-    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
-        super.onInitializeAccessibilityEvent(event);
-        event.setClassName(ZoomButton.class.getName());
-    }
-
-    @Override
-    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
-        super.onInitializeAccessibilityNodeInfo(info);
-        info.setClassName(ZoomButton.class.getName());
+    public CharSequence getAccessibilityClassName() {
+        return ZoomButton.class.getName();
     }
 }

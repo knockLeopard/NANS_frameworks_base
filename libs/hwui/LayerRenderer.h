@@ -49,27 +49,28 @@ public:
     LayerRenderer(RenderState& renderState, Layer* layer);
     virtual ~LayerRenderer();
 
-    virtual void onViewportInitialized() { /* do nothing */ }
-    virtual status_t prepareDirty(float left, float top, float right, float bottom, bool opaque);
-    virtual status_t clear(float left, float top, float right, float bottom, bool opaque);
-    virtual void finish();
+    virtual void onViewportInitialized() override { /* do nothing */ }
+    virtual void prepareDirty(int viewportWidth, int viewportHeight,
+            float left, float top, float right, float bottom, bool opaque) override;
+    virtual void clear(float left, float top, float right, float bottom, bool opaque) override;
+    virtual bool finish() override;
 
     static Layer* createTextureLayer(RenderState& renderState);
     static Layer* createRenderLayer(RenderState& renderState, uint32_t width, uint32_t height);
     static bool resizeLayer(Layer* layer, uint32_t width, uint32_t height);
     static void updateTextureLayer(Layer* layer, uint32_t width, uint32_t height,
-            bool isOpaque, bool forceFilter, GLenum renderTarget, float* textureTransform);
+            bool isOpaque, bool forceFilter, GLenum renderTarget, const float* textureTransform);
     static void destroyLayer(Layer* layer);
     static bool copyLayer(RenderState& renderState, Layer* layer, SkBitmap* bitmap);
 
     static void flushLayer(RenderState& renderState, Layer* layer);
 
 protected:
-    virtual void ensureStencilBuffer();
-    virtual bool hasLayer() const;
-    virtual Region* getRegion() const;
-    virtual GLuint getTargetFbo() const;
-    virtual bool suppressErrorChecks() const;
+    virtual void ensureStencilBuffer() override;
+    virtual bool hasLayer() const override;
+    virtual Region* getRegion() const override;
+    virtual GLuint getTargetFbo() const override;
+    virtual bool suppressErrorChecks() const override;
 
 private:
     void generateMesh();

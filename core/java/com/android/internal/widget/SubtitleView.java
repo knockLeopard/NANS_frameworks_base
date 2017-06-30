@@ -28,10 +28,10 @@ import android.graphics.Paint.Style;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.text.Layout.Alignment;
+import android.text.SpannableStringBuilder;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.util.AttributeSet;
-import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.accessibility.CaptioningManager.CaptionStyle;
 
@@ -55,8 +55,8 @@ public class SubtitleView extends View {
     /** Temporary rectangle used for computing line bounds. */
     private final RectF mLineBounds = new RectF();
 
-    /** Reusable string builder used for holding text. */
-    private final StringBuilder mText = new StringBuilder();
+    /** Reusable spannable string builder used for holding text. */
+    private final SpannableStringBuilder mText = new SpannableStringBuilder();
 
     private Alignment mAlignment;
     private TextPaint mTextPaint;
@@ -142,7 +142,7 @@ public class SubtitleView extends View {
     }
 
     public void setText(CharSequence text) {
-        mText.setLength(0);
+        mText.clear();
         mText.append(text);
 
         mHasMeasurements = false;

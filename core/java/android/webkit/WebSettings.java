@@ -16,8 +16,14 @@
 
 package android.webkit;
 
+import android.annotation.IntDef;
 import android.annotation.SystemApi;
 import android.content.Context;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
 /**
  * Manages settings state for a WebView. When a WebView is first created, it
@@ -112,6 +118,11 @@ public abstract class WebSettings {
 
         int value;
     }
+
+    /** @hide */
+    @IntDef({LOAD_DEFAULT, LOAD_NORMAL, LOAD_CACHE_ELSE_NETWORK, LOAD_NO_CACHE, LOAD_CACHE_ONLY})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface CacheMode {}
 
     /**
      * Default cache usage mode. If the navigation type doesn't impose any
@@ -870,8 +881,7 @@ public abstract class WebSettings {
      * {@link android.Manifest.permission#INTERNET} permission, otherwise it is
      * true.
      *
-     * @param flag whether the WebView should not load any resources from the
-     *             network
+     * @param flag true means block network loads by the WebView
      * @see android.webkit.WebView#reload
      */
     public abstract void setBlockNetworkLoads(boolean flag);
@@ -900,7 +910,9 @@ public abstract class WebSettings {
      * and therefore secure policy, this setting should be disabled.
      * Note that this setting affects only JavaScript access to file scheme
      * resources. Other access to such resources, for example, from image HTML
-     * elements, is unaffected.
+     * elements, is unaffected. To prevent possible violation of same domain policy
+     * on {@link android.os.Build.VERSION_CODES#ICE_CREAM_SANDWICH} and earlier
+     * devices, you should explicitly set this value to {@code false}.
      * <p>
      * The default value is true for API level
      * {@link android.os.Build.VERSION_CODES#ICE_CREAM_SANDWICH_MR1} and below,
@@ -920,7 +932,9 @@ public abstract class WebSettings {
      * the value of {@link #getAllowUniversalAccessFromFileURLs} is true.
      * Note too, that this setting affects only JavaScript access to file scheme
      * resources. Other access to such resources, for example, from image HTML
-     * elements, is unaffected.
+     * elements, is unaffected. To prevent possible violation of same domain policy
+     * on {@link android.os.Build.VERSION_CODES#ICE_CREAM_SANDWICH} and earlier
+     * devices, you should explicitly set this value to {@code false}.
      * <p>
      * The default value is true for API level
      * {@link android.os.Build.VERSION_CODES#ICE_CREAM_SANDWICH_MR1} and below,
@@ -983,9 +997,6 @@ public abstract class WebSettings {
      * @deprecated Database paths are managed by the implementation and calling this method
      *             will have no effect.
      */
-    // This will update WebCore when the Sync runs in the C++ side.
-    // Note that the WebCore Database Tracker only allows the path to be set
-    // once.
     @Deprecated
     public abstract void setDatabasePath(String databasePath);
 
@@ -996,8 +1007,10 @@ public abstract class WebSettings {
      *
      * @param databasePath a path to the directory where databases should be
      *                     saved.
+     * @deprecated Geolocation database are managed by the implementation and calling this method
+     *             will have no effect.
      */
-    // This will update WebCore when the Sync runs in the C++ side.
+    @Deprecated
     public abstract void setGeolocationDatabasePath(String databasePath);
 
     /**
@@ -1098,8 +1111,6 @@ public abstract class WebSettings {
      *   via the JavaScript Geolocation API.
      * </ul>
      * <p>
-     * As an option, it is possible to store previous locations and web origin
-     * permissions in a database. See {@link #setGeolocationDatabasePath}.
      *
      * @param flag whether Geolocation should be enabled
      */
@@ -1207,6 +1218,12 @@ public abstract class WebSettings {
     /**
      * Sets the WebView's user-agent string. If the string is null or empty,
      * the system default value will be used.
+     *
+     * Note that starting from {@link android.os.Build.VERSION_CODES#KITKAT} Android
+     * version, changing the user-agent while loading a web page causes WebView
+     * to initiate loading once again.
+     *
+     * @param ua new user-agent string
      */
     public abstract void setUserAgentString(String ua);
 
@@ -1262,7 +1279,7 @@ public abstract class WebSettings {
      *
      * @param mode the mode to use
      */
-    public abstract void setCacheMode(int mode);
+    public abstract void setCacheMode(@CacheMode int mode);
 
     /**
      * Gets the current setting for overriding the cache mode.
@@ -1270,6 +1287,7 @@ public abstract class WebSettings {
      * @return the current setting for overriding the cache mode
      * @see #setCacheMode
      */
+    @CacheMode
     public abstract int getCacheMode();
 
     /**
@@ -1285,7 +1303,7 @@ public abstract class WebSettings {
      * strongly discouraged.
      *
      * @param mode The mixed content mode to use. One of {@link #MIXED_CONTENT_NEVER_ALLOW},
-     *     {@link #MIXED_CONTENT_NEVER_ALLOW} or {@link #MIXED_CONTENT_COMPATIBILITY_MODE}.
+     *     {@link #MIXED_CONTENT_ALWAYS_ALLOW} or {@link #MIXED_CONTENT_COMPATIBILITY_MODE}.
      */
     public abstract void setMixedContentMode(int mode);
 
@@ -1293,7 +1311,7 @@ public abstract class WebSettings {
      * Gets the current behavior of the WebView with regard to loading insecure content from a
      * secure origin.
      * @return The current setting, one of {@link #MIXED_CONTENT_NEVER_ALLOW},
-     *     {@link #MIXED_CONTENT_NEVER_ALLOW} or {@link #MIXED_CONTENT_COMPATIBILITY_MODE}.
+     *     {@link #MIXED_CONTENT_ALWAYS_ALLOW} or {@link #MIXED_CONTENT_COMPATIBILITY_MODE}.
      */
     public abstract int getMixedContentMode();
 
@@ -1330,4 +1348,87 @@ public abstract class WebSettings {
      */
     @SystemApi
     public abstract boolean getVideoOverlayForEmbeddedEncryptedVideoEnabled();
+
+    /**
+     * Sets whether this WebView should raster tiles when it is
+     * offscreen but attached to a window. Turning this on can avoid
+     * rendering artifacts when animating an offscreen WebView on-screen.
+     * Offscreen WebViews in this mode use more memory. The default value is
+     * false.<br>
+     * Please follow these guidelines to limit memory usage:
+     * <ul>
+     * <li> WebView size should be not be larger than the device screen size.
+     * <li> Limit use of this mode to a small number of WebViews. Use it for
+     *   visible WebViews and WebViews about to be animated to visible.
+     * </ul>
+     */
+    public abstract void setOffscreenPreRaster(boolean enabled);
+
+    /**
+     * Gets whether this WebView should raster tiles when it is
+     * offscreen but attached to a window.
+     * @return true if this WebView will raster tiles when it is
+     * offscreen but attached to a window.
+     */
+    public abstract boolean getOffscreenPreRaster();
+
+    /**
+     * @hide
+     */
+    @IntDef(flag = true,
+            value = {
+                    MENU_ITEM_NONE,
+                    MENU_ITEM_SHARE,
+                    MENU_ITEM_WEB_SEARCH,
+                    MENU_ITEM_PROCESS_TEXT
+            })
+    @Retention(RetentionPolicy.SOURCE)
+    @Target({ElementType.PARAMETER, ElementType.METHOD})
+    private @interface MenuItemFlags {}
+
+    /**
+     * Disables the action mode menu items according to {@code menuItems} flag.
+     * @param menuItems an integer field flag for the menu items to be disabled.
+     */
+    public abstract void setDisabledActionModeMenuItems(@MenuItemFlags int menuItems);
+
+    /**
+     * Gets the action mode menu items that are disabled, expressed in an integer field flag.
+     * The default value is {@link #MENU_ITEM_NONE}
+     *
+     * @return all the disabled menu item flags combined with bitwise OR.
+     */
+    public abstract @MenuItemFlags int getDisabledActionModeMenuItems();
+
+    /**
+     * Used with {@link #setDisabledActionModeMenuItems}.
+     *
+     * No menu items should be disabled.
+     */
+    public static final int MENU_ITEM_NONE = 0;
+
+    /**
+     * Used with {@link #setDisabledActionModeMenuItems}.
+     *
+     * Disable menu item "Share".
+     */
+    public static final int MENU_ITEM_SHARE = 1 << 0;
+
+    /**
+     * Used with {@link #setDisabledActionModeMenuItems}.
+     *
+     * Disable menu item "Web Search".
+     */
+    public static final int MENU_ITEM_WEB_SEARCH = 1 << 1;
+
+    /**
+     * Used with {@link #setDisabledActionModeMenuItems}.
+     *
+     * Disable all the action mode menu items for text processing.
+     * By default WebView searches for activities that are able to handle
+     * {@link android.content.Intent#ACTION_PROCESS_TEXT} and show them in the
+     * action mode menu. If this flag is set via {@link
+     * #setDisabledActionModeMenuItems}, these menu items will be disabled.
+     */
+    public static final int MENU_ITEM_PROCESS_TEXT = 1 << 2;
 }

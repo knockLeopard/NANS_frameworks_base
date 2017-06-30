@@ -17,7 +17,7 @@ trainingnavtop=true
 </div>
 </div>
 
-<a class="notice-developers-video wide" href="https://developers.google.com/events/io/sessions/325304728">
+<a class="notice-developers-video wide" href="https://www.youtube.com/watch?v=yhv8l9F44qo">
 <div>
     <h3>Video</h3>
     <p>Volley: Easy, Fast Networking for Android</p>
@@ -38,7 +38,7 @@ This lesson describes how to use the common request types that Volley supports:<
 
 <p>If your expected response is one of these types, you probably won't have to implement a
 custom request. This lesson describes how to use these standard request types. For
-information on how to implement your own custom request, see <a href="requests-custom.html">
+information on how to implement your own custom request, see <a href="request-custom.html">
 Implementing a Custom Request</a>.</p>
 
 
@@ -85,7 +85,7 @@ mImageView = (ImageView) findViewById(R.id.myImage);
 
 // Retrieves an image specified by the URL, displays it in the UI.
 ImageRequest request = new ImageRequest(url,
-    new Response.Listener<Bitmap>() {
+    new Response.Listener&lt;Bitmap&gt;() {
         &#64;Override
         public void onResponse(Bitmap bitmap) {
             mImageView.setImageBitmap(bitmap);
@@ -257,7 +257,7 @@ mTxtDisplay = (TextView) findViewById(R.id.txtDisplay);
 String url = "http://my-json-feed";
 
 JsonObjectRequest jsObjRequest = new JsonObjectRequest
-        (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
+        (Request.Method.GET, url, null, new Response.Listener&lt;JSONObject&gt;() {
 
     &#64;Override
     public void onResponse(JSONObject response) {

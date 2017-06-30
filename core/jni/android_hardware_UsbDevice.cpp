@@ -20,7 +20,7 @@
 
 #include "jni.h"
 #include "JNIHelp.h"
-#include "android_runtime/AndroidRuntime.h"
+#include "core_jni_helpers.h"
 
 #include <usbhost/usbhost.h>
 
@@ -44,7 +44,7 @@ android_hardware_UsbDevice_get_device_name(JNIEnv *env, jobject clazz, jint id)
     return result;
 }
 
-static JNINativeMethod method_table[] = {
+static const JNINativeMethod method_table[] = {
     // static methods
     { "native_get_device_id", "(Ljava/lang/String;)I",
                                         (void*)android_hardware_UsbDevice_get_device_id },
@@ -54,6 +54,6 @@ static JNINativeMethod method_table[] = {
 
 int register_android_hardware_UsbDevice(JNIEnv *env)
 {
-    return AndroidRuntime::registerNativeMethods(env, "android/hardware/usb/UsbDevice",
+    return RegisterMethodsOrDie(env, "android/hardware/usb/UsbDevice",
             method_table, NELEM(method_table));
 }

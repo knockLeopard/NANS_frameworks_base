@@ -16,7 +16,9 @@
 
 package android.text;
 
+import android.annotation.Nullable;
 import android.content.res.Resources;
+import android.icu.util.ULocale;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.SystemProperties;
@@ -65,7 +67,8 @@ public class TextUtils {
     private static final String TAG = "TextUtils";
 
     /* package */ static final char[] ELLIPSIS_NORMAL = { '\u2026' }; // this is "..."
-    private static final String ELLIPSIS_STRING = new String(ELLIPSIS_NORMAL);
+    /** {@hide} */
+    public static final String ELLIPSIS_STRING = new String(ELLIPSIS_NORMAL);
 
     /* package */ static final char[] ELLIPSIS_TWO_DOTS = { '\u2025' }; // this is ".."
     private static final String ELLIPSIS_TWO_DOTS_STRING = new String(ELLIPSIS_TWO_DOTS);
@@ -282,17 +285,6 @@ public class TextUtils {
     }
 
     /**
-     * Returns list of multiple {@link CharSequence} joined into a single
-     * {@link CharSequence} separated by localized delimiter such as ", ".
-     *
-     * @hide
-     */
-    public static CharSequence join(Iterable<CharSequence> list) {
-        final CharSequence delimiter = Resources.getSystem().getText(R.string.list_delimeter);
-        return join(delimiter, list);
-    }
-
-    /**
      * Returns a string containing the tokens joined by delimiters.
      * @param tokens an array objects to be joined. Strings will be formed from
      *     the objects by calling object.toString().
@@ -318,14 +310,13 @@ public class TextUtils {
      */
     public static String join(CharSequence delimiter, Iterable tokens) {
         StringBuilder sb = new StringBuilder();
-        boolean firstTime = true;
-        for (Object token: tokens) {
-            if (firstTime) {
-                firstTime = false;
-            } else {
+        Iterator<?> it = tokens.iterator();
+        if (it.hasNext()) {
+            sb.append(it.next());
+            while (it.hasNext()) {
                 sb.append(delimiter);
+                sb.append(it.next());
             }
-            sb.append(token);
         }
         return sb.toString();
     }
@@ -457,16 +448,21 @@ public class TextUtils {
      * @param str the string to be examined
      * @return true if str is null or zero length
      */
-    public static boolean isEmpty(CharSequence str) {
+    public static boolean isEmpty(@Nullable CharSequence str) {
         if (str == null || str.length() == 0)
             return true;
         else
             return false;
     }
 
+    /** {@hide} */
+    public static String nullIfEmpty(@Nullable String str) {
+        return isEmpty(str) ? null : str;
+    }
+
     /**
      * Returns the length that the specified CharSequence would have if
-     * spaces and control characters were trimmed from the start and end,
+     * spaces and ASCII control characters were trimmed from the start and end,
      * as by {@link String#trim}.
      */
     public static int getTrimmedLength(CharSequence s) {
@@ -509,9 +505,14 @@ public class TextUtils {
         return false;
     }
 
-    // XXX currently this only reverses chars, not spans
-    public static CharSequence getReverse(CharSequence source,
-                                          int start, int end) {
+    /**
+     * This function only reverses individual {@code char}s and not their associated
+     * spans. It doesn't support surrogate pairs (that correspond to non-BMP code points), combining
+     * sequences or conjuncts either.
+     * @deprecated Do not use.
+     */
+    @Deprecated
+    public static CharSequence getReverse(CharSequence source, int start, int end) {
         return new Reverser(source, start, end);
     }
 
@@ -621,8 +622,7 @@ public class TextUtils {
      * Flatten a CharSequence and whatever styles can be copied across processes
      * into the parcel.
      */
-    public static void writeToParcel(CharSequence cs, Parcel p,
-            int parcelableFlags) {
+    public static void writeToParcel(CharSequence cs, Parcel p, int parcelableFlags) {
         if (cs instanceof Spanned) {
             p.writeInt(0);
             p.writeString(cs.toString());
@@ -644,15 +644,15 @@ public class TextUtils {
                 }
 
                 if (prop instanceof ParcelableSpan) {
-                    ParcelableSpan ps = (ParcelableSpan)prop;
-                    int spanTypeId = ps.getSpanTypeId();
+                    final ParcelableSpan ps = (ParcelableSpan) prop;
+                    final int spanTypeId = ps.getSpanTypeIdInternal();
                     if (spanTypeId < FIRST_SPAN || spanTypeId > LAST_SPAN) {
-                        Log.e(TAG, "external class \"" + ps.getClass().getSimpleName()
+                        Log.e(TAG, "External class \"" + ps.getClass().getSimpleName()
                                 + "\" is attempting to use the frameworks-only ParcelableSpan"
                                 + " interface");
                     } else {
                         p.writeInt(spanTypeId);
-                        ps.writeToParcel(p, parcelableFlags);
+                        ps.writeToParcelInternal(p, parcelableFlags);
                         writeWhere(p, sp, o);
                     }
                 }
@@ -1258,7 +1258,7 @@ public class TextUtils {
                     }
 
                     // XXX this is probably ok, but need to look at it more
-                    tempMt.setPara(format, 0, format.length(), textDir);
+                    tempMt.setPara(format, 0, format.length(), textDir, null);
                     float moreWid = tempMt.addStyleRun(p, tempMt.mLen, null);
 
                     if (w + moreWid <= avail) {
@@ -1280,7 +1280,7 @@ public class TextUtils {
     private static float setPara(MeasuredText mt, TextPaint paint,
             CharSequence text, int start, int end, TextDirectionHeuristic textDir) {
 
-        mt.setPara(text, start, end, textDir);
+        mt.setPara(text, start, end, textDir, null);
 
         float width;
         Spanned sp = text instanceof Spanned ? (Spanned) text : null;
@@ -1435,8 +1435,9 @@ public class TextUtils {
      */
     public static boolean isGraphic(CharSequence str) {
         final int len = str.length();
-        for (int i=0; i<len; i++) {
-            int gc = Character.getType(str.charAt(i));
+        for (int cp, i=0; i<len; i+=Character.charCount(cp)) {
+            cp = Character.codePointAt(str, i);
+            int gc = Character.getType(cp);
             if (gc != Character.CONTROL
                     && gc != Character.FORMAT
                     && gc != Character.SURROGATE
@@ -1452,7 +1453,12 @@ public class TextUtils {
 
     /**
      * Returns whether this character is a printable character.
+     *
+     * This does not support non-BMP characters and should not be used.
+     *
+     * @deprecated Use {@link #isGraphic(CharSequence)} instead.
      */
+    @Deprecated
     public static boolean isGraphic(char c) {
         int gc = Character.getType(c);
         return     gc != Character.CONTROL
@@ -1469,8 +1475,9 @@ public class TextUtils {
      */
     public static boolean isDigitsOnly(CharSequence str) {
         final int len = str.length();
-        for (int i = 0; i < len; i++) {
-            if (!Character.isDigit(str.charAt(i))) {
+        for (int cp, i = 0; i < len; i += Character.charCount(cp)) {
+            cp = Character.codePointAt(str, i);
+            if (!Character.isDigit(cp)) {
                 return false;
             }
         }
@@ -1749,45 +1756,21 @@ public class TextUtils {
      * Be careful: this code will need to be updated when vertical scripts will be supported
      */
     public static int getLayoutDirectionFromLocale(Locale locale) {
-        if (locale != null && !locale.equals(Locale.ROOT)) {
-            final String scriptSubtag = ICU.addLikelySubtags(locale).getScript();
-            if (scriptSubtag == null) return getLayoutDirectionFromFirstChar(locale);
-
-            if (scriptSubtag.equalsIgnoreCase(ARAB_SCRIPT_SUBTAG) ||
-                    scriptSubtag.equalsIgnoreCase(HEBR_SCRIPT_SUBTAG)) {
-                return View.LAYOUT_DIRECTION_RTL;
-            }
-        }
-        // If forcing into RTL layout mode, return RTL as default, else LTR
-        return SystemProperties.getBoolean(Settings.Global.DEVELOPMENT_FORCE_RTL, false)
-                ? View.LAYOUT_DIRECTION_RTL
-                : View.LAYOUT_DIRECTION_LTR;
+        return ((locale != null && !locale.equals(Locale.ROOT)
+                        && ULocale.forLocale(locale).isRightToLeft())
+                // If forcing into RTL layout mode, return RTL as default
+                || SystemProperties.getBoolean(Settings.Global.DEVELOPMENT_FORCE_RTL, false))
+            ? View.LAYOUT_DIRECTION_RTL
+            : View.LAYOUT_DIRECTION_LTR;
     }
 
     /**
-     * Fallback algorithm to detect the locale direction. Rely on the fist char of the
-     * localized locale name. This will not work if the localized locale name is in English
-     * (this is the case for ICU 4.4 and "Urdu" script)
-     *
-     * @param locale
-     * @return the layout direction. This may be one of:
-     * {@link View#LAYOUT_DIRECTION_LTR} or
-     * {@link View#LAYOUT_DIRECTION_RTL}.
-     *
-     * Be careful: this code will need to be updated when vertical scripts will be supported
+     * Return localized string representing the given number of selected items.
      *
      * @hide
      */
-    private static int getLayoutDirectionFromFirstChar(Locale locale) {
-        switch(Character.getDirectionality(locale.getDisplayName(locale).charAt(0))) {
-            case Character.DIRECTIONALITY_RIGHT_TO_LEFT:
-            case Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC:
-                return View.LAYOUT_DIRECTION_RTL;
-
-            case Character.DIRECTIONALITY_LEFT_TO_RIGHT:
-            default:
-                return View.LAYOUT_DIRECTION_LTR;
-        }
+    public static CharSequence formatSelectedCount(int count) {
+        return Resources.getSystem().getQuantityString(R.plurals.selected_count, count, count);
     }
 
     private static Object sLock = new Object();
@@ -1797,7 +1780,4 @@ public class TextUtils {
     private static String[] EMPTY_STRING_ARRAY = new String[]{};
 
     private static final char ZWNBS_CHAR = '\uFEFF';
-
-    private static String ARAB_SCRIPT_SUBTAG = "Arab";
-    private static String HEBR_SCRIPT_SUBTAG = "Hebr";
 }

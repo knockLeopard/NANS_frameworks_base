@@ -156,7 +156,7 @@ public class VpnService extends Service {
      */
     public static Intent prepare(Context context) {
         try {
-            if (getService().prepareVpn(context.getPackageName(), null)) {
+            if (getService().prepareVpn(context.getPackageName(), null, UserHandle.myUserId())) {
                 return null;
             }
         } catch (RemoteException e) {
@@ -182,10 +182,11 @@ public class VpnService extends Service {
         String packageName = context.getPackageName();
         try {
             // Only prepare if we're not already prepared.
-            if (!cm.prepareVpn(packageName, null)) {
-                cm.prepareVpn(null, packageName);
+            int userId = UserHandle.myUserId();
+            if (!cm.prepareVpn(packageName, null, userId)) {
+                cm.prepareVpn(null, packageName, userId);
             }
-            cm.setVpnPackageAuthorization(true);
+            cm.setVpnPackageAuthorization(packageName, userId, true);
         } catch (RemoteException e) {
             // ignore
         }
@@ -239,7 +240,7 @@ public class VpnService extends Service {
      * Adding an address implicitly allows traffic from that address family (i.e., IPv4 or IPv6) to
      * be routed over the VPN. @see Builder#allowFamily
      *
-     * @throws {@link IllegalArgumentException} if the address is invalid.
+     * @throws IllegalArgumentException if the address is invalid.
      *
      * @param address The IP address (IPv4 or IPv6) to assign to the VPN interface.
      * @param prefixLength The prefix length of the address.
@@ -270,7 +271,7 @@ public class VpnService extends Service {
      * family from being routed. In other words, once an address family has been allowed, it stays
      * allowed for the rest of the VPN's session. @see Builder#allowFamily
      *
-     * @throws {@link IllegalArgumentException} if the address is invalid.
+     * @throws IllegalArgumentException if the address is invalid.
      *
      * @param address The IP address (IPv4 or IPv6) to assign to the VPN interface.
      * @param prefixLength The prefix length of the address.
@@ -623,7 +624,7 @@ public class VpnService extends Service {
          * {@code packageName} must be the canonical name of a currently installed application.
          * {@link PackageManager.NameNotFoundException} is thrown if there's no such application.
          *
-         * @throws {@link PackageManager.NameNotFoundException} If the application isn't installed.
+         * @throws PackageManager.NameNotFoundException If the application isn't installed.
          *
          * @param packageName The full name (e.g.: "com.google.apps.contacts") of an application.
          *
@@ -655,7 +656,7 @@ public class VpnService extends Service {
          * {@code packageName} must be the canonical name of a currently installed application.
          * {@link PackageManager.NameNotFoundException} is thrown if there's no such application.
          *
-         * @throws {@link PackageManager.NameNotFoundException} If the application isn't installed.
+         * @throws PackageManager.NameNotFoundException If the application isn't installed.
          *
          * @param packageName The full name (e.g.: "com.google.apps.contacts") of an application.
          *
@@ -679,7 +680,7 @@ public class VpnService extends Service {
          *
          * By default, all traffic from apps is forwarded through the VPN interface and it is not
          * possible for apps to side-step the VPN. If this method is called, apps may use methods
-         * such as {@link ConnectivityManager#setProcessDefaultNetwork} to instead send/receive
+         * such as {@link ConnectivityManager#bindProcessToNetwork} to instead send/receive
          * directly over the underlying network or any other network they have permissions for.
          *
          * @return this {@link Builder} object to facilitate chaining of method calls.

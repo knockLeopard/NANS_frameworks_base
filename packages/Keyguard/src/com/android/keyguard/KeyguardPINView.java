@@ -22,6 +22,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AnimationUtils;
 
+import com.android.settingslib.animation.AppearAnimationUtils;
+import com.android.settingslib.animation.DisappearAnimationUtils;
+
 /**
  * Displays a PIN pad for unlocking.
  */
@@ -29,7 +32,8 @@ public class KeyguardPINView extends KeyguardPinBasedInputView {
 
     private final AppearAnimationUtils mAppearAnimationUtils;
     private final DisappearAnimationUtils mDisappearAnimationUtils;
-    private ViewGroup mKeyguardBouncerFrame;
+    private final DisappearAnimationUtils mDisappearAnimationUtilsLocked;
+    private ViewGroup mContainer;
     private ViewGroup mRow0;
     private ViewGroup mRow1;
     private ViewGroup mRow2;
@@ -37,6 +41,7 @@ public class KeyguardPINView extends KeyguardPinBasedInputView {
     private View mDivider;
     private int mDisappearYTranslation;
     private View[][] mViews;
+    private final KeyguardUpdateMonitor mKeyguardUpdateMonitor;
 
     public KeyguardPINView(Context context) {
         this(context, null);
@@ -47,19 +52,22 @@ public class KeyguardPINView extends KeyguardPinBasedInputView {
         mAppearAnimationUtils = new AppearAnimationUtils(context);
         mDisappearAnimationUtils = new DisappearAnimationUtils(context,
                 125, 0.6f /* translationScale */,
-                0.6f /* delayScale */, AnimationUtils.loadInterpolator(
+                0.45f /* delayScale */, AnimationUtils.loadInterpolator(
+                        mContext, android.R.interpolator.fast_out_linear_in));
+        mDisappearAnimationUtilsLocked = new DisappearAnimationUtils(context,
+                (long) (125 * KeyguardPatternView.DISAPPEAR_MULTIPLIER_LOCKED),
+                0.6f /* translationScale */,
+                0.45f /* delayScale */, AnimationUtils.loadInterpolator(
                         mContext, android.R.interpolator.fast_out_linear_in));
         mDisappearYTranslation = getResources().getDimensionPixelSize(
                 R.dimen.disappear_y_translation);
+        mKeyguardUpdateMonitor = KeyguardUpdateMonitor.getInstance(context);
     }
 
+    @Override
     protected void resetState() {
         super.resetState();
-        if (KeyguardUpdateMonitor.getInstance(mContext).getMaxBiometricUnlockAttemptsReached()) {
-            mSecurityMessageDisplay.setMessage(R.string.faceunlock_multiple_failures, true);
-        } else {
-            mSecurityMessageDisplay.setMessage(R.string.kg_pin_instructions, false);
-        }
+        mSecurityMessageDisplay.setMessage(R.string.kg_pin_instructions, false);
     }
 
     @Override
@@ -71,7 +79,7 @@ public class KeyguardPINView extends KeyguardPinBasedInputView {
     protected void onFinishInflate() {
         super.onFinishInflate();
 
-        mKeyguardBouncerFrame = (ViewGroup) findViewById(R.id.keyguard_bouncer_frame);
+        mContainer = (ViewGroup) findViewById(R.id.container);
         mRow0 = (ViewGroup) findViewById(R.id.row0);
         mRow1 = (ViewGroup) findViewById(R.id.row1);
         mRow2 = (ViewGroup) findViewById(R.id.row2);
@@ -115,11 +123,9 @@ public class KeyguardPINView extends KeyguardPinBasedInputView {
         enableClipping(false);
         setAlpha(1f);
         setTranslationY(mAppearAnimationUtils.getStartTranslation());
-        animate()
-                .setDuration(500)
-                .setInterpolator(mAppearAnimationUtils.getInterpolator())
-                .translationY(0);
-        mAppearAnimationUtils.startAnimation(mViews,
+        AppearAnimationUtils.startTranslationYAnimation(this, 0 /* delay */, 500 /* duration */,
+                0, mAppearAnimationUtils.getInterpolator());
+        mAppearAnimationUtils.startAnimation2d(mViews,
                 new Runnable() {
                     @Override
                     public void run() {
@@ -132,11 +138,13 @@ public class KeyguardPINView extends KeyguardPinBasedInputView {
     public boolean startDisappearAnimation(final Runnable finishRunnable) {
         enableClipping(false);
         setTranslationY(0);
-        animate()
-                .setDuration(280)
-                .setInterpolator(mDisappearAnimationUtils.getInterpolator())
-                .translationY(mDisappearYTranslation);
-        mDisappearAnimationUtils.startAnimation(mViews,
+        AppearAnimationUtils.startTranslationYAnimation(this, 0 /* delay */, 280 /* duration */,
+                mDisappearYTranslation, mDisappearAnimationUtils.getInterpolator());
+        DisappearAnimationUtils disappearAnimationUtils = mKeyguardUpdateMonitor
+                .needsSlowUnlockTransition()
+                        ? mDisappearAnimationUtilsLocked
+                        : mDisappearAnimationUtils;
+        disappearAnimationUtils.startAnimation2d(mViews,
                 new Runnable() {
                     @Override
                     public void run() {
@@ -150,8 +158,8 @@ public class KeyguardPINView extends KeyguardPinBasedInputView {
     }
 
     private void enableClipping(boolean enable) {
-        mKeyguardBouncerFrame.setClipToPadding(enable);
-        mKeyguardBouncerFrame.setClipChildren(enable);
+        mContainer.setClipToPadding(enable);
+        mContainer.setClipChildren(enable);
         mRow1.setClipToPadding(enable);
         mRow2.setClipToPadding(enable);
         mRow3.setClipToPadding(enable);

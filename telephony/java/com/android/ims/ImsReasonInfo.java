@@ -27,25 +27,6 @@ import android.os.Parcelable;
 public class ImsReasonInfo implements Parcelable {
 
     /**
-     * Reason types, defines the error category.
-     *    UNSPECIFIED - unknown error reason
-     *    LOCAL - indicates the local/device error reason
-     *    LOCAL_TIMEOUT - indicates the local error reason when a specific timer is expired
-     *    STATUSCODE - indicates the interworking error reason by SIP status code received
-     *        from the network
-     *    MEDIA - indicates the media error reason (local resource, SDP parameter, etc.)
-     *    USER - indicates the error reason by the local or remote user
-     *    UT - indicates the error reason for the supplementary service configuration
-     */
-    public static final int TYPE_UNSPECIFIED = 0;
-    public static final int TYPE_LOCAL = 1;
-    public static final int TYPE_TIMEOUT = 2;
-    public static final int TYPE_STATUSCODE = 3;
-    public static final int TYPE_MEDIA = 4;
-    public static final int TYPE_USER = 5;
-    public static final int TYPE_UT = 8;
-
-    /**
      * Specific code of each types
      */
     public static final int CODE_UNSPECIFIED = 0;
@@ -104,6 +85,8 @@ public class ImsReasonInfo implements Parcelable {
     public static final int CODE_LOCAL_CALL_VOLTE_RETRY_REQUIRED = 147;
     // IMS call is already terminated (in TERMINATED state)
     public static final int CODE_LOCAL_CALL_TERMINATED = 148;
+    // Handover not feasible
+    public static final int CODE_LOCAL_HO_NOT_FEASIBLE = 149;
 
     /**
      * TIMEOUT (IMS -> Telephony)
@@ -118,6 +101,9 @@ public class ImsReasonInfo implements Parcelable {
     // MO : 200 OK to re-INVITE request is not received,
     // MT : No action from user after alerting the call
     public static final int CODE_TIMEOUT_NO_ANSWER_CALL_UPDATE = 203;
+
+    //Call failures for FDN
+    public static final int CODE_FDN_BLOCKED = 241;
 
     /**
      * STATUSCODE (SIP response code) (IMS -> Telephony)
@@ -170,6 +156,9 @@ public class ImsReasonInfo implements Parcelable {
     public static final int CODE_SIP_USER_REJECTED = 361;
     // Others
     public static final int CODE_SIP_GLOBAL_ERROR = 362;
+    // Emergency failure
+    public static final int CODE_EMERGENCY_TEMP_FAILURE = 363;
+    public static final int CODE_EMERGENCY_PERM_FAILURE = 364;
 
     /**
      * MEDIA (IMS -> Telephony)
@@ -229,23 +218,110 @@ public class ImsReasonInfo implements Parcelable {
     public static final int CODE_ECBM_NOT_SUPPORTED = 901;
 
     /**
+     * Fail code used to indicate that Multi-endpoint is not supported by the Ims framework.
+     */
+    public static final int CODE_MULTIENDPOINT_NOT_SUPPORTED = 902;
+
+    /**
+     * Ims Registration error code
+     */
+    public static final int CODE_REGISTRATION_ERROR = 1000;
+
+    /**
+     * CALL DROP error codes (Call could drop because of many reasons like Network not available,
+     *  handover, failed, etc)
+     */
+
+    /**
+     * CALL DROP error code for the case when a device is ePDG capable and when the user is on an
+     * active wifi call and at the edge of coverage and there is no qualified LTE network available
+     * to handover the call to. We get a handover NOT_TRIGERRED message from the modem. This error
+     * code is received as part of the handover message.
+     */
+    public static final int CODE_CALL_DROP_IWLAN_TO_LTE_UNAVAILABLE = 1100;
+
+    /**
+     * MT call has ended due to a release from the network
+     * because the call was answered elsewhere
+     */
+    public static final int CODE_ANSWERED_ELSEWHERE = 1014;
+
+    /**
+     * For MultiEndpoint - Call Pull request has failed
+     */
+    public static final int CODE_CALL_PULL_OUT_OF_SYNC = 1015;
+
+    /**
+     * For MultiEndpoint - Call has been pulled from primary to secondary
+     */
+    public static final int CODE_CALL_END_CAUSE_CALL_PULL = 1016;
+
+    /**
+     * Supplementary services (HOLD/RESUME) failure error codes.
+     * Values for Supplemetary services failure - Failed, Cancelled and Re-Invite collision.
+     */
+    public static final int CODE_SUPP_SVC_FAILED = 1201;
+    public static final int CODE_SUPP_SVC_CANCELLED = 1202;
+    public static final int CODE_SUPP_SVC_REINVITE_COLLISION = 1203;
+
+    /**
+     * DPD Procedure received no response or send failed
+     */
+    public static final int CODE_IWLAN_DPD_FAILURE = 1300;
+
+    /**
+     * Establishment of the ePDG Tunnel Failed
+     */
+    public static final int CODE_EPDG_TUNNEL_ESTABLISH_FAILURE = 1400;
+
+    /**
+     * Re-keying of the ePDG Tunnel Failed; may not always result in teardown
+     */
+    public static final int CODE_EPDG_TUNNEL_REKEY_FAILURE = 1401;
+
+    /**
+     * Connection to the packet gateway is lost
+     */
+    public static final int CODE_EPDG_TUNNEL_LOST_CONNECTION = 1402;
+
+    /**
+     * The maximum number of calls allowed has been reached.  Used in a multi-endpoint scenario
+     * where the number of calls across all connected devices has reached the maximum.
+     */
+    public static final int CODE_MAXIMUM_NUMBER_OF_CALLS_REACHED = 1403;
+
+    /**
+     * Similar to {@link #CODE_LOCAL_CALL_DECLINE}, except indicates that a remote device has
+     * declined the call.  Used in a multi-endpoint scenario where a remote device declined an
+     * incoming call.
+     */
+    public static final int CODE_REMOTE_CALL_DECLINE = 1404;
+
+    /**
+     * Indicates the call was disconnected due to the user reaching their data limit.
+     */
+    public static final int CODE_DATA_LIMIT_REACHED = 1405;
+
+    /**
+     * Indicates the call was disconnected due to the user disabling cellular data.
+     */
+    public static final int CODE_DATA_DISABLED = 1406;
+
+    /**
      * Network string error messages.
      * mExtraMessage may have these values.
      */
     public static final String EXTRA_MSG_SERVICE_NOT_AUTHORIZED
             = "Forbidden. Not Authorized for Service";
 
-    // For reason type
-    public int mReasonType;
+
     // For main reason code
     public int mCode;
     // For the extra code value; it depends on the code value.
     public int mExtraCode;
     // For the additional message of the reason info.
     public String mExtraMessage;
-
     public ImsReasonInfo() {
-        mReasonType = TYPE_UNSPECIFIED;
         mCode = CODE_UNSPECIFIED;
         mExtraCode = CODE_UNSPECIFIED;
         mExtraMessage = null;
@@ -256,14 +332,12 @@ public class ImsReasonInfo implements Parcelable {
     }
 
     public ImsReasonInfo(int code, int extraCode) {
-        mReasonType = (int) (code / 100);
         mCode = code;
         mExtraCode = extraCode;
         mExtraMessage = null;
     }
 
     public ImsReasonInfo(int code, int extraCode, String extraMessage) {
-        mReasonType = (int) (code / 100);
         mCode = code;
         mExtraCode = extraCode;
         mExtraMessage = extraMessage;
@@ -291,20 +365,12 @@ public class ImsReasonInfo implements Parcelable {
     }
 
     /**
-     *
-     */
-    public int getReasonType() {
-        return mReasonType;
-    }
-
-    /**
      * Returns the string format of {@link ImsReasonInfo}
      *
      * @return the string format of {@link ImsReasonInfo}
      */
     public String toString() {
-        return "ImsReasonInfo :: {" + mReasonType + ", "
-                + mCode + ", " + mExtraCode + ", " + mExtraMessage + "}";
+        return "ImsReasonInfo :: {" + mCode + ", " + mExtraCode + ", " + mExtraMessage + "}";
     }
 
     @Override
@@ -314,14 +380,12 @@ public class ImsReasonInfo implements Parcelable {
 
     @Override
     public void writeToParcel(Parcel out, int flags) {
-        out.writeInt(mReasonType);
         out.writeInt(mCode);
         out.writeInt(mExtraCode);
         out.writeString(mExtraMessage);
     }
 
     private void readFromParcel(Parcel in) {
-        mReasonType = in.readInt();
         mCode = in.readInt();
         mExtraCode = in.readInt();
         mExtraMessage = in.readString();

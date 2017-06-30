@@ -16,6 +16,7 @@
 package android.media.session;
 
 import android.annotation.DrawableRes;
+import android.annotation.IntDef;
 import android.annotation.Nullable;
 import android.media.RemoteControlClient;
 import android.os.Bundle;
@@ -23,10 +24,11 @@ import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.SystemClock;
 import android.text.TextUtils;
-import android.util.Log;
-
 import java.util.ArrayList;
 import java.util.List;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 
 /**
  * Playback state for a {@link MediaSession}. This includes a state like
@@ -35,6 +37,17 @@ import java.util.List;
  */
 public final class PlaybackState implements Parcelable {
     private static final String TAG = "PlaybackState";
+
+    /**
+     * @hide
+     */
+    @IntDef(flag=true, value={ACTION_STOP, ACTION_PAUSE, ACTION_PLAY, ACTION_REWIND,
+            ACTION_SKIP_TO_PREVIOUS, ACTION_SKIP_TO_NEXT, ACTION_FAST_FORWARD, ACTION_SET_RATING,
+            ACTION_SEEK_TO, ACTION_PLAY_PAUSE, ACTION_PLAY_FROM_MEDIA_ID, ACTION_PLAY_FROM_SEARCH,
+            ACTION_SKIP_TO_QUEUE_ITEM, ACTION_PLAY_FROM_URI, ACTION_PREPARE,
+            ACTION_PREPARE_FROM_MEDIA_ID, ACTION_PREPARE_FROM_SEARCH, ACTION_PREPARE_FROM_URI})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface Actions {}
 
     /**
      * Indicates this session supports the stop command.
@@ -126,6 +139,50 @@ public final class PlaybackState implements Parcelable {
      * @see Builder#setActions(long)
      */
     public static final long ACTION_SKIP_TO_QUEUE_ITEM = 1 << 12;
+
+    /**
+     * Indicates this session supports the play from URI command.
+     *
+     * @see Builder#setActions(long)
+     */
+    public static final long ACTION_PLAY_FROM_URI = 1 << 13;
+
+    /**
+     * Indicates this session supports the prepare command.
+     *
+     * @see Builder#setActions(long)
+     */
+    public static final long ACTION_PREPARE = 1 << 14;
+
+    /**
+     * Indicates this session supports the prepare from media id command.
+     *
+     * @see Builder#setActions(long)
+     */
+    public static final long ACTION_PREPARE_FROM_MEDIA_ID = 1 << 15;
+
+    /**
+     * Indicates this session supports the prepare from search command.
+     *
+     * @see Builder#setActions(long)
+     */
+    public static final long ACTION_PREPARE_FROM_SEARCH = 1 << 16;
+
+    /**
+     * Indicates this session supports the prepare from URI command.
+     *
+     * @see Builder#setActions(long)
+     */
+    public static final long ACTION_PREPARE_FROM_URI = 1 << 17;
+
+    /**
+     * @hide
+     */
+    @IntDef({STATE_NONE, STATE_STOPPED, STATE_PAUSED, STATE_PLAYING, STATE_FAST_FORWARDING,
+            STATE_REWINDING, STATE_BUFFERING, STATE_ERROR, STATE_CONNECTING,
+            STATE_SKIPPING_TO_PREVIOUS, STATE_SKIPPING_TO_NEXT, STATE_SKIPPING_TO_QUEUE_ITEM})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface State {}
 
     /**
      * This is the default playback state and indicates that no media has been
@@ -310,11 +367,17 @@ public final class PlaybackState implements Parcelable {
      * <li> {@link PlaybackState#STATE_REWINDING}</li>
      * <li> {@link PlaybackState#STATE_BUFFERING}</li>
      * <li> {@link PlaybackState#STATE_ERROR}</li>
+     * <li> {@link PlaybackState#STATE_CONNECTING}</li>
+     * <li> {@link PlaybackState#STATE_SKIPPING_TO_PREVIOUS}</li>
+     * <li> {@link PlaybackState#STATE_SKIPPING_TO_NEXT}</li>
+     * <li> {@link PlaybackState#STATE_SKIPPING_TO_QUEUE_ITEM}</li>
      * </ul>
      */
+    @State
     public int getState() {
         return mState;
     }
+
     /**
      * Get the current playback position in ms.
      */
@@ -355,8 +418,18 @@ public final class PlaybackState implements Parcelable {
      * <li> {@link PlaybackState#ACTION_SKIP_TO_NEXT}</li>
      * <li> {@link PlaybackState#ACTION_SEEK_TO}</li>
      * <li> {@link PlaybackState#ACTION_SET_RATING}</li>
+     * <li> {@link PlaybackState#ACTION_PLAY_PAUSE}</li>
+     * <li> {@link PlaybackState#ACTION_PLAY_FROM_MEDIA_ID}</li>
+     * <li> {@link PlaybackState#ACTION_PLAY_FROM_SEARCH}</li>
+     * <li> {@link PlaybackState#ACTION_SKIP_TO_QUEUE_ITEM}</li>
+     * <li> {@link PlaybackState#ACTION_PLAY_FROM_URI}</li>
+     * <li> {@link PlaybackState#ACTION_PREPARE}</li>
+     * <li> {@link PlaybackState#ACTION_PREPARE_FROM_MEDIA_ID}</li>
+     * <li> {@link PlaybackState#ACTION_PREPARE_FROM_SEARCH}</li>
+     * <li> {@link PlaybackState#ACTION_PREPARE_FROM_URI}</li>
      * </ul>
      */
+    @Actions
     public long getActions() {
         return mActions;
     }
@@ -806,6 +879,10 @@ public final class PlaybackState implements Parcelable {
          * <li> {@link PlaybackState#STATE_REWINDING}</li>
          * <li> {@link PlaybackState#STATE_BUFFERING}</li>
          * <li> {@link PlaybackState#STATE_ERROR}</li>
+         * <li> {@link PlaybackState#STATE_CONNECTING}</li>
+         * <li> {@link PlaybackState#STATE_SKIPPING_TO_PREVIOUS}</li>
+         * <li> {@link PlaybackState#STATE_SKIPPING_TO_NEXT}</li>
+         * <li> {@link PlaybackState#STATE_SKIPPING_TO_QUEUE_ITEM}</li>
          * </ul>
          *
          * @param state The current state of playback.
@@ -816,7 +893,8 @@ public final class PlaybackState implements Parcelable {
          *            timebase that the position was updated at.
          * @return this
          */
-        public Builder setState(int state, long position, float playbackSpeed, long updateTime) {
+        public Builder setState(@State int state, long position, float playbackSpeed,
+                long updateTime) {
             mState = state;
             mPosition = position;
             mUpdateTime = updateTime;
@@ -845,6 +923,10 @@ public final class PlaybackState implements Parcelable {
          * <li> {@link PlaybackState#STATE_REWINDING}</li>
          * <li> {@link PlaybackState#STATE_BUFFERING}</li>
          * <li> {@link PlaybackState#STATE_ERROR}</li>
+         * <li> {@link PlaybackState#STATE_CONNECTING}</li>
+         * <li> {@link PlaybackState#STATE_SKIPPING_TO_PREVIOUS}</li>
+         * <li> {@link PlaybackState#STATE_SKIPPING_TO_NEXT}</li>
+         * <li> {@link PlaybackState#STATE_SKIPPING_TO_QUEUE_ITEM}</li>
          * </ul>
          *
          * @param state The current state of playback.
@@ -853,7 +935,7 @@ public final class PlaybackState implements Parcelable {
          *            normal playback.
          * @return this
          */
-        public Builder setState(int state, long position, float playbackSpeed) {
+        public Builder setState(@State int state, long position, float playbackSpeed) {
             return setState(state, position, playbackSpeed, SystemClock.elapsedRealtime());
         }
 
@@ -870,12 +952,21 @@ public final class PlaybackState implements Parcelable {
          * <li> {@link PlaybackState#ACTION_SKIP_TO_NEXT}</li>
          * <li> {@link PlaybackState#ACTION_SEEK_TO}</li>
          * <li> {@link PlaybackState#ACTION_SET_RATING}</li>
+         * <li> {@link PlaybackState#ACTION_PLAY_PAUSE}</li>
+         * <li> {@link PlaybackState#ACTION_PLAY_FROM_MEDIA_ID}</li>
+         * <li> {@link PlaybackState#ACTION_PLAY_FROM_SEARCH}</li>
+         * <li> {@link PlaybackState#ACTION_SKIP_TO_QUEUE_ITEM}</li>
+         * <li> {@link PlaybackState#ACTION_PLAY_FROM_URI}</li>
+         * <li> {@link PlaybackState#ACTION_PREPARE}</li>
+         * <li> {@link PlaybackState#ACTION_PREPARE_FROM_MEDIA_ID}</li>
+         * <li> {@link PlaybackState#ACTION_PREPARE_FROM_SEARCH}</li>
+         * <li> {@link PlaybackState#ACTION_PREPARE_FROM_URI}</li>
          * </ul>
          *
          * @param actions The set of actions allowed.
          * @return this
          */
-        public Builder setActions(long actions) {
+        public Builder setActions(@Actions long actions) {
             mActions = actions;
             return this;
         }

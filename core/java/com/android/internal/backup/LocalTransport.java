@@ -27,7 +27,6 @@ import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
-import android.os.SELinux;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.StructStat;
@@ -44,12 +43,8 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-
-import static android.system.OsConstants.*;
+import static android.system.OsConstants.SEEK_CUR;
 
 /**
  * Backup transport for stashing stuff into a known location on disk, and
@@ -75,6 +70,9 @@ public class LocalTransport extends BackupTransport {
     // The currently-active restore set always has the same (nonzero!) token
     private static final long CURRENT_SET_TOKEN = 1;
 
+    // Full backup size quota is set to reasonable value.
+    private static final long FULL_BACKUP_SIZE_QUOTA = 25 * 1024 * 1024;
+
     private Context mContext;
     private File mDataDir = new File(Environment.getDownloadCacheDirectory(), "backup");
     private File mCurrentSetDir = new File(mDataDir, Long.toString(CURRENT_SET_TOKEN));
@@ -87,7 +85,6 @@ public class LocalTransport extends BackupTransport {
     private File mRestoreSetDir;
     private File mRestoreSetIncrementalDir;
     private File mRestoreSetFullDir;
-    private long mRestoreToken;
 
     // Additional bookkeeping for full backup
     private String mFullTargetPackage;
@@ -95,21 +92,21 @@ public class LocalTransport extends BackupTransport {
     private FileInputStream mSocketInputStream;
     private BufferedOutputStream mFullBackupOutputStream;
     private byte[] mFullBackupBuffer;
+    private long mFullBackupSize;
 
-    private File mFullRestoreSetDir;
-    private HashSet<String> mFullRestorePackages;
     private FileInputStream mCurFullRestoreStream;
     private FileOutputStream mFullRestoreSocketStream;
     private byte[] mFullRestoreBuffer;
 
-    public LocalTransport(Context context) {
-        mContext = context;
+    private void makeDataDirs() {
         mCurrentSetDir.mkdirs();
         mCurrentSetFullDir.mkdir();
         mCurrentSetIncrementalDir.mkdir();
-        if (!SELinux.restorecon(mCurrentSetDir)) {
-            Log.e(TAG, "SELinux restorecon failed for " + mCurrentSetDir);
-        }
+    }
+
+    public LocalTransport(Context context) {
+        mContext = context;
+        makeDataDirs();
     }
 
     @Override
@@ -154,6 +151,7 @@ public class LocalTransport extends BackupTransport {
     public int initializeDevice() {
         if (DEBUG) Log.v(TAG, "wiping all data");
         deleteContents(mCurrentSetDir);
+        makeDataDirs();
         return TRANSPORT_OK;
     }
 
@@ -285,8 +283,10 @@ public class LocalTransport extends BackupTransport {
     private int tearDownFullBackup() {
         if (mSocket != null) {
             try {
-                mFullBackupOutputStream.flush();
-                mFullBackupOutputStream.close();
+                if (mFullBackupOutputStream != null) {
+                    mFullBackupOutputStream.flush();
+                    mFullBackupOutputStream.close();
+                }
                 mSocketInputStream = null;
                 mFullTargetPackage = null;
                 mSocket.close();
@@ -297,6 +297,7 @@ public class LocalTransport extends BackupTransport {
                 return TRANSPORT_ERROR;
             } finally {
                 mSocket = null;
+                mFullBackupOutputStream = null;
             }
         }
         return TRANSPORT_OK;
@@ -309,6 +310,23 @@ public class LocalTransport extends BackupTransport {
     @Override
     public long requestFullBackupTime() {
         return 0;
+    }
+
+    @Override
+    public int checkFullBackupSize(long size) {
+        int result = TRANSPORT_OK;
+        // Decline zero-size "backups"
+        if (size <= 0) {
+            result = TRANSPORT_PACKAGE_REJECTED;
+        } else if (size > FULL_BACKUP_SIZE_QUOTA) {
+            result = TRANSPORT_QUOTA_EXCEEDED;
+        }
+        if (result != TRANSPORT_OK) {
+            if (DEBUG) {
+                Log.v(TAG, "Declining backup of size " + size);
+            }
+        }
+        return result;
     }
 
     @Override
@@ -326,6 +344,7 @@ public class LocalTransport extends BackupTransport {
         // sure to dup() our own copy of the socket fd.  Transports which run in
         // their own processes must not do this.
         try {
+            mFullBackupSize = 0;
             mSocket = ParcelFileDescriptor.dup(socket.getFileDescriptor());
             mSocketInputStream = new FileInputStream(mSocket.getFileDescriptor());
         } catch (IOException e) {
@@ -334,43 +353,56 @@ public class LocalTransport extends BackupTransport {
         }
 
         mFullTargetPackage = targetPackage.packageName;
-        FileOutputStream tarstream;
-        try {
-            File tarball = tarballFile(mFullTargetPackage);
-            tarstream = new FileOutputStream(tarball);
-        } catch (FileNotFoundException e) {
-            return TRANSPORT_ERROR;
-        }
-        mFullBackupOutputStream = new BufferedOutputStream(tarstream);
         mFullBackupBuffer = new byte[4096];
 
         return TRANSPORT_OK;
     }
 
     @Override
-    public int sendBackupData(int numBytes) {
-        if (mFullBackupBuffer == null) {
+    public int sendBackupData(final int numBytes) {
+        if (mSocket == null) {
             Log.w(TAG, "Attempted sendBackupData before performFullBackup");
             return TRANSPORT_ERROR;
+        }
+
+        mFullBackupSize += numBytes;
+        if (mFullBackupSize > FULL_BACKUP_SIZE_QUOTA) {
+            return TRANSPORT_QUOTA_EXCEEDED;
         }
 
         if (numBytes > mFullBackupBuffer.length) {
             mFullBackupBuffer = new byte[numBytes];
         }
-        while (numBytes > 0) {
+
+        if (mFullBackupOutputStream == null) {
+            FileOutputStream tarstream;
             try {
-            int nRead = mSocketInputStream.read(mFullBackupBuffer, 0, numBytes);
+                File tarball = tarballFile(mFullTargetPackage);
+                tarstream = new FileOutputStream(tarball);
+            } catch (FileNotFoundException e) {
+                return TRANSPORT_ERROR;
+            }
+            mFullBackupOutputStream = new BufferedOutputStream(tarstream);
+        }
+
+        int bytesLeft = numBytes;
+        while (bytesLeft > 0) {
+            try {
+            int nRead = mSocketInputStream.read(mFullBackupBuffer, 0, bytesLeft);
             if (nRead < 0) {
                 // Something went wrong if we expect data but saw EOD
                 Log.w(TAG, "Unexpected EOD; failing backup");
                 return TRANSPORT_ERROR;
             }
             mFullBackupOutputStream.write(mFullBackupBuffer, 0, nRead);
-            numBytes -= nRead;
+            bytesLeft -= nRead;
             } catch (IOException e) {
                 Log.e(TAG, "Error handling backup data for " + mFullTargetPackage);
                 return TRANSPORT_ERROR;
             }
+        }
+        if (DEBUG) {
+            Log.v(TAG, "   stored " + numBytes + " of data");
         }
         return TRANSPORT_OK;
     }
@@ -425,7 +457,6 @@ public class LocalTransport extends BackupTransport {
                 + " matching packages");
         mRestorePackages = packages;
         mRestorePackage = -1;
-        mRestoreToken = token;
         mRestoreSetDir = new File(mDataDir, Long.toString(token));
         mRestoreSetIncrementalDir = new File(mRestoreSetDir, INCREMENTAL_DIR);
         mRestoreSetFullDir = new File(mRestoreSetDir, FULL_DATA_DIR);
@@ -434,6 +465,10 @@ public class LocalTransport extends BackupTransport {
 
     @Override
     public RestoreDescription nextRestorePackage() {
+        if (DEBUG) {
+            Log.v(TAG, "nextRestorePackage() : mRestorePackage=" + mRestorePackage
+                    + " length=" + mRestorePackages.length);
+        }
         if (mRestorePackages == null) throw new IllegalStateException("startRestore not called");
 
         boolean found = false;
@@ -444,7 +479,10 @@ public class LocalTransport extends BackupTransport {
             // skip packages where we have a data dir but no actual contents
             String[] contents = (new File(mRestoreSetIncrementalDir, name)).list();
             if (contents != null && contents.length > 0) {
-                if (DEBUG) Log.v(TAG, "  nextRestorePackage(TYPE_KEY_VALUE) = " + name);
+                if (DEBUG) {
+                    Log.v(TAG, "  nextRestorePackage(TYPE_KEY_VALUE) @ "
+                        + mRestorePackage + " = " + name);
+                }
                 mRestoreType = RestoreDescription.TYPE_KEY_VALUE;
                 found = true;
             }
@@ -453,7 +491,10 @@ public class LocalTransport extends BackupTransport {
                 // No key/value data; check for [non-empty] full data
                 File maybeFullData = new File(mRestoreSetFullDir, name);
                 if (maybeFullData.length() > 0) {
-                    if (DEBUG) Log.v(TAG, "  nextRestorePackage(TYPE_FULL_STREAM) = " + name);
+                    if (DEBUG) {
+                        Log.v(TAG, "  nextRestorePackage(TYPE_FULL_STREAM) @ "
+                                + mRestorePackage + " = " + name);
+                    }
                     mRestoreType = RestoreDescription.TYPE_FULL_STREAM;
                     mCurFullRestoreStream = null;   // ensure starting from the ground state
                     found = true;
@@ -462,6 +503,11 @@ public class LocalTransport extends BackupTransport {
 
             if (found) {
                 return new RestoreDescription(name, mRestoreType);
+            }
+
+            if (DEBUG) {
+                Log.v(TAG, "  ... package @ " + mRestorePackage + " = " + name
+                        + " has no data; skipping");
             }
         }
 
@@ -664,4 +710,8 @@ public class LocalTransport extends BackupTransport {
         return TRANSPORT_OK;
     }
 
+    @Override
+    public long getBackupQuota(String packageName, boolean isFullBackup) {
+        return isFullBackup ? FULL_BACKUP_SIZE_QUOTA : Long.MAX_VALUE;
+    }
 }

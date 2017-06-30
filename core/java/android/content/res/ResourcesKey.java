@@ -16,39 +16,85 @@
 
 package android.content.res;
 
-import android.os.IBinder;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.text.TextUtils;
+
+import java.util.Arrays;
+import java.util.Objects;
 
 /** @hide */
 public final class ResourcesKey {
-    final String mResDir;
-    final float mScale;
-    private final int mHash;
-    private final IBinder mToken;
+    @Nullable
+    public final String mResDir;
+
+    @Nullable
+    public final String[] mSplitResDirs;
+
+    @Nullable
+    public final String[] mOverlayDirs;
+
+    @Nullable
+    public final String[] mLibDirs;
 
     public final int mDisplayId;
-    public final Configuration mOverrideConfiguration = new Configuration();
 
-    public ResourcesKey(String resDir, int displayId, Configuration overrideConfiguration,
-            float scale, IBinder token) {
+    @NonNull
+    public final Configuration mOverrideConfiguration;
+
+    @NonNull
+    public final CompatibilityInfo mCompatInfo;
+
+    private final int mHash;
+
+    public ResourcesKey(@Nullable String resDir,
+                        @Nullable String[] splitResDirs,
+                        @Nullable String[] overlayDirs,
+                        @Nullable String[] libDirs,
+                        int displayId,
+                        @Nullable Configuration overrideConfig,
+                        @Nullable CompatibilityInfo compatInfo) {
         mResDir = resDir;
+        mSplitResDirs = splitResDirs;
+        mOverlayDirs = overlayDirs;
+        mLibDirs = libDirs;
         mDisplayId = displayId;
-        if (overrideConfiguration != null) {
-            mOverrideConfiguration.setTo(overrideConfiguration);
-        }
-        mScale = scale;
-        mToken = token;
+        mOverrideConfiguration = overrideConfig != null ? overrideConfig : Configuration.EMPTY;
+        mCompatInfo = compatInfo != null ? compatInfo : CompatibilityInfo.DEFAULT_COMPATIBILITY_INFO;
 
         int hash = 17;
-        hash = 31 * hash + (mResDir == null ? 0 : mResDir.hashCode());
+        hash = 31 * hash + Objects.hashCode(mResDir);
+        hash = 31 * hash + Arrays.hashCode(mSplitResDirs);
+        hash = 31 * hash + Arrays.hashCode(mOverlayDirs);
+        hash = 31 * hash + Arrays.hashCode(mLibDirs);
         hash = 31 * hash + mDisplayId;
-        hash = 31 * hash + (mOverrideConfiguration != null
-                ? mOverrideConfiguration.hashCode() : 0);
-        hash = 31 * hash + Float.floatToIntBits(mScale);
+        hash = 31 * hash + Objects.hashCode(mOverrideConfiguration);
+        hash = 31 * hash + Objects.hashCode(mCompatInfo);
         mHash = hash;
     }
 
     public boolean hasOverrideConfiguration() {
         return !Configuration.EMPTY.equals(mOverrideConfiguration);
+    }
+
+    public boolean isPathReferenced(String path) {
+        if (mResDir != null && mResDir.startsWith(path)) {
+            return true;
+        } else {
+            return anyStartsWith(mSplitResDirs, path) || anyStartsWith(mOverlayDirs, path)
+                    || anyStartsWith(mLibDirs, path);
+        }
+    }
+
+    private static boolean anyStartsWith(String[] list, String prefix) {
+        if (list != null) {
+            for (String s : list) {
+                if (s != null && s.startsWith(prefix)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Override
@@ -61,31 +107,32 @@ public final class ResourcesKey {
         if (!(obj instanceof ResourcesKey)) {
             return false;
         }
-        ResourcesKey peer = (ResourcesKey) obj;
 
-        if ((mResDir == null) && (peer.mResDir != null)) {
+        ResourcesKey peer = (ResourcesKey) obj;
+        if (mHash != peer.mHash) {
+            // If the hashes don't match, the objects can't match.
             return false;
         }
-        if ((mResDir != null) && (peer.mResDir == null)) {
+
+        if (!Objects.equals(mResDir, peer.mResDir)) {
             return false;
         }
-        if ((mResDir != null) && (peer.mResDir != null)) {
-            if (!mResDir.equals(peer.mResDir)) {
-                return false;
-            }
+        if (!Arrays.equals(mSplitResDirs, peer.mSplitResDirs)) {
+            return false;
+        }
+        if (!Arrays.equals(mOverlayDirs, peer.mOverlayDirs)) {
+            return false;
+        }
+        if (!Arrays.equals(mLibDirs, peer.mLibDirs)) {
+            return false;
         }
         if (mDisplayId != peer.mDisplayId) {
             return false;
         }
-        if (mOverrideConfiguration != peer.mOverrideConfiguration) {
-            if (mOverrideConfiguration == null || peer.mOverrideConfiguration == null) {
-                return false;
-            }
-            if (!mOverrideConfiguration.equals(peer.mOverrideConfiguration)) {
-                return false;
-            }
+        if (!Objects.equals(mOverrideConfiguration, peer.mOverrideConfiguration)) {
+            return false;
         }
-        if (mScale != peer.mScale) {
+        if (!Objects.equals(mCompatInfo, peer.mCompatInfo)) {
             return false;
         }
         return true;
@@ -93,6 +140,29 @@ public final class ResourcesKey {
 
     @Override
     public String toString() {
-        return Integer.toHexString(mHash);
+        StringBuilder builder = new StringBuilder().append("ResourcesKey{");
+        builder.append(" mHash=").append(Integer.toHexString(mHash));
+        builder.append(" mResDir=").append(mResDir);
+        builder.append(" mSplitDirs=[");
+        if (mSplitResDirs != null) {
+            builder.append(TextUtils.join(",", mSplitResDirs));
+        }
+        builder.append("]");
+        builder.append(" mOverlayDirs=[");
+        if (mOverlayDirs != null) {
+            builder.append(TextUtils.join(",", mOverlayDirs));
+        }
+        builder.append("]");
+        builder.append(" mLibDirs=[");
+        if (mLibDirs != null) {
+            builder.append(TextUtils.join(",", mLibDirs));
+        }
+        builder.append("]");
+        builder.append(" mDisplayId=").append(mDisplayId);
+        builder.append(" mOverrideConfig=").append(Configuration.resourceQualifierString(
+                mOverrideConfiguration));
+        builder.append(" mCompatInfo=").append(mCompatInfo);
+        builder.append("}");
+        return builder.toString();
     }
 }

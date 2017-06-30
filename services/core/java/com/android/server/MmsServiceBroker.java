@@ -17,6 +17,7 @@
 package com.android.server;
 
 import android.Manifest;
+import android.app.ActivityManagerInternal;
 import android.app.AppOpsManager;
 import android.app.PendingIntent;
 import android.content.ComponentName;
@@ -36,6 +37,7 @@ import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.service.carrier.CarrierMessagingService;
+import android.telephony.SmsManager;
 import android.telephony.TelephonyManager;
 import android.util.Slog;
 
@@ -111,6 +113,106 @@ public class MmsServiceBroker extends SystemService {
         }
     };
 
+    // Instance of IMms for returning failure to service API caller,
+    // used when MmsService cannot be connected.
+    private final IMms mServiceStubForFailure = new IMms() {
+
+        @Override
+        public IBinder asBinder() {
+            return null;
+        }
+
+        @Override
+        public void sendMessage(int subId, String callingPkg, Uri contentUri, String locationUrl,
+                Bundle configOverrides, PendingIntent sentIntent) throws RemoteException {
+            returnPendingIntentWithError(sentIntent);
+        }
+
+        @Override
+        public void downloadMessage(int subId, String callingPkg, String locationUrl,
+                Uri contentUri, Bundle configOverrides, PendingIntent downloadedIntent)
+                throws RemoteException {
+            returnPendingIntentWithError(downloadedIntent);
+        }
+
+        @Override
+        public Bundle getCarrierConfigValues(int subId) throws RemoteException {
+            return null;
+        }
+
+        @Override
+        public Uri importTextMessage(String callingPkg, String address, int type, String text,
+                long timestampMillis, boolean seen, boolean read) throws RemoteException {
+            return null;
+        }
+
+        @Override
+        public Uri importMultimediaMessage(String callingPkg, Uri contentUri, String messageId,
+                long timestampSecs, boolean seen, boolean read) throws RemoteException {
+            return null;
+        }
+
+        @Override
+        public boolean deleteStoredMessage(String callingPkg, Uri messageUri)
+                throws RemoteException {
+            return false;
+        }
+
+        @Override
+        public boolean deleteStoredConversation(String callingPkg, long conversationId)
+                throws RemoteException {
+            return false;
+        }
+
+        @Override
+        public boolean updateStoredMessageStatus(String callingPkg, Uri messageUri,
+                ContentValues statusValues) throws RemoteException {
+            return false;
+        }
+
+        @Override
+        public boolean archiveStoredConversation(String callingPkg, long conversationId,
+                boolean archived) throws RemoteException {
+            return false;
+        }
+
+        @Override
+        public Uri addTextMessageDraft(String callingPkg, String address, String text)
+                throws RemoteException {
+            return null;
+        }
+
+        @Override
+        public Uri addMultimediaMessageDraft(String callingPkg, Uri contentUri)
+                throws RemoteException {
+            return null;
+        }
+
+        @Override
+        public void sendStoredMessage(int subId, String callingPkg, Uri messageUri,
+                Bundle configOverrides, PendingIntent sentIntent) throws RemoteException {
+            returnPendingIntentWithError(sentIntent);
+        }
+
+        @Override
+        public void setAutoPersisting(String callingPkg, boolean enabled) throws RemoteException {
+            // Do nothing
+        }
+
+        @Override
+        public boolean getAutoPersisting() throws RemoteException {
+            return false;
+        }
+
+        private void returnPendingIntentWithError(PendingIntent pendingIntent) {
+            try {
+                pendingIntent.send(mContext, SmsManager.MMS_ERROR_UNSPECIFIED, null);
+            } catch (PendingIntent.CanceledException e) {
+                Slog.e(TAG, "Failed to return pending intent result", e);
+            }
+        }
+    };
+
     public MmsServiceBroker(Context context) {
         super(context);
         mContext = context;
@@ -145,44 +247,51 @@ public class MmsServiceBroker extends SystemService {
         }
     }
 
-    private void ensureService() {
+    private IMms getOrConnectService() {
         synchronized (this) {
-            if (mService == null) {
-                // Service is not connected. Try blocking connecting.
-                Slog.w(TAG, "MmsService not connected. Try connecting...");
-                mConnectionHandler.sendMessage(
-                        mConnectionHandler.obtainMessage(MSG_TRY_CONNECTING));
-                final long shouldEnd =
-                        SystemClock.elapsedRealtime() + SERVICE_CONNECTION_WAIT_TIME_MS;
-                long waitTime = SERVICE_CONNECTION_WAIT_TIME_MS;
-                while (waitTime > 0) {
-                    try {
-                        // TODO: consider using Java concurrent construct instead of raw object wait
-                        this.wait(waitTime);
-                    } catch (InterruptedException e) {
-                        Slog.w(TAG, "Connection wait interrupted", e);
-                    }
-                    if (mService != null) {
-                        // Success
-                        return;
-                    }
-                    // Calculate remaining waiting time to make sure we wait the full timeout period
-                    waitTime = shouldEnd - SystemClock.elapsedRealtime();
-                }
-                // Timed out. Something's really wrong.
-                Slog.e(TAG, "Can not connect to MmsService (timed out)");
-                throw new RuntimeException("Timed out in connecting to MmsService");
+            if (mService != null) {
+                return mService;
             }
+            // Service is not connected. Try blocking connecting.
+            Slog.w(TAG, "MmsService not connected. Try connecting...");
+            mConnectionHandler.sendMessage(
+                    mConnectionHandler.obtainMessage(MSG_TRY_CONNECTING));
+            final long shouldEnd =
+                    SystemClock.elapsedRealtime() + SERVICE_CONNECTION_WAIT_TIME_MS;
+            long waitTime = SERVICE_CONNECTION_WAIT_TIME_MS;
+            while (waitTime > 0) {
+                try {
+                    // TODO: consider using Java concurrent construct instead of raw object wait
+                    this.wait(waitTime);
+                } catch (InterruptedException e) {
+                    Slog.w(TAG, "Connection wait interrupted", e);
+                }
+                if (mService != null) {
+                    // Success
+                    return mService;
+                }
+                // Calculate remaining waiting time to make sure we wait the full timeout period
+                waitTime = shouldEnd - SystemClock.elapsedRealtime();
+            }
+            // Timed out. Something's really wrong.
+            Slog.e(TAG, "Can not connect to MmsService (timed out)");
+            return null;
         }
     }
 
     /**
-     * Making sure when we obtain the mService instance it is always valid.
-     * Throws {@link RuntimeException} when it is empty.
+     * Make sure to return a non-empty service instance. Return the connected MmsService
+     * instance, if not connected, try connecting. If fail to connect, return a fake service
+     * instance which returns failure to service caller.
+     *
+     * @return a non-empty service instance, real or fake
      */
     private IMms getServiceGuarded() {
-        ensureService();
-        return mService;
+        final IMms service = getOrConnectService();
+        if (service != null) {
+            return service;
+        }
+        return mServiceStubForFailure;
     }
 
     private AppOpsManager getAppOpsManager() {
@@ -264,7 +373,6 @@ public class MmsServiceBroker extends SystemService {
         @Override
         public Uri importTextMessage(String callingPkg, String address, int type, String text,
                 long timestampMillis, boolean seen, boolean read) throws RemoteException {
-            mContext.enforceCallingPermission(Manifest.permission.WRITE_SMS, "Import SMS message");
             if (getAppOpsManager().noteOp(AppOpsManager.OP_WRITE_SMS, Binder.getCallingUid(),
                     callingPkg) != AppOpsManager.MODE_ALLOWED) {
                 // Silently fail AppOps failure due to not being the default SMS app
@@ -279,7 +387,6 @@ public class MmsServiceBroker extends SystemService {
         public Uri importMultimediaMessage(String callingPkg, Uri contentUri,
                 String messageId, long timestampSecs, boolean seen, boolean read)
                         throws RemoteException {
-            mContext.enforceCallingPermission(Manifest.permission.WRITE_SMS, "Import MMS message");
             if (getAppOpsManager().noteOp(AppOpsManager.OP_WRITE_SMS, Binder.getCallingUid(),
                     callingPkg) != AppOpsManager.MODE_ALLOWED) {
                 // Silently fail AppOps failure due to not being the default SMS app
@@ -293,8 +400,6 @@ public class MmsServiceBroker extends SystemService {
         @Override
         public boolean deleteStoredMessage(String callingPkg, Uri messageUri)
                 throws RemoteException {
-            mContext.enforceCallingPermission(Manifest.permission.WRITE_SMS,
-                    "Delete SMS/MMS message");
             if (getAppOpsManager().noteOp(AppOpsManager.OP_WRITE_SMS, Binder.getCallingUid(),
                     callingPkg) != AppOpsManager.MODE_ALLOWED) {
                 return false;
@@ -305,7 +410,6 @@ public class MmsServiceBroker extends SystemService {
         @Override
         public boolean deleteStoredConversation(String callingPkg, long conversationId)
                 throws RemoteException {
-            mContext.enforceCallingPermission(Manifest.permission.WRITE_SMS, "Delete conversation");
             if (getAppOpsManager().noteOp(AppOpsManager.OP_WRITE_SMS, Binder.getCallingUid(),
                     callingPkg) != AppOpsManager.MODE_ALLOWED) {
                 return false;
@@ -316,8 +420,10 @@ public class MmsServiceBroker extends SystemService {
         @Override
         public boolean updateStoredMessageStatus(String callingPkg, Uri messageUri,
                 ContentValues statusValues) throws RemoteException {
-            mContext.enforceCallingPermission(Manifest.permission.WRITE_SMS,
-                    "Update SMS/MMS message");
+            if (getAppOpsManager().noteOp(AppOpsManager.OP_WRITE_SMS, Binder.getCallingUid(),
+                    callingPkg) != AppOpsManager.MODE_ALLOWED) {
+                return false;
+            }
             return getServiceGuarded()
                     .updateStoredMessageStatus(callingPkg, messageUri, statusValues);
         }
@@ -325,8 +431,10 @@ public class MmsServiceBroker extends SystemService {
         @Override
         public boolean archiveStoredConversation(String callingPkg, long conversationId,
                 boolean archived) throws RemoteException {
-            mContext.enforceCallingPermission(Manifest.permission.WRITE_SMS,
-                    "Update SMS/MMS message");
+            if (getAppOpsManager().noteOp(AppOpsManager.OP_WRITE_SMS, Binder.getCallingUid(),
+                    callingPkg) != AppOpsManager.MODE_ALLOWED) {
+                return false;
+            }
             return getServiceGuarded()
                     .archiveStoredConversation(callingPkg, conversationId, archived);
         }
@@ -334,7 +442,6 @@ public class MmsServiceBroker extends SystemService {
         @Override
         public Uri addTextMessageDraft(String callingPkg, String address, String text)
                 throws RemoteException {
-            mContext.enforceCallingPermission(Manifest.permission.WRITE_SMS, "Add SMS draft");
             if (getAppOpsManager().noteOp(AppOpsManager.OP_WRITE_SMS, Binder.getCallingUid(),
                     callingPkg) != AppOpsManager.MODE_ALLOWED) {
                 // Silently fail AppOps failure due to not being the default SMS app
@@ -347,7 +454,6 @@ public class MmsServiceBroker extends SystemService {
         @Override
         public Uri addMultimediaMessageDraft(String callingPkg, Uri contentUri)
                 throws RemoteException {
-            mContext.enforceCallingPermission(Manifest.permission.WRITE_SMS, "Add MMS draft");
             if (getAppOpsManager().noteOp(AppOpsManager.OP_WRITE_SMS, Binder.getCallingUid(),
                     callingPkg) != AppOpsManager.MODE_ALLOWED) {
                 // Silently fail AppOps failure due to not being the default SMS app
@@ -360,8 +466,6 @@ public class MmsServiceBroker extends SystemService {
         @Override
         public void sendStoredMessage(int subId, String callingPkg, Uri messageUri,
                 Bundle configOverrides, PendingIntent sentIntent) throws RemoteException {
-            mContext.enforceCallingPermission(Manifest.permission.SEND_SMS,
-                    "Send stored MMS message");
             if (getAppOpsManager().noteOp(AppOpsManager.OP_SEND_SMS, Binder.getCallingUid(),
                     callingPkg) != AppOpsManager.MODE_ALLOWED) {
                 return;
@@ -372,7 +476,6 @@ public class MmsServiceBroker extends SystemService {
 
         @Override
         public void setAutoPersisting(String callingPkg, boolean enabled) throws RemoteException {
-            mContext.enforceCallingPermission(Manifest.permission.WRITE_SMS, "Set auto persist");
             if (getAppOpsManager().noteOp(AppOpsManager.OP_WRITE_SMS, Binder.getCallingUid(),
                     callingPkg) != AppOpsManager.MODE_ALLOWED) {
                 return;
@@ -397,13 +500,21 @@ public class MmsServiceBroker extends SystemService {
          */
         private Uri adjustUriForUserAndGrantPermission(Uri contentUri, String action,
                 int permission) {
+            final Intent grantIntent = new Intent();
+            grantIntent.setData(contentUri);
+            grantIntent.setFlags(permission);
+
+            final int callingUid = Binder.getCallingUid();
             final int callingUserId = UserHandle.getCallingUserId();
-            if (callingUserId != UserHandle.USER_OWNER) {
+            if (callingUserId != UserHandle.USER_SYSTEM) {
                 contentUri = ContentProvider.maybeAddUserId(contentUri, callingUserId);
             }
+
             long token = Binder.clearCallingIdentity();
             try {
-                mContext.grantUriPermission(PHONE_PACKAGE_NAME, contentUri, permission);
+                LocalServices.getService(ActivityManagerInternal.class)
+                        .grantUriPermissionFromIntent(callingUid, PHONE_PACKAGE_NAME,
+                                grantIntent, UserHandle.USER_SYSTEM);
 
                 // Grant permission for the carrier app.
                 Intent intent = new Intent(action);
@@ -412,7 +523,9 @@ public class MmsServiceBroker extends SystemService {
                 List<String> carrierPackages = telephonyManager.getCarrierPackageNamesForIntent(
                         intent);
                 if (carrierPackages != null && carrierPackages.size() == 1) {
-                    mContext.grantUriPermission(carrierPackages.get(0), contentUri, permission);
+                    LocalServices.getService(ActivityManagerInternal.class)
+                            .grantUriPermissionFromIntent(callingUid, carrierPackages.get(0),
+                                    grantIntent, UserHandle.USER_SYSTEM);
                 }
             } finally {
                 Binder.restoreCallingIdentity(token);

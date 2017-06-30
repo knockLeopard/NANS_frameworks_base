@@ -164,6 +164,15 @@ public class HandlerCaller {
         return mH.obtainMessage(what, arg1, 0, args);
     }
 
+    public Message obtainMessageIIOOO(int what, int arg1, int arg2, Object arg3, Object arg4,
+            Object arg5) {
+        SomeArgs args = SomeArgs.obtain();
+        args.arg1 = arg3;
+        args.arg2 = arg4;
+        args.arg3 = arg5;
+        return mH.obtainMessage(what, arg1, arg2, args);
+    }
+
     public Message obtainMessageOO(int what, Object arg1, Object arg2) {
         SomeArgs args = SomeArgs.obtain();
         args.arg1 = arg1;
@@ -200,6 +209,18 @@ public class HandlerCaller {
         return mH.obtainMessage(what, 0, 0, args);
     }
 
+    public Message obtainMessageOOOOII(int what, Object arg1, Object arg2,
+            Object arg3, Object arg4, int arg5, int arg6) {
+        SomeArgs args = SomeArgs.obtain();
+        args.arg1 = arg1;
+        args.arg2 = arg2;
+        args.arg3 = arg3;
+        args.arg4 = arg4;
+        args.argi5 = arg5;
+        args.argi6 = arg6;
+        return mH.obtainMessage(what, 0, 0, args);
+    }
+
     public Message obtainMessageIIII(int what, int arg1, int arg2,
             int arg3, int arg4) {
         SomeArgs args = SomeArgs.obtain();
@@ -209,7 +230,7 @@ public class HandlerCaller {
         args.argi4 = arg4;
         return mH.obtainMessage(what, 0, 0, args);
     }
-    
+
     public Message obtainMessageIIIIII(int what, int arg1, int arg2,
             int arg3, int arg4, int arg5, int arg6) {
         SomeArgs args = SomeArgs.obtain();
@@ -221,7 +242,7 @@ public class HandlerCaller {
         args.argi6 = arg6;
         return mH.obtainMessage(what, 0, 0, args);
     }
-    
+
     public Message obtainMessageIIIIO(int what, int arg1, int arg2,
             int arg3, int arg4, Object arg5) {
         SomeArgs args = SomeArgs.obtain();

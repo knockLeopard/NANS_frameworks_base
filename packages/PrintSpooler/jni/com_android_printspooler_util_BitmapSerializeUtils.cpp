@@ -50,6 +50,10 @@ static bool readAllBytes(const int fd, void* buffer, const size_t byteCount) {
     size_t remainingBytes = byteCount;
     while (remainingBytes > 0) {
         ssize_t readByteCount = read(fd, readBuffer, remainingBytes);
+
+        remainingBytes -= readByteCount;
+        readBuffer += readByteCount;
+
         if (readByteCount == -1) {
             if (errno == EINTR) {
                 continue;
@@ -57,9 +61,12 @@ static bool readAllBytes(const int fd, void* buffer, const size_t byteCount) {
             __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,
                     "Error reading from buffer: %d", errno);
             return false;
+        } else if (readByteCount == 0 && remainingBytes > 0) {
+            __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,
+                    "File closed before all bytes were read. %zu/%zu remaining", remainingBytes,
+                    byteCount);
+            return false;
         }
-        remainingBytes -= readByteCount;
-        readBuffer += readByteCount;
     }
     return true;
 }
@@ -79,7 +86,7 @@ static void throwIllegalArgumentException(JNIEnv* env, char* message) {
     throwException(env, className, message);
 }
 
-static void readBitmapPixels(JNIEnv* env, jclass clazz, jobject jbitmap, jint fd) {
+static void readBitmapPixels(JNIEnv* env, jclass /* clazz */, jobject jbitmap, jint fd) {
     // Read the info.
     AndroidBitmapInfo readInfo;
     bool read = readAllBytes(fd, (void*) &readInfo, sizeof(AndroidBitmapInfo));
@@ -127,7 +134,7 @@ static void readBitmapPixels(JNIEnv* env, jclass clazz, jobject jbitmap, jint fd
     }
 }
 
-static void writeBitmapPixels(JNIEnv* env, jclass clazz, jobject jbitmap, jint fd) {
+static void writeBitmapPixels(JNIEnv* env, jclass /* clazz */, jobject jbitmap, jint fd) {
     // Get the info.
     AndroidBitmapInfo info;
     int result = AndroidBitmap_getInfo(env, jbitmap, &info);
@@ -166,7 +173,7 @@ static void writeBitmapPixels(JNIEnv* env, jclass clazz, jobject jbitmap, jint f
     }
 }
 
-static JNINativeMethod sMethods[] = {
+static const JNINativeMethod sMethods[] = {
     {"nativeReadBitmapPixels", "(Landroid/graphics/Bitmap;I)V", (void *) readBitmapPixels},
     {"nativeWriteBitmapPixels", "(Landroid/graphics/Bitmap;I)V", (void *) writeBitmapPixels},
 };

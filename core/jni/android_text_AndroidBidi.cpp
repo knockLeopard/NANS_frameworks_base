@@ -18,7 +18,7 @@
 #define LOG_TAG "AndroidUnicode"
 
 #include "JNIHelp.h"
-#include <android_runtime/AndroidRuntime.h>
+#include "core_jni_helpers.h"
 #include "utils/misc.h"
 #include "utils/Log.h"
 #include "unicode/ubidi.h"
@@ -56,15 +56,13 @@ static jint runBidi(JNIEnv* env, jobject obj, jint dir, jcharArray chsArray,
     return result;
 }
 
-static JNINativeMethod gMethods[] = {
-        { "runBidi", "(I[C[BIZ)I",
-        (void*) runBidi }
+static const JNINativeMethod gMethods[] = {
+        { "runBidi", "(I[C[BIZ)I", (void*) runBidi }
 };
 
 int register_android_text_AndroidBidi(JNIEnv* env)
 {
-    return AndroidRuntime::registerNativeMethods(env, "android/text/AndroidBidi",
-            gMethods, NELEM(gMethods));
+    return RegisterMethodsOrDie(env, "android/text/AndroidBidi", gMethods, NELEM(gMethods));
 }
 
 }

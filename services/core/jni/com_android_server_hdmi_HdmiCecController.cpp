@@ -330,7 +330,7 @@ static jint nativeSendCecCommand(JNIEnv* env, jclass clazz, jlong controllerPtr,
     jsize len = env->GetArrayLength(body);
     message.length = MIN(len, CEC_MESSAGE_BODY_MAX_LENGTH);
     ScopedByteArrayRO bodyPtr(env, body);
-    std::memcpy(message.body, bodyPtr.get(), len);
+    std::memcpy(message.body, bodyPtr.get(), message.length);
 
     HdmiCecController* controller =
             reinterpret_cast<HdmiCecController*>(controllerPtr);
@@ -384,7 +384,7 @@ static jboolean nativeIsConnected(JNIEnv* env, jclass clazz, jlong controllerPtr
     return controller->isConnected(port) ? JNI_TRUE : JNI_FALSE ;
 }
 
-static JNINativeMethod sMethods[] = {
+static const JNINativeMethod sMethods[] = {
     /* name, signature, funcPtr */
     { "nativeInit",
       "(Lcom/android/server/hdmi/HdmiCecController;Landroid/os/MessageQueue;)J",
@@ -408,6 +408,7 @@ static JNINativeMethod sMethods[] = {
 int register_android_server_hdmi_HdmiCecController(JNIEnv* env) {
     int res = jniRegisterNativeMethods(env, CLASS_PATH, sMethods, NELEM(sMethods));
     LOG_FATAL_IF(res < 0, "Unable to register native methods.");
+    (void)res; // Don't scream about unused variable in the LOG_NDEBUG case
     return 0;
 }
 

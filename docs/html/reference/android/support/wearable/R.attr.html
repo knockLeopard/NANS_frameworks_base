@@ -1,623 +1,172 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<html>
+<html devsite>
 <head>
 
 
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<meta name="viewport" content="width=device-width" />
+    <meta name="top_category" value="develop" />
 
-<link rel="shortcut icon" type="image/x-icon" href="../../../../favicon.ico" />
-<title>R.attr | Android Developers</title>
-
-<!-- STYLESHEETS -->
-<link rel="stylesheet"
-href="http://fonts.googleapis.com/css?family=Roboto+Condensed">
-<link rel="stylesheet" href="http://fonts.googleapis.com/css?family=Roboto:light,regular,medium,thin,italic,mediumitalic,bold"
-  title="roboto">
-<link href="../../../../assets/css/default.css?v=4" rel="stylesheet" type="text/css">
+    <meta name="subcategory" value="reference" />
 
 
-<!-- FULLSCREEN STYLESHEET -->
-<link href="../../../../assets/css/fullscreen.css" rel="stylesheet" class="fullscreen"
-type="text/css">
-
-
-<!-- JAVASCRIPT -->
-<script src="http://www.google.com/jsapi" type="text/javascript"></script>
-<script src="../../../../assets/js/android_3p-bundle.js" type="text/javascript"></script>
-<script type="text/javascript">
-  var toRoot = "../../../../";
-  var metaTags = [];
-  var devsite = false;
-</script>
-<script src="../../../../assets/js/docs.js?v=3" type="text/javascript"></script>
+      <meta name="book_path" value="/reference/android/support/wearable/_book.yaml" />
 
 
 
-<script>
-  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
 
-  ga('create', 'UA-5831155-1', 'android.com');
-  ga('create', 'UA-49880327-2', 'android.com', {'name': 'universal'});  // New tracker);
-  ga('send', 'pageview');
-  ga('universal.send', 'pageview'); // Send page view for new tracker.
-</script>
+
+
+
+
+
+
+
+
+
+
+
+<title>R.attr | Android Developers
+</title>
 
 </head>
 
-<body class="gc-documentation 
-  develop reference" itemscope itemtype="http://schema.org/Article">
-  <div id="doc-api-level" class="" style="display:none"></div>
-  <a name="top"></a>
-
-
-<a name="top"></a>
-
-<!-- dialog to prompt lang pref change when loaded from hardcoded URL 
-<div id="langMessage" style="display:none">
-  <div>
-    <div class="lang en">
-      <p>You requested a page in English, would you like to proceed with this language setting?</p>
-    </div>
-    <div class="lang es">
-      <p>You requested a page in Spanish (Español), would you like to proceed with this language setting?</p>
-    </div>
-    <div class="lang ja">
-      <p>You requested a page in Japanese (日本語), would you like to proceed with this language setting?</p>
-    </div>
-    <div class="lang ko">
-      <p>You requested a page in Korean (한국어), would you like to proceed with this language setting?</p>
-    </div>
-    <div class="lang ru">
-      <p>You requested a page in Russian (Русский), would you like to proceed with this language setting?</p>
-    </div>
-    <div class="lang zh-cn">
-      <p>You requested a page in Simplified Chinese (简体中文), would you like to proceed with this language setting?</p>
-    </div>
-    <div class="lang zh-tw">
-      <p>You requested a page in Traditional Chinese (繁體中文), would you like to proceed with this language setting?</p>
-    </div>
-    <a href="#" class="button yes" onclick="return false;">
-      <span class="lang en">Yes</span>
-      <span class="lang es">Sí</span>
-      <span class="lang ja">Yes</span>
-      <span class="lang ko">Yes</span>
-      <span class="lang ru">Yes</span>
-      <span class="lang zh-cn">是的</span>
-      <span class="lang zh-tw">没有</span>
-    </a>
-    <a href="#" class="button" onclick="$('#langMessage').hide();return false;">
-      <span class="lang en">No</span>
-      <span class="lang es">No</span>
-      <span class="lang ja">No</span>
-      <span class="lang ko">No</span>
-      <span class="lang ru">No</span>
-      <span class="lang zh-cn">没有</span>
-      <span class="lang zh-tw">没有</span>
-    </a>
-  </div>
-</div> -->
-
-
-  <!-- Header -->
-  <div id="header-wrapper">
-    <div id="header">
-
-    
-
-
-      <div class="wrap" id="header-wrap">
-        <div class="col-3 logo">
-          <a href="../../../../index.html">
-            <img src="../../../../assets/images/dac_logo.png"
-                srcset="../../../../assets/images/dac_logo@2x.png 2x"
-                width="123" height="25" alt="Android Developers" />
-          </a>
-          <div class="btn-quicknav" id="btn-quicknav">
-            <a href="#" class="arrow-inactive">Quicknav</a>
-            <a href="#" class="arrow-active">Quicknav</a>
-          </div>
-        </div>
-        <ul class="nav-x col-9">
-            <li class="design">
-              <a href="../../../../design/index.html"
-              zh-tw-lang="設計"
-              zh-cn-lang="设计"
-              ru-lang="Проектирование"
-              ko-lang="디자인"
-              ja-lang="設計"
-              es-lang="Diseñar"
-              >Design</a></li>
-            <li class="develop"><a href="../../../../develop/index.html"
-              zh-tw-lang="開發"
-              zh-cn-lang="开发"
-              ru-lang="Разработка"
-              ko-lang="개발"
-              ja-lang="開発"
-              es-lang="Desarrollar"
-              >Develop</a></li>
-            <li class="distribute last"><a href="../../../../distribute/googleplay/index.html"
-              zh-tw-lang="發佈"
-              zh-cn-lang="分发"
-              ru-lang="Распространение"
-              ko-lang="배포"
-              ja-lang="配布"
-              es-lang="Distribuir"
-              >Distribute</a></li>
-        </ul>
-
-
-        
-        
-<div class="menu-container">
-  <div class="moremenu">
-    <div id="more-btn"></div>
-  </div>
-  <div class="morehover" id="moremenu">
-    <div class="top"></div>
-    <div class="mid">
-      <div class="header">Links</div>
-      <ul>
-        <li><a href="https://play.google.com/apps/publish/" target="_googleplay">Google Play Developer Console</a></li>
-        <li><a href="http://android-developers.blogspot.com/">Android Developers Blog</a></li>
-        <li><a href="../../../../about/index.html">About Android</a></li>
-      </ul>
-      <div class="header">Android Sites</div>
-      <ul>
-        <li><a href="http://www.android.com">Android.com</a></li>
-        <li class="active"><a>Android Developers</a></li>
-        <li><a href="http://source.android.com">Android Open Source Project</a></li>
-      </ul>
-
-      
-      
-      
-      <br class="clearfix" />
-    </div><!-- end 'mid' -->
-    <div class="bottom"></div>
-  </div><!-- end 'moremenu' -->
-
-  <div class="search" id="search-container">
-    <div class="search-inner">
-      <div id="search-btn"></div>
-      <div class="left"></div>
-      <form onsubmit="return submit_search()">
-        <input id="search_autocomplete" type="text" value="" autocomplete="off" name="q"
-          onfocus="search_focus_changed(this, true)" onblur="search_focus_changed(this, false)"
-          onkeydown="return search_changed(event, true, '../../../../')"
-          onkeyup="return search_changed(event, false, '../../../../')" />
-      </form>
-      <div class="right"></div>
-      <a class="close hide">close</a>
-      <div class="left"></div>
-      <div class="right"></div>
-    </div><!-- end search-inner -->
-  </div><!-- end search-container -->
-
-  <div class="search_filtered_wrapper reference">
-    <div class="suggest-card reference no-display">
-      <ul class="search_filtered">
-      </ul>
-    </div>
-  </div>
-
-  <div class="search_filtered_wrapper docs">
-    <div class="suggest-card dummy no-display">&nbsp;</div>
-    <div class="suggest-card develop no-display">
-      <ul class="search_filtered">
-      </ul>
-      <div class="child-card guides no-display">
-      </div>
-      <div class="child-card training no-display">
-      </div>
-      <div class="child-card samples no-display">
-      </div>
-    </div>
-    <div class="suggest-card design no-display">
-      <ul class="search_filtered">
-      </ul>
-    </div>
-    <div class="suggest-card distribute no-display">
-      <ul class="search_filtered">
-      </ul>
-    </div>
-  </div>
-</div><!-- end menu-container (search and menu widget) -->
-
-
-
-        <!-- Expanded quicknav -->
-        <div id="quicknav" class="col-13">
-          <ul>
-            <li class="about">
-              <ul>
-                <li><a href="../../../../about/index.html">About</a></li>
-                <li><a href="../../../../wear/index.html">Wear</a></li>
-                <li><a href="../../../../tv/index.html">TV</a></li>
-                <li><a href="../../../../auto/index.html">Auto</a></li>
-              </ul>
-            </li>
-            <li class="design">
-              <ul>
-                <li><a href="../../../../design/index.html">Get Started</a></li>
-                <li><a href="../../../../design/devices.html">Devices</a></li>
-                <li><a href="../../../../design/style/index.html">Style</a></li>
-                <li><a href="../../../../design/patterns/index.html">Patterns</a></li>
-                <li><a href="../../../../design/building-blocks/index.html">Building Blocks</a></li>
-                <li><a href="../../../../design/downloads/index.html">Downloads</a></li>
-                <li><a href="../../../../design/videos/index.html">Videos</a></li>
-              </ul>
-            </li>
-            <li class="develop">
-              <ul>
-                <li><a href="../../../../training/index.html"
-                  zh-tw-lang="訓練課程"
-                  zh-cn-lang="培训"
-                  ru-lang="Курсы"
-                  ko-lang="교육"
-                  ja-lang="トレーニング"
-                  es-lang="Capacitación"
-                  >Training</a></li>
-                <li><a href="../../../../guide/index.html"
-                  zh-tw-lang="API 指南"
-                  zh-cn-lang="API 指南"
-                  ru-lang="Руководства по API"
-                  ko-lang="API 가이드"
-                  ja-lang="API ガイド"
-                  es-lang="Guías de la API"
-                  >API Guides</a></li>
-                <li><a href="../../../../reference/packages.html"
-                  zh-tw-lang="參考資源"
-                  zh-cn-lang="参考"
-                  ru-lang="Справочник"
-                  ko-lang="참조문서"
-                  ja-lang="リファレンス"
-                  es-lang="Referencia"
-                  >Reference</a></li>
-                <li><a href="../../../../sdk/index.html"
-                  zh-tw-lang="相關工具"
-                  zh-cn-lang="工具"
-                  ru-lang="Инструменты"
-                  ko-lang="도구"
-                  ja-lang="ツール"
-                  es-lang="Herramientas"
-                  >Tools</a>
-                </li>
-                <li><a href="../../../../google/index.html">Google Services</a>
-                </li>
-                
-              </ul>
-            </li>
-            <li class="distribute last">
-              <ul>
-                <li><a href="../../../../distribute/googleplay/index.html">Google Play</a></li>
-                <li><a href="../../../../distribute/essentials/index.html">Essentials</a></li>
-                <li><a href="../../../../distribute/users/index.html">Get Users</a></li>
-                <li><a href="../../../../distribute/engage/index.html">Engage &amp; Retain</a></li>
-                <li><a href="../../../../distribute/monetize/index.html">Monetize</a></li>
-                <li><a href="../../../../distribute/tools/index.html">Tools &amp; Reference</a></li>
-                <li><a href="../../../../distribute/stories/index.html">Developer Stories</a></li>
-              </ul>
-            </li>
-          </ul>
-        </div><!-- /Expanded quicknav -->
-      </div><!-- end header-wrap.wrap -->
-    </div><!-- end header -->
-
-  
-    <!-- Secondary x-nav -->
-    <div id="nav-x">
-        <div class="wrap" style="position:relative;z-index:1">
-
-        
-        
-            <a id="helpoutsLink" class="resource resource-card resource-card-6x2x3 resource-card-6x2 helpouts-card" 
-              href="http://helpouts.google.com/partner/landing/provider/googledevelopers?utm_source=dac&utm_medium=banner&utm_campaign=android_provider_banner3" target="_blank">
-              <div class="card-bg helpouts-card-bg"></div>
-              <div class="card-info">
-                <div class="helpouts-description">
-                  <div class="text">Help Android Wear and TV developers<br/>
-                    <span id="helpoutsLinkText" class="link-color" 
-                    style="display:block;padding-top:5px;text-align:right">Learn more</span>
-                  </div>
-                </div>
-              </div>
-            </a>
-        
-        
-
-            <ul class="nav-x col-9 develop" style="width:100%">
-                <li class="training"><a href="../../../../training/index.html"
-                  zh-tw-lang="訓練課程"
-                  zh-cn-lang="培训"
-                  ru-lang="Курсы"
-                  ko-lang="교육"
-                  ja-lang="トレーニング"
-                  es-lang="Capacitación"
-                  >Training</a></li>
-                <li class="guide"><a href="../../../../guide/index.html"
-                  zh-tw-lang="API 指南"
-                  zh-cn-lang="API 指南"
-                  ru-lang="Руководства по API"
-                  ko-lang="API 가이드"
-                  ja-lang="API ガイド"
-                  es-lang="Guías de la API"
-                  >API Guides</a></li>
-                <li class="reference"><a href="../../../../reference/packages.html"
-                  zh-tw-lang="參考資源"
-                  zh-cn-lang="参考"
-                  ru-lang="Справочник"
-                  ko-lang="참조문서"
-                  ja-lang="リファレンス"
-                  es-lang="Referencia"
-                  >Reference</a></li>
-                <li class="tools"><a href="../../../../sdk/index.html"
-                  zh-tw-lang="相關工具"
-                  zh-cn-lang="工具"
-                  ru-lang="Инструменты"
-                  ko-lang="도구"
-                  ja-lang="ツール"
-                  es-lang="Herramientas"
-                  >Tools</a></li>
-                <li class="google"><a href="../../../../google/index.html"
-                  >Google Services</a>
-                </li>
-                
-            </ul>
-        </div>
-    </div>
-    <!-- /Sendondary x-nav DEVELOP -->
-
-  
-
-    <div id="searchResults" class="wrap" style="display:none;">
-      <h2 id="searchTitle">Results</h2>
-      <div id="leftSearchControl" class="search-control">Loading...</div>
-    </div>
-  </div> <!--end header-wrapper -->
-
-  <div id="sticky-header">
-    <div>
-      <a class="logo" href="#top"></a>
-      <a class="top" href="#top"></a>
-      <ul class="breadcrumb">
-        
-        <li class="current">R.attr</li>
-      </ul>
-    </div>
-  </div>
+<body class="gc-documentation develop reference api apilevel-">
+<div id="doc-api-level" class="" style="display:none"></div>
 
 
 
 
-
-  <div class="wrap clearfix" id="body-content">
-    <div class="col-4" id="side-nav" itemscope itemtype="http://schema.org/SiteNavigationElement">
-      <div id="devdoc-nav">
-      <div id="api-nav-header">
-        <div id="api-level-toggle">
-          <label for="apiLevelCheckbox" class="disabled"
-            title="Select your target API level to dim unavailable APIs">API level: </label>
-          <div class="select-wrapper">
-            <select id="apiLevelSelector">
-              <!-- option elements added by buildApiLevelSelector() -->
-            </select>
-          </div>
-        </div><!-- end toggle -->
-        <div id="api-nav-title">Android APIs</div>
-        </div><!-- end nav header -->
-      <script>
-        var SINCE_DATA = [  ];
-        buildApiLevelSelector();
-      </script>
-                  
-      <div id="swapper">
-        <div id="nav-panels">
-          <div id="resize-packages-nav">
-            <div id="packages-nav" class="scroll-pane">
-
-              <ul>
-                
-    <li class="selected api apilevel-">
-  <a href="../../../../reference/android/support/wearable/package-summary.html">android.support.wearable</a></li>
-    <li class="api apilevel-">
-  <a href="../../../../reference/android/support/wearable/activity/package-summary.html">android.support.wearable.activity</a></li>
-    <li class="api apilevel-">
-  <a href="../../../../reference/android/support/wearable/companion/package-summary.html">android.support.wearable.companion</a></li>
-    <li class="api apilevel-">
-  <a href="../../../../reference/android/support/wearable/provider/package-summary.html">android.support.wearable.provider</a></li>
-    <li class="api apilevel-">
-  <a href="../../../../reference/android/support/wearable/view/package-summary.html">android.support.wearable.view</a></li>
-    <li class="api apilevel-">
-  <a href="../../../../reference/android/support/wearable/watchface/package-summary.html">android.support.wearable.watchface</a></li>
-              </ul><br/>
-
-            </div> <!-- end packages-nav -->
-          </div> <!-- end resize-packages -->
-          <div id="classes-nav" class="scroll-pane">
-
-
-
-            <ul>
-              
-              
-              
-    <li><h2>Classes</h2>
-      <ul>
-          <li class="api apilevel-"><a href="../../../../reference/android/support/wearable/R.html">R</a></li>
-          <li class="selected api apilevel-"><a href="../../../../reference/android/support/wearable/R.attr.html">R.attr</a></li>
-          <li class="api apilevel-"><a href="../../../../reference/android/support/wearable/R.color.html">R.color</a></li>
-          <li class="api apilevel-"><a href="../../../../reference/android/support/wearable/R.dimen.html">R.dimen</a></li>
-          <li class="api apilevel-"><a href="../../../../reference/android/support/wearable/R.drawable.html">R.drawable</a></li>
-          <li class="api apilevel-"><a href="../../../../reference/android/support/wearable/R.id.html">R.id</a></li>
-          <li class="api apilevel-"><a href="../../../../reference/android/support/wearable/R.layout.html">R.layout</a></li>
-          <li class="api apilevel-"><a href="../../../../reference/android/support/wearable/R.style.html">R.style</a></li>
-          <li class="api apilevel-"><a href="../../../../reference/android/support/wearable/R.styleable.html">R.styleable</a></li>
-      </ul>
-    </li>
-              
-              
-              
-            </ul><br/>
-        
-
-          </div><!-- end classes -->
-        </div><!-- end nav-panels -->
-        <div id="nav-tree" style="display:none" class="scroll-pane">
-          <div id="tree-list"></div>
-        </div><!-- end nav-tree -->
-      </div><!-- end swapper -->
-      <div id="nav-swap">
-      <a class="fullscreen">fullscreen</a>
-      <a href='#' onclick='swapNav();return false;'><span id='tree-link'>Use Tree Navigation</span><span id='panel-link' style='display:none'>Use Panel Navigation</span></a>
-      </div>
-    </div> <!-- end devdoc-nav -->
-    </div> <!-- end side-nav -->
-    <script type="text/javascript">
-      // init fullscreen based on user pref
-      var fullscreen = readCookie("fullscreen");
-      if (fullscreen != 0) {
-        if (fullscreen == "false") {
-          toggleFullscreen(false);
-        } else {
-          toggleFullscreen(true);
-        }
-      }
-      // init nav version for mobile
-      if (isMobile) {
-        swapNav(); // tree view should be used on mobile
-        $('#nav-swap').hide();
-      } else {
-        chooseDefaultNav();
-        if ($("#nav-tree").is(':visible')) {
-          init_default_navtree("../../../../");
-        }
-      }
-      // scroll the selected page into view
-      $(document).ready(function() {
-        scrollIntoView("packages-nav");
-        scrollIntoView("classes-nav");
-        });
-    </script>
-
-     
-
-
-
-<div class="col-12"  id="doc-col">
+<div id="naMessage"></div>
 
 <div id="api-info-block">
+<div class="api-level">
 
 
 
-  
-   
-  
-  
-  
-  
+
+</div>
+
+
+
+
+
+
+
+
+
 
 
 <div class="sum-details-links">
@@ -631,12 +180,12 @@ Summary:
 
 
   <a href="#lfields">Fields</a>
-  
+
 
 
 
   &#124; <a href="#pubctors">Ctors</a>
-  
+
 
 
 
@@ -647,79 +196,64 @@ Summary:
 &#124; <a href="#" onclick="return toggleAllClassInherited()" id="toggleAllClassInherited">[Expand All]</a>
 
 </div><!-- end sum-details-links -->
-<div class="api-level">
-  
-  
-  
-
-</div>
 </div><!-- end api-info-block -->
 
+<div class="api apilevel-" id="jd-content">
 
 <!-- ======== START OF CLASS DATA ======== -->
 
-<div id="jd-header">
-    public
-    static 
-    final 
-    
-    class
-<h1 itemprop="name">R.attr</h1>
+<h1 class="api-title">R.attr</h1>
+<p>
+<code class="api-signature">
+  public
+  static
+  final
+
+  class
+  R.attr
+</code>
+<br>
+
+
+<code class="api-signature">
+
+    extends Object
 
 
 
-  
-    extends Object<br/>
-  
-  
-  
+</code>
 
-  
-  
-  
+<code class="api-signature">
 
 
-    
+
+</code>
+
+</p><table class="jd-inheritance-table">
 
 
-</div><!-- end header -->
+  <tr>
 
-<div id="naMessage"></div>
+    <td colspan="2" class="jd-inheritance-class-cell">java.lang.Object
+    </td>
+  </tr>
 
-<div id="jd-content" class="api apilevel-"><p style="border:2px solid #99ccff;padding:12px;margin-top:20px"><strong>Note:</strong> The Wearable Support Library classes under the <code>android.support.wearable</code> package are subject to change. For the full Android API reference, see <a href="/reference/">Reference</a>.</p>
-<table class="jd-inheritance-table">
 
+  <tr>
 
-    <tr>
-         	
-        <td colspan="2" class="jd-inheritance-class-cell">java.lang.Object</td>
-    </tr>
-    
+      <td class="jd-inheritance-space">&nbsp;&nbsp;&nbsp;&#x21b3;</td>
 
-    <tr>
-        
-            <td class="jd-inheritance-space">&nbsp;&nbsp;&nbsp;&#x21b3;</td>
-         	
-        <td colspan="1" class="jd-inheritance-class-cell">android.support.wearable.R.attr</td>
-    </tr>
-    
+    <td colspan="1" class="jd-inheritance-class-cell">android.support.wearable.R.attr
+    </td>
+  </tr>
+
 
 </table>
 
 
 
 
-
-
-
-<div class="jd-descr">
-
-
-
-
-
-
-</div><!-- jd-descr -->
+<br><hr>
 
 
 
@@ -728,18 +262,7 @@ Summary:
 
 
 
-
-
-
-
-
-
-
-
-<div class="jd-descr">
-
-
-<h2>Summary</h2>
+<h2 class="api-section">Summary</h2>
 
 
 
@@ -759,433 +282,821 @@ Summary:
 
 
 <!-- =========== FIELD SUMMARY =========== -->
-<table id="lfields" class="jd-sumtable"><tr><th colspan="12">Fields</th></tr>
+<table id="lfields" class="responsive properties">
+<tr><th colspan="2"><h3>Fields</h3></th></tr>
 
 
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#circle_border_color">circle_border_color</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
-"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
-            
-    
 
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#circle_border_width">circle_border_width</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
 
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#circle_color">circle_color</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
-"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#circle_padding">circle_padding</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#circle_radius">circle_radius</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#circle_radius_pressed">circle_radius_pressed</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#circular_layout_gravity">circular_layout_gravity</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be one or more (separated by '|') of the following constant values.
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#circular_text_size">circular_text_size</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotColor">dotColor</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
-"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotColorSelected">dotColorSelected</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
-"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotFadeInDuration">dotFadeInDuration</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be an integer value, such as "<code>100</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotFadeOutDelay">dotFadeOutDelay</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be an integer value, such as "<code>100</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotFadeOutDuration">dotFadeOutDuration</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be an integer value, such as "<code>100</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotFadeWhenIdle">dotFadeWhenIdle</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a boolean value, either "<code>true</code>" or "<code>false</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotRadius">dotRadius</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotRadiusSelected">dotRadiusSelected</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotShadowColor">dotShadowColor</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
-"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotShadowDx">dotShadowDx</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotShadowDy">dotShadowDy</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotShadowRadius">dotShadowRadius</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#dotSpacing">dotSpacing</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#layout_box">layout_box</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be one or more (separated by '|') of the following constant values.
-            
-    
-
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#rectLayout">rectLayout</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#buttonRippleColor">buttonRippleColor</a></code>
+      <p><p>May be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
 or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>".
-            
-    
 
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#roundLayout">roundLayout</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#circle_border_color">circle_border_color</a></code>
+      <p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
+"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#circle_border_width">circle_border_width</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#circle_color">circle_color</a></code>
+      <p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
+"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#circle_padding">circle_padding</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#circle_radius">circle_radius</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#circle_radius_percent">circle_radius_percent</a></code>
+      <p><p>Must be a fractional value, which is a floating point number appended with either % or %p, such as "<code>14.5%</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#circle_radius_pressed">circle_radius_pressed</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#circle_radius_pressed_percent">circle_radius_pressed_percent</a></code>
+      <p><p>Must be a fractional value, which is a floating point number appended with either % or %p, such as "<code>14.5%</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#circular_layout_gravity">circular_layout_gravity</a></code>
+      <p><p>Must be one or more (separated by '|') of the following constant values.
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#circular_text_size">circular_text_size</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#color_sequence">color_sequence</a></code>
+      <p><p>May be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
 or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>".
-            
-    
 
-          </td>
-      </tr>
-      
-    
-      <tr class="alt-color api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#shadow_width">shadow_width</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
-            
-    
 
-          </td>
-      </tr>
-      
-    
-      <tr class=" api apilevel-" >
-          <td class="jd-typecol"><nobr>
-          public
-          static
-          
-          int</nobr></td>
-          <td class="jd-linkcol"><a href="../../../../reference/android/support/wearable/R.attr.html#update_interval">update_interval</a></td>
-          <td class="jd-descrcol" width="100%">
-            <p>Must be an integer value, such as "<code>100</code>".
-            
-    
+</p>
+    </td>
+  </tr>
 
-          </td>
-      </tr>
-      
-    
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotColor">dotColor</a></code>
+      <p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
+"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotColorSelected">dotColorSelected</a></code>
+      <p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
+"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotFadeInDuration">dotFadeInDuration</a></code>
+      <p><p>Must be an integer value, such as "<code>100</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotFadeOutDelay">dotFadeOutDelay</a></code>
+      <p><p>Must be an integer value, such as "<code>100</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotFadeOutDuration">dotFadeOutDuration</a></code>
+      <p><p>Must be an integer value, such as "<code>100</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotFadeWhenIdle">dotFadeWhenIdle</a></code>
+      <p><p>Must be a boolean value, either "<code>true</code>" or "<code>false</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotRadius">dotRadius</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotRadiusSelected">dotRadiusSelected</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotShadowColor">dotShadowColor</a></code>
+      <p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
+"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotShadowDx">dotShadowDx</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotShadowDy">dotShadowDy</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotShadowRadius">dotShadowRadius</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#dotSpacing">dotSpacing</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#imageScaleMode">imageScaleMode</a></code>
+      <p><p>Must be one of the following constant values.
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#image_circle_percentage">image_circle_percentage</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#image_horizontal_offcenter_percentage">image_horizontal_offcenter_percentage</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#image_tint">image_tint</a></code>
+      <p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
+"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#layoutManager">layoutManager</a></code>
+      <p><p>Must be a string value, using '\\;' to escape characters such as '\\n' or '\\uxxxx' for a unicode character.
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#layout_box">layout_box</a></code>
+      <p><p>Must be one or more (separated by '|') of the following constant values.
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#layout_gravityRound">layout_gravityRound</a></code>
+      <p><p>Must be one or more (separated by '|') of the following constant values.
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#layout_heightRound">layout_heightRound</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#layout_marginBottomRound">layout_marginBottomRound</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#layout_marginLeftRound">layout_marginLeftRound</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#layout_marginRightRound">layout_marginRightRound</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#layout_marginRound">layout_marginRound</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#layout_marginTopRound">layout_marginTopRound</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#layout_widthRound">layout_widthRound</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#maxTextSize">maxTextSize</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#minTextSize">minTextSize</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#pressedButtonTranslationZ">pressedButtonTranslationZ</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#rectLayout">rectLayout</a></code>
+      <p><p>Must be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
+or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#reverseLayout">reverseLayout</a></code>
+      <p><p>Must be a boolean value, either "<code>true</code>" or "<code>false</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#roundLayout">roundLayout</a></code>
+      <p><p>Must be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
+or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#shadow_width">shadow_width</a></code>
+      <p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#spanCount">spanCount</a></code>
+      <p><p>Must be an integer value, such as "<code>100</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#square_dimen">square_dimen</a></code>
+      <p><p>Must be one of the following constant values.
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#stackFromEnd">stackFromEnd</a></code>
+      <p><p>Must be a boolean value, either "<code>true</code>" or "<code>false</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
+  <tr class="api apilevel-" >
+    <td><code>
+    public
+    static
+
+    int</code></td>
+    <td width="100%">
+      <code><a href="/reference/android/support/wearable/R.attr.html#update_interval">update_interval</a></code>
+      <p><p>Must be an integer value, such as "<code>100</code>".
+
+
+</p>
+    </td>
+  </tr>
+
+
 
 </table>
 
@@ -1196,24 +1107,22 @@ or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>na
 
 
 <!-- ======== CONSTRUCTOR SUMMARY ======== -->
-<table id="pubctors" class="jd-sumtable"><tr><th colspan="12">Public Constructors</th></tr>
+<table id="pubctors" class="responsive constructors">
+<tr><th colspan="2"><h3>Public constructors</h3></th></tr>
 
 
 
-	 
-    <tr class="alt-color api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            
-            
-            
-            </nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad"><a href="../../../../reference/android/support/wearable/R.attr.html#R.attr()">R.attr</a></span>()</nobr>
-        
-  </td></tr>
+
+  <tr class="api apilevel-" >
+
+
+    <td width="100%">
+      <code>
+      <a href="/reference/android/support/wearable/R.attr.html#R.attr()">R.attr</a>()
+      </code>
+
+    </td>
+  </tr>
 
 
 
@@ -1230,223 +1139,282 @@ or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>na
 
 
 <!-- ========== METHOD SUMMARY =========== -->
-<table id="inhmethods" class="jd-sumtable"><tr><th>
-  <a href="#" class="toggle-all" onclick="return toggleAllInherited(this, null)">[Expand]</a>
-  <div style="clear:left;">Inherited Methods</div></th></tr>
+<table id="inhmethods" class="methods inhtable">
+<tr><th><h3>Inherited methods</h3></th></tr>
 
 
 <tr class="api apilevel-" >
-<td colspan="12">
+<td colspan="2">
+
   <a href="#" onclick="return toggleInherited(this, null)" id="inherited-methods-java.lang.Object" class="jd-expando-trigger closed"
           ><img id="inherited-methods-java.lang.Object-trigger"
-          src="../../../../assets/images/triangle-closed.png"
-          class="jd-expando-trigger-img" /></a>
-From class
+          src="/assets/images/triangle-closed.png"
+          class="jd-expando-trigger-img" /></a>From
+class
+<code>
 
-  java.lang.Object
+    java.lang.Object
 
+</code>
 <div id="inherited-methods-java.lang.Object">
   <div id="inherited-methods-java.lang.Object-list"
         class="jd-inheritedlinks">
   </div>
   <div id="inherited-methods-java.lang.Object-summary" style="display: none;">
-    <table class="jd-sumtable-expando">
-    
+    <table class="jd-sumtable-expando responsive">
 
 
-	 
-    <tr class="alt-color api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            
-            
-            
-            Object</nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad">clone</span>()</nobr>
-        
-  </td></tr>
 
 
-	 
-    <tr class=" api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            
-            
-            
-            boolean</nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad">equals</span>(Object arg0)</nobr>
-        
-  </td></tr>
+  <tr class="api apilevel-" >
 
 
-	 
-    <tr class="alt-color api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            
-            
-            
-            void</nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad">finalize</span>()</nobr>
-        
-  </td></tr>
+    <td><code>
 
 
-	 
-    <tr class=" api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            final
-            
-            
-            Class&lt;?&gt;</nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad">getClass</span>()</nobr>
-        
-  </td></tr>
 
 
-	 
-    <tr class="alt-color api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            
-            
-            
-            int</nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad">hashCode</span>()</nobr>
-        
-  </td></tr>
+
+        Object</code>
+    </td>
+
+    <td width="100%">
+      <code>
+      clone()
+      </code>
+
+    </td>
+  </tr>
 
 
-	 
-    <tr class=" api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            final
-            
-            
-            void</nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad">notify</span>()</nobr>
-        
-  </td></tr>
+
+  <tr class="api apilevel-" >
 
 
-	 
-    <tr class="alt-color api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            final
-            
-            
-            void</nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad">notifyAll</span>()</nobr>
-        
-  </td></tr>
+    <td><code>
 
 
-	 
-    <tr class=" api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            
-            
-            
-            String</nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad">toString</span>()</nobr>
-        
-  </td></tr>
 
 
-	 
-    <tr class="alt-color api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            final
-            
-            
-            void</nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad">wait</span>()</nobr>
-        
-  </td></tr>
+
+        boolean</code>
+    </td>
+
+    <td width="100%">
+      <code>
+      equals(Object arg0)
+      </code>
+
+    </td>
+  </tr>
 
 
-	 
-    <tr class=" api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            final
-            
-            
-            void</nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad">wait</span>(long arg0, int arg1)</nobr>
-        
-  </td></tr>
+
+  <tr class="api apilevel-" >
 
 
-	 
-    <tr class="alt-color api apilevel-" >
-        <td class="jd-typecol"><nobr>
-            
-            
-            final
-            
-            
-            void</nobr>
-        </td>
-        <td class="jd-linkcol" width="100%"><nobr>
-        <span class="sympad">wait</span>(long arg0)</nobr>
-        
-  </td></tr>
+    <td><code>
 
 
-</table>
+
+
+
+        void</code>
+    </td>
+
+    <td width="100%">
+      <code>
+      finalize()
+      </code>
+
+    </td>
+  </tr>
+
+
+
+  <tr class="api apilevel-" >
+
+
+    <td><code>
+
+
+
+        final
+
+        Class&lt;?&gt;</code>
+    </td>
+
+    <td width="100%">
+      <code>
+      getClass()
+      </code>
+
+    </td>
+  </tr>
+
+
+
+  <tr class="api apilevel-" >
+
+
+    <td><code>
+
+
+
+
+
+        int</code>
+    </td>
+
+    <td width="100%">
+      <code>
+      hashCode()
+      </code>
+
+    </td>
+  </tr>
+
+
+
+  <tr class="api apilevel-" >
+
+
+    <td><code>
+
+
+
+        final
+
+        void</code>
+    </td>
+
+    <td width="100%">
+      <code>
+      notify()
+      </code>
+
+    </td>
+  </tr>
+
+
+
+  <tr class="api apilevel-" >
+
+
+    <td><code>
+
+
+
+        final
+
+        void</code>
+    </td>
+
+    <td width="100%">
+      <code>
+      notifyAll()
+      </code>
+
+    </td>
+  </tr>
+
+
+
+  <tr class="api apilevel-" >
+
+
+    <td><code>
+
+
+
+
+
+        String</code>
+    </td>
+
+    <td width="100%">
+      <code>
+      toString()
+      </code>
+
+    </td>
+  </tr>
+
+
+
+  <tr class="api apilevel-" >
+
+
+    <td><code>
+
+
+
+        final
+
+        void</code>
+    </td>
+
+    <td width="100%">
+      <code>
+      wait()
+      </code>
+
+    </td>
+  </tr>
+
+
+
+  <tr class="api apilevel-" >
+
+
+    <td><code>
+
+
+
+        final
+
+        void</code>
+    </td>
+
+    <td width="100%">
+      <code>
+      wait(long arg0, int arg1)
+      </code>
+
+    </td>
+  </tr>
+
+
+
+  <tr class="api apilevel-" >
+
+
+    <td><code>
+
+
+
+        final
+
+        void</code>
+    </td>
+
+    <td width="100%">
+      <code>
+      wait(long arg0)
+      </code>
+
+    </td>
+  </tr>
+
+
+
+    </table>
   </div>
 </div>
 </td></tr>
 
 
 </table>
-
-
-</div><!-- jd-descr (summary) -->
-
-<!-- Details -->
-
-
-
-
-
 
 
 
@@ -1463,34 +1431,54 @@ From class
 
 
 <!-- ========= FIELD DETAIL ======== -->
-<h2>Fields</h2>
+<h2 class="api-section">Fields</h2>
 
+
+
+
+<A NAME="buttonRippleColor"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">buttonRippleColor</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int buttonRippleColor</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>May be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
+or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>".
+<p>May be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
+"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
+</p></div>
+
+
+</div>
 
 
 
 <A NAME="circle_border_color"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        circle_border_color
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">circle_border_color</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int circle_border_color</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
 "<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
 <p>This may also be a reference to a resource (in the form
@@ -1500,35 +1488,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="circle_border_width"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        circle_border_width
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">circle_border_width</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int circle_border_width</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -1539,35 +1519,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="circle_color"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        circle_color
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">circle_color</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int circle_color</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
 "<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
 <p>This may also be a reference to a resource (in the form
@@ -1577,35 +1549,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="circle_padding"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        circle_padding
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">circle_padding</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int circle_padding</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -1616,35 +1580,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="circle_radius"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        circle_radius
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">circle_radius</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int circle_radius</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -1655,35 +1611,58 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
+
+</div>
+
+
+
+<A NAME="circle_radius_percent"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">circle_radius_percent</h3>
+    <div class="api-level">
+
+
+
+
     </div>
+<pre class="api-signature no-pretty-print">
+int circle_radius_percent</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a fractional value, which is a floating point number appended with either % or %p, such as "<code>14.5%</code>".
+The % suffix always means a percentage of the base size; the optional %p suffix provides a size relative to
+some parent container.
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
 </div>
 
 
 
 <A NAME="circle_radius_pressed"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        circle_radius_pressed
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">circle_radius_pressed</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int circle_radius_pressed</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -1694,35 +1673,58 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
+
+</div>
+
+
+
+<A NAME="circle_radius_pressed_percent"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">circle_radius_pressed_percent</h3>
+    <div class="api-level">
+
+
+
+
     </div>
+<pre class="api-signature no-pretty-print">
+int circle_radius_pressed_percent</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a fractional value, which is a floating point number appended with either % or %p, such as "<code>14.5%</code>".
+The % suffix always means a percentage of the base size; the optional %p suffix provides a size relative to
+some parent container.
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
 </div>
 
 
 
 <A NAME="circular_layout_gravity"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        circular_layout_gravity
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">circular_layout_gravity</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int circular_layout_gravity</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be one or more (separated by '|') of the following constant values.</p>
 <table>
 <colgroup align="left" />
@@ -1739,35 +1741,27 @@ containing a value of this type.
 </table>
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="circular_text_size"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        circular_text_size
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">circular_text_size</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int circular_text_size</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -1778,35 +1772,54 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
+
+</div>
+
+
+
+<A NAME="color_sequence"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">color_sequence</h3>
+    <div class="api-level">
+
+
+
+
     </div>
+<pre class="api-signature no-pretty-print">
+int color_sequence</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>May be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
+or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>".
+<p>May be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
+"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
+</p></div>
+
+
 </div>
 
 
 
 <A NAME="dotColor"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotColor
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotColor</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotColor</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
 "<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
 <p>This may also be a reference to a resource (in the form
@@ -1816,35 +1829,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotColorSelected"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotColorSelected
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotColorSelected</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotColorSelected</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
 "<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
 <p>This may also be a reference to a resource (in the form
@@ -1854,35 +1859,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotFadeInDuration"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotFadeInDuration
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotFadeInDuration</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotFadeInDuration</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be an integer value, such as "<code>100</code>".
 <p>This may also be a reference to a resource (in the form
 "<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
@@ -1891,35 +1888,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotFadeOutDelay"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotFadeOutDelay
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotFadeOutDelay</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotFadeOutDelay</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be an integer value, such as "<code>100</code>".
 <p>This may also be a reference to a resource (in the form
 "<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
@@ -1928,35 +1917,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotFadeOutDuration"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotFadeOutDuration
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotFadeOutDuration</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotFadeOutDuration</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be an integer value, such as "<code>100</code>".
 <p>This may also be a reference to a resource (in the form
 "<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
@@ -1965,35 +1946,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotFadeWhenIdle"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotFadeWhenIdle
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotFadeWhenIdle</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotFadeWhenIdle</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a boolean value, either "<code>true</code>" or "<code>false</code>".
 <p>This may also be a reference to a resource (in the form
 "<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
@@ -2002,35 +1975,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotRadius"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotRadius
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotRadius</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotRadius</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -2041,35 +2006,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotRadiusSelected"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotRadiusSelected
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotRadiusSelected</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotRadiusSelected</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -2080,35 +2037,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotShadowColor"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotShadowColor
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotShadowColor</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotShadowColor</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
 "<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
 <p>This may also be a reference to a resource (in the form
@@ -2118,35 +2067,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotShadowDx"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotShadowDx
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotShadowDx</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotShadowDx</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -2157,35 +2098,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotShadowDy"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotShadowDy
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotShadowDy</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotShadowDy</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -2196,35 +2129,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotShadowRadius"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotShadowRadius
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotShadowRadius</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotShadowRadius</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -2235,35 +2160,27 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
 <A NAME="dotSpacing"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        dotSpacing
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">dotSpacing</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int dotSpacing</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -2274,35 +2191,180 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
+
+</div>
+
+
+
+<A NAME="imageScaleMode"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">imageScaleMode</h3>
+    <div class="api-level">
+
+
+
+
     </div>
+<pre class="api-signature no-pretty-print">
+int imageScaleMode</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be one of the following constant values.</p>
+<table>
+<colgroup align="left" />
+<colgroup align="left" />
+<colgroup align="left" />
+<tr><th>Constant</th><th>Value</th><th>Description</th></tr>
+<tr><td><code>fit</code></td><td>0</td><td></td></tr>
+<tr><td><code>center</code></td><td>1</td><td></td></tr>
+</table>
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="image_circle_percentage"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">image_circle_percentage</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int image_circle_percentage</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="image_horizontal_offcenter_percentage"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">image_horizontal_offcenter_percentage</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int image_horizontal_offcenter_percentage</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="image_tint"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">image_tint</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int image_tint</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a color value, in the form of "<code>#<i>rgb</i></code>", "<code>#<i>argb</i></code>",
+"<code>#<i>rrggbb</i></code>", or "<code>#<i>aarrggbb</i></code>".
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="layoutManager"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">layoutManager</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int layoutManager</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a string value, using '\\;' to escape characters such as '\\n' or '\\uxxxx' for a unicode character.
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
 </div>
 
 
 
 <A NAME="layout_box"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        layout_box
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">layout_box</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int layout_box</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be one or more (separated by '|') of the following constant values.</p>
 <table>
 <colgroup align="left" />
@@ -2317,101 +2379,71 @@ containing a value of this type.
 </table>
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
-<A NAME="rectLayout"></A>
+<A NAME="layout_gravityRound"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        rectLayout
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">layout_gravityRound</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
-  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
-or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>".
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int layout_gravityRound</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be one or more (separated by '|') of the following constant values.</p>
+<table>
+<colgroup align="left" />
+<colgroup align="left" />
+<colgroup align="left" />
+<tr><th>Constant</th><th>Value</th><th>Description</th></tr>
+<tr><td><code>top</code></td><td>0x30</td><td></td></tr>
+<tr><td><code>bottom</code></td><td>0x50</td><td></td></tr>
+<tr><td><code>left</code></td><td>0x03</td><td></td></tr>
+<tr><td><code>right</code></td><td>0x05</td><td></td></tr>
+<tr><td><code>center_vertical</code></td><td>0x10</td><td></td></tr>
+<tr><td><code>fill_vertical</code></td><td>0x70</td><td></td></tr>
+<tr><td><code>center_horizontal</code></td><td>0x01</td><td></td></tr>
+<tr><td><code>fill_horizontal</code></td><td>0x07</td><td></td></tr>
+<tr><td><code>center</code></td><td>0x11</td><td></td></tr>
+<tr><td><code>fill</code></td><td>0x77</td><td></td></tr>
+<tr><td><code>clip_vertical</code></td><td>0x80</td><td></td></tr>
+<tr><td><code>clip_horizontal</code></td><td>0x08</td><td></td></tr>
+<tr><td><code>start</code></td><td>0x00800003</td><td></td></tr>
+<tr><td><code>end</code></td><td>0x00800005</td><td></td></tr>
+</table>
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
-<A NAME="roundLayout"></A>
+<A NAME="layout_heightRound"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        roundLayout
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">layout_heightRound</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
-  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
-or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>".
-</p></div>
 
-    
+
     </div>
-</div>
+<pre class="api-signature no-pretty-print">
+int layout_heightRound</pre>
 
 
 
-<A NAME="shadow_width"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        shadow_width
-    </h4>
-      <div class="api-level">
-        
-        
-  
-
-      </div>
-    <div class="jd-details-descr">
-      
-    
-
-      
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
 Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
 in (inches), mm (millimeters).
@@ -2422,35 +2454,416 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
-    </div>
+
 </div>
 
 
 
-<A NAME="update_interval"></A>
+<A NAME="layout_marginBottomRound"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-        static 
-         
-        int
-      </span>
-        update_interval
-    </h4>
-      <div class="api-level">
-        
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">layout_marginBottomRound</h3>
+    <div class="api-level">
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int layout_marginBottomRound</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="layout_marginLeftRound"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">layout_marginLeftRound</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int layout_marginLeftRound</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="layout_marginRightRound"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">layout_marginRightRound</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int layout_marginRightRound</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="layout_marginRound"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">layout_marginRound</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int layout_marginRound</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="layout_marginTopRound"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">layout_marginTopRound</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int layout_marginTopRound</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="layout_widthRound"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">layout_widthRound</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int layout_widthRound</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="maxTextSize"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">maxTextSize</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int maxTextSize</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="minTextSize"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">minTextSize</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int minTextSize</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="pressedButtonTranslationZ"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">pressedButtonTranslationZ</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int pressedButtonTranslationZ</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="rectLayout"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">rectLayout</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int rectLayout</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
+or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>".
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="reverseLayout"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">reverseLayout</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int reverseLayout</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a boolean value, either "<code>true</code>" or "<code>false</code>".
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="roundLayout"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">roundLayout</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int roundLayout</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a reference to another resource, in the form "<code>@[+][<i>package</i>:]<i>type</i>:<i>name</i></code>"
+or to a theme attribute in the form "<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>".
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="shadow_width"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">shadow_width</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int shadow_width</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a dimension value, which is a floating point number appended with a unit such as "<code>14.5sp</code>".
+Available units are: px (pixels), dp (density-independent pixels), sp (scaled pixels based on preferred font size),
+in (inches), mm (millimeters).
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="spanCount"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">spanCount</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int spanCount</pre>
+
+
+
+
   <div class="jd-tagdata jd-tagdescr"><p><p>Must be an integer value, such as "<code>100</code>".
 <p>This may also be a reference to a resource (in the form
 "<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
@@ -2459,8 +2872,98 @@ theme attribute (in the form
 containing a value of this type.
 </p></div>
 
-    
+
+</div>
+
+
+
+<A NAME="square_dimen"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">square_dimen</h3>
+    <div class="api-level">
+
+
+
+
     </div>
+<pre class="api-signature no-pretty-print">
+int square_dimen</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be one of the following constant values.</p>
+<table>
+<colgroup align="left" />
+<colgroup align="left" />
+<colgroup align="left" />
+<tr><th>Constant</th><th>Value</th><th>Description</th></tr>
+<tr><td><code>none</code></td><td>0</td><td></td></tr>
+<tr><td><code>height</code></td><td>1</td><td></td></tr>
+<tr><td><code>width</code></td><td>2</td><td></td></tr>
+</table>
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="stackFromEnd"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">stackFromEnd</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int stackFromEnd</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be a boolean value, either "<code>true</code>" or "<code>false</code>".
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
+</div>
+
+
+
+<A NAME="update_interval"></A>
+
+<div class="api apilevel-">
+    <h3 class="api-name">update_interval</h3>
+    <div class="api-level">
+
+
+
+
+    </div>
+<pre class="api-signature no-pretty-print">
+int update_interval</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p><p>Must be an integer value, such as "<code>100</code>".
+<p>This may also be a reference to a resource (in the form
+"<code>@[<i>package</i>:]<i>type</i>:<i>name</i></code>") or
+theme attribute (in the form
+"<code>?[<i>package</i>:][<i>type</i>:]<i>name</i></code>")
+containing a value of this type.
+</p></div>
+
+
 </div>
 
 
@@ -2470,39 +2973,28 @@ containing a value of this type.
 
 
 <!-- ========= CONSTRUCTOR DETAIL ======== -->
-<h2>Public Constructors</h2>
+<h2 class="api-section">Public constructors</h2>
 
 
 
 <A NAME="R.attr()"></A>
 
-<div class="jd-details api apilevel-"> 
-    <h4 class="jd-details-title">
-      <span class="normal">
-        public 
-         
-         
-         
-         
-        
-      </span>
-      <span class="sympad">R.attr</span>
-      <span class="normal">()</span>
-    </h4>
-      <div class="api-level">
-        <div></div>
-        
-  
+<div class="api apilevel-">
+    <h3 class="api-name">R.attr</h3>
+    <div class="api-level">
+      <div></div>
 
-      </div>
-    <div class="jd-details-descr">
-      
-    
 
-      
-  <div class="jd-tagdata jd-tagdescr"><p></p></div>
 
     </div>
+<pre class="api-signature no-pretty-print">
+R.attr ()</pre>
+
+
+
+
+  <div class="jd-tagdata jd-tagdescr"><p></p></div>
+
 </div>
 
 
@@ -2524,46 +3016,8 @@ containing a value of this type.
 
 
 <!-- ========= END OF CLASS DATA ========= -->
-<A NAME="navbar_top"></A>
 
-<div id="footer" class="wrap" >
-        
-
-  <div id="copyright">
-    
-  Except as noted, this content is licensed under <a
-  href="http://www.apache.org/licenses/LICENSE-2.0">Apache 2.0</a>. 
-  For details and restrictions, see the <a href="../../../../license.html">
-  Content License</a>.
-  </div>
-  <div id="build_info">
-    
-    Android Wearable Support&nbsp;r &mdash; 
-<script src="../../../../timestamp.js" type="text/javascript"></script>
-<script>document.write(BUILD_TIMESTAMP)</script>
-
-  </div>
-
-
-  <div id="footerlinks">
-    
-  <p>
-    <a href="../../../../about/index.html">About Android</a>&nbsp;&nbsp;|&nbsp;
-    <a href="../../../../legal.html">Legal</a>&nbsp;&nbsp;|&nbsp;
-    <a href="../../../../support.html">Support</a>
-  </p>
-  </div>
-
-</div> <!-- end footer -->
-</div> <!-- jd-content -->
-
-</div><!-- end doc-content -->
-
-</div> <!-- end body-content --> 
-
-
-
-
+</div><!-- end jd-content -->
 
 
 </body>

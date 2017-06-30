@@ -21,19 +21,20 @@ import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.net.Uri;
 import android.telephony.Rlog;
 import android.os.Handler;
 import android.os.Message;
 import android.os.ServiceManager;
 import android.os.RemoteException;
+import android.util.DisplayMetrics;
 
 import com.android.internal.telephony.ISub;
 import com.android.internal.telephony.IOnSubscriptionsChangedListener;
 import com.android.internal.telephony.ITelephonyRegistry;
 import com.android.internal.telephony.PhoneConstants;
-import com.android.internal.telephony.TelephonyProperties;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -52,7 +53,6 @@ public class SubscriptionManager {
     private static final boolean VDBG = false;
 
     /** An invalid subscription identifier */
-    /** @hide */
     public static final int INVALID_SUBSCRIPTION_ID = -1;
 
     /** Base value for Dummy SUBSCRIPTION_ID's. */
@@ -74,7 +74,7 @@ public class SubscriptionManager {
 
     /**
      * Indicates the caller wants the default phone id.
-     * Used in SubscriptionController and PhoneBase but do we really need it???
+     * Used in SubscriptionController and Phone but do we really need it???
      * @hide
      */
     public static final int DEFAULT_PHONE_INDEX = Integer.MAX_VALUE;
@@ -235,6 +235,9 @@ public class SubscriptionManager {
     /** @hide */
     public static final int DATA_ROAMING_DEFAULT = DATA_ROAMING_DISABLE;
 
+    /** @hide */
+    public static final int SIM_PROVISIONED = 0;
+
     /**
      * TelephonyProvider column name for the MCC associated with a SIM.
      * <P>Type: INTEGER (int)</P>
@@ -248,6 +251,85 @@ public class SubscriptionManager {
      * @hide
      */
     public static final String MNC = "mnc";
+
+    /**
+     * TelephonyProvider column name for the sim provisioning status associated with a SIM.
+     * <P>Type: INTEGER (int)</P>
+     * @hide
+     */
+    public static final String SIM_PROVISIONING_STATUS = "sim_provisioning_status";
+
+    /**
+     *  TelephonyProvider column name for extreme threat in CB settings
+     * @hide
+     */
+    public static final String CB_EXTREME_THREAT_ALERT = "enable_cmas_extreme_threat_alerts";
+
+    /**
+     * TelephonyProvider column name for severe threat in CB settings
+     *@hide
+     */
+    public static final String CB_SEVERE_THREAT_ALERT = "enable_cmas_severe_threat_alerts";
+
+    /**
+     * TelephonyProvider column name for amber alert in CB settings
+     *@hide
+     */
+    public static final String CB_AMBER_ALERT = "enable_cmas_amber_alerts";
+
+    /**
+     * TelephonyProvider column name for emergency alert in CB settings
+     *@hide
+     */
+    public static final String CB_EMERGENCY_ALERT = "enable_emergency_alerts";
+
+    /**
+     * TelephonyProvider column name for alert sound duration in CB settings
+     *@hide
+     */
+    public static final String CB_ALERT_SOUND_DURATION = "alert_sound_duration";
+
+    /**
+     * TelephonyProvider column name for alert reminder interval in CB settings
+     *@hide
+     */
+    public static final String CB_ALERT_REMINDER_INTERVAL = "alert_reminder_interval";
+
+    /**
+     * TelephonyProvider column name for enabling vibrate in CB settings
+     *@hide
+     */
+    public static final String CB_ALERT_VIBRATE = "enable_alert_vibrate";
+
+    /**
+     * TelephonyProvider column name for enabling alert speech in CB settings
+     *@hide
+     */
+    public static final String CB_ALERT_SPEECH = "enable_alert_speech";
+
+    /**
+     * TelephonyProvider column name for ETWS test alert in CB settings
+     *@hide
+     */
+    public static final String CB_ETWS_TEST_ALERT = "enable_etws_test_alerts";
+
+    /**
+     * TelephonyProvider column name for enable channel50 alert in CB settings
+     *@hide
+     */
+    public static final String CB_CHANNEL_50_ALERT = "enable_channel_50_alerts";
+
+    /**
+     * TelephonyProvider column name for CMAS test alert in CB settings
+     *@hide
+     */
+    public static final String CB_CMAS_TEST_ALERT= "enable_cmas_test_alerts";
+
+    /**
+     * TelephonyProvider column name for Opt out dialog in CB settings
+     *@hide
+     */
+    public static final String CB_OPT_OUT_DIALOG = "show_cmas_opt_out_dialog";
 
     /**
      * Broadcast Action: The user has changed one of the default subs related to
@@ -274,10 +356,6 @@ public class SubscriptionManager {
      * for #onSubscriptionsChanged to be invoked.
      */
     public static class OnSubscriptionsChangedListener {
-        /** @hide */
-        public static final String PERMISSION_ON_SUBSCRIPTIONS_CHANGED =
-                android.Manifest.permission.READ_PHONE_STATE;
-
         private final Handler mHandler  = new Handler() {
             @Override
             public void handleMessage(Message msg) {
@@ -341,7 +419,7 @@ public class SubscriptionManager {
      *                 onSubscriptionsChanged overridden.
      */
     public void addOnSubscriptionsChangedListener(OnSubscriptionsChangedListener listener) {
-        String pkgForDebug = mContext != null ? mContext.getPackageName() : "<unknown>";
+        String pkgForDebug = mContext != null ? mContext.getOpPackageName() : "<unknown>";
         if (DBG) {
             logd("register OnSubscriptionsChangedListener pkgForDebug=" + pkgForDebug
                     + " listener=" + listener);
@@ -367,7 +445,7 @@ public class SubscriptionManager {
      * @param listener that is to be unregistered.
      */
     public void removeOnSubscriptionsChangedListener(OnSubscriptionsChangedListener listener) {
-        String pkgForDebug = mContext != null ? mContext.getPackageName() : "<unknown>";
+        String pkgForDebug = mContext != null ? mContext.getOpPackageName() : "<unknown>";
         if (DBG) {
             logd("unregister OnSubscriptionsChangedListener pkgForDebug=" + pkgForDebug
                     + " listener=" + listener);
@@ -386,14 +464,17 @@ public class SubscriptionManager {
     }
 
     /**
-     * Get the active SubscriptionInfo with the subId key
-     * @param subId The unique SubscriptionInfo key in database
+     * Get the active SubscriptionInfo with the input subId.
+     *
+     * @param subId The unique SubscriptionInfo key in database.
      * @return SubscriptionInfo, maybe null if its not active.
      */
     public SubscriptionInfo getActiveSubscriptionInfo(int subId) {
         if (VDBG) logd("[getActiveSubscriptionInfo]+ subId=" + subId);
         if (!isValidSubscriptionId(subId)) {
-            logd("[getActiveSubscriptionInfo]- invalid subId");
+            if (DBG) {
+                logd("[getActiveSubscriptionInfo]- invalid subId");
+            }
             return null;
         }
 
@@ -402,7 +483,7 @@ public class SubscriptionManager {
         try {
             ISub iSub = ISub.Stub.asInterface(ServiceManager.getService("isub"));
             if (iSub != null) {
-                subInfo = iSub.getActiveSubscriptionInfo(subId);
+                subInfo = iSub.getActiveSubscriptionInfo(subId, mContext.getOpPackageName());
             }
         } catch (RemoteException ex) {
             // ignore it
@@ -430,7 +511,7 @@ public class SubscriptionManager {
         try {
             ISub iSub = ISub.Stub.asInterface(ServiceManager.getService("isub"));
             if (iSub != null) {
-                result = iSub.getActiveSubscriptionInfoForIccId(iccId);
+                result = iSub.getActiveSubscriptionInfoForIccId(iccId, mContext.getOpPackageName());
             }
         } catch (RemoteException ex) {
             // ignore it
@@ -456,7 +537,8 @@ public class SubscriptionManager {
         try {
             ISub iSub = ISub.Stub.asInterface(ServiceManager.getService("isub"));
             if (iSub != null) {
-                result = iSub.getActiveSubscriptionInfoForSimSlotIndex(slotIdx);
+                result = iSub.getActiveSubscriptionInfoForSimSlotIndex(slotIdx,
+                        mContext.getOpPackageName());
             }
         } catch (RemoteException ex) {
             // ignore it
@@ -478,7 +560,7 @@ public class SubscriptionManager {
         try {
             ISub iSub = ISub.Stub.asInterface(ServiceManager.getService("isub"));
             if (iSub != null) {
-                result = iSub.getAllSubInfoList();
+                result = iSub.getAllSubInfoList(mContext.getOpPackageName());
             }
         } catch (RemoteException ex) {
             // ignore it
@@ -516,7 +598,7 @@ public class SubscriptionManager {
         try {
             ISub iSub = ISub.Stub.asInterface(ServiceManager.getService("isub"));
             if (iSub != null) {
-                result = iSub.getActiveSubscriptionInfoList();
+                result = iSub.getActiveSubscriptionInfoList(mContext.getOpPackageName());
             }
         } catch (RemoteException ex) {
             // ignore it
@@ -537,7 +619,7 @@ public class SubscriptionManager {
         try {
             ISub iSub = ISub.Stub.asInterface(ServiceManager.getService("isub"));
             if (iSub != null) {
-                result = iSub.getAllSubInfoCount();
+                result = iSub.getAllSubInfoCount(mContext.getOpPackageName());
             }
         } catch (RemoteException ex) {
             // ignore it
@@ -557,7 +639,7 @@ public class SubscriptionManager {
         try {
             ISub iSub = ISub.Stub.asInterface(ServiceManager.getService("isub"));
             if (iSub != null) {
-                result = iSub.getActiveSubInfoCount();
+                result = iSub.getActiveSubInfoCount(mContext.getOpPackageName());
             }
         } catch (RemoteException ex) {
             // ignore it
@@ -755,7 +837,9 @@ public class SubscriptionManager {
      */
     public static int getSlotId(int subId) {
         if (!isValidSubscriptionId(subId)) {
-            logd("[getSlotId]- fail");
+            if (DBG) {
+                logd("[getSlotId]- fail");
+            }
         }
 
         int result = INVALID_SIM_SLOT_INDEX;
@@ -797,7 +881,9 @@ public class SubscriptionManager {
     /** @hide */
     public static int getPhoneId(int subId) {
         if (!isValidSubscriptionId(subId)) {
-            logd("[getPhoneId]- fail");
+            if (DBG) {
+                logd("[getPhoneId]- fail");
+            }
             return INVALID_PHONE_INDEX;
         }
 
@@ -822,12 +908,15 @@ public class SubscriptionManager {
     }
 
     /**
-     * @return the "system" defaultSubId on a voice capable device this
-     * will be getDefaultVoiceSubId() and on a data only device it will be
-     * getDefaultDataSubId().
-     * @hide
+     * Returns the system's default subscription id.
+     *
+     * For a voice capable device, it will return getDefaultVoiceSubscriptionId.
+     * For a data only device, it will return the getDefaultDataSubscriptionId.
+     * May return an INVALID_SUBSCRIPTION_ID on error.
+     *
+     * @return the "system" default subscription id.
      */
-    public static int getDefaultSubId() {
+    public static int getDefaultSubscriptionId() {
         int subId = INVALID_SUBSCRIPTION_ID;
 
         try {
@@ -843,8 +932,14 @@ public class SubscriptionManager {
         return subId;
     }
 
-    /** @hide */
-    public static int getDefaultVoiceSubId() {
+    /**
+     * Returns the system's default voice subscription id.
+     *
+     * On a data only device or on error, will return INVALID_SUBSCRIPTION_ID.
+     *
+     * @return the default voice subscription Id.
+     */
+    public static int getDefaultVoiceSubscriptionId() {
         int subId = INVALID_SUBSCRIPTION_ID;
 
         try {
@@ -856,7 +951,7 @@ public class SubscriptionManager {
             // ignore it
         }
 
-        if (VDBG) logd("getDefaultVoiceSubId, sub id = " + subId);
+        if (VDBG) logd("getDefaultVoiceSubscriptionId, sub id = " + subId);
         return subId;
     }
 
@@ -873,23 +968,31 @@ public class SubscriptionManager {
         }
     }
 
-    /** @hide */
+    /**
+     * Return the SubscriptionInfo for default voice subscription.
+     *
+     * Will return null on data only devices, or on error.
+     *
+     * @return the SubscriptionInfo for the default voice subscription.
+     * @hide
+     */
     public SubscriptionInfo getDefaultVoiceSubscriptionInfo() {
-        return getActiveSubscriptionInfo(getDefaultVoiceSubId());
+        return getActiveSubscriptionInfo(getDefaultVoiceSubscriptionId());
     }
 
     /** @hide */
     public static int getDefaultVoicePhoneId() {
-        return getPhoneId(getDefaultVoiceSubId());
+        return getPhoneId(getDefaultVoiceSubscriptionId());
     }
 
     /**
-     * @return subId of the DefaultSms subscription or
-     * a value < 0 if an error.
+     * Returns the system's default SMS subscription id.
      *
-     * @hide
+     * On a data only device or on error, will return INVALID_SUBSCRIPTION_ID.
+     *
+     * @return the default SMS subscription Id.
      */
-    public static int getDefaultSmsSubId() {
+    public static int getDefaultSmsSubscriptionId() {
         int subId = INVALID_SUBSCRIPTION_ID;
 
         try {
@@ -901,7 +1004,7 @@ public class SubscriptionManager {
             // ignore it
         }
 
-        if (VDBG) logd("getDefaultSmsSubId, sub id = " + subId);
+        if (VDBG) logd("getDefaultSmsSubscriptionId, sub id = " + subId);
         return subId;
     }
 
@@ -918,18 +1021,31 @@ public class SubscriptionManager {
         }
     }
 
-    /** @hide */
+    /**
+     * Return the SubscriptionInfo for default voice subscription.
+     *
+     * Will return null on data only devices, or on error.
+     *
+     * @return the SubscriptionInfo for the default SMS subscription.
+     * @hide
+     */
     public SubscriptionInfo getDefaultSmsSubscriptionInfo() {
-        return getActiveSubscriptionInfo(getDefaultSmsSubId());
+        return getActiveSubscriptionInfo(getDefaultSmsSubscriptionId());
     }
 
     /** @hide */
     public int getDefaultSmsPhoneId() {
-        return getPhoneId(getDefaultSmsSubId());
+        return getPhoneId(getDefaultSmsSubscriptionId());
     }
 
-    /** @hide */
-    public static int getDefaultDataSubId() {
+    /**
+     * Returns the system's default data subscription id.
+     *
+     * On a voice only device or on error, will return INVALID_SUBSCRIPTION_ID.
+     *
+     * @return the default data subscription Id.
+     */
+    public static int getDefaultDataSubscriptionId() {
         int subId = INVALID_SUBSCRIPTION_ID;
 
         try {
@@ -941,7 +1057,7 @@ public class SubscriptionManager {
             // ignore it
         }
 
-        if (VDBG) logd("getDefaultDataSubId, sub id = " + subId);
+        if (VDBG) logd("getDefaultDataSubscriptionId, sub id = " + subId);
         return subId;
     }
 
@@ -958,14 +1074,21 @@ public class SubscriptionManager {
         }
     }
 
-    /** @hide */
+    /**
+     * Return the SubscriptionInfo for default data subscription.
+     *
+     * Will return null on voice only devices, or on error.
+     *
+     * @return the SubscriptionInfo for the default data subscription.
+     * @hide
+     */
     public SubscriptionInfo getDefaultDataSubscriptionInfo() {
-        return getActiveSubscriptionInfo(getDefaultDataSubId());
+        return getActiveSubscriptionInfo(getDefaultDataSubscriptionId());
     }
 
     /** @hide */
     public int getDefaultDataPhoneId() {
-        return getPhoneId(getDefaultDataSubId());
+        return getPhoneId(getDefaultDataSubscriptionId());
     }
 
     /** @hide */
@@ -985,13 +1108,13 @@ public class SubscriptionManager {
     //FIXME this is vulnerable to race conditions
     /** @hide */
     public boolean allDefaultsSelected() {
-        if (!isValidSubscriptionId(getDefaultDataSubId())) {
+        if (!isValidSubscriptionId(getDefaultDataSubscriptionId())) {
             return false;
         }
-        if (!isValidSubscriptionId(getDefaultSmsSubId())) {
+        if (!isValidSubscriptionId(getDefaultSmsSubscriptionId())) {
             return false;
         }
-        if (!isValidSubscriptionId(getDefaultVoiceSubId())) {
+        if (!isValidSubscriptionId(getDefaultVoiceSubscriptionId())) {
             return false;
         }
         return true;
@@ -1105,9 +1228,9 @@ public class SubscriptionManager {
     }
 
     /**
-     * Returns a constant indicating the state of sim for the subscription.
+     * Returns a constant indicating the state of sim for the slot idx.
      *
-     * @param subId
+     * @param slotIdx
      *
      * {@See TelephonyManager#SIM_STATE_UNKNOWN}
      * {@See TelephonyManager#SIM_STATE_ABSENT}
@@ -1121,17 +1244,140 @@ public class SubscriptionManager {
      *
      * {@hide}
      */
-    public static int getSimStateForSubscriber(int subId) {
-        int simState;
+    public static int getSimStateForSlotIdx(int slotIdx) {
+        int simState = TelephonyManager.SIM_STATE_UNKNOWN;
 
         try {
             ISub iSub = ISub.Stub.asInterface(ServiceManager.getService("isub"));
-            simState = iSub.getSimStateForSubscriber(subId);
+            if (iSub != null) {
+                simState = iSub.getSimStateForSlotIdx(slotIdx);
+            }
         } catch (RemoteException ex) {
-            simState = TelephonyManager.SIM_STATE_UNKNOWN;
         }
-        logd("getSimStateForSubscriber: simState=" + simState + " subId=" + subId);
+
         return simState;
     }
-}
 
+    /**
+     * Store properties associated with SubscriptionInfo in database
+     * @param subId Subscription Id of Subscription
+     * @param propKey Column name in database associated with SubscriptionInfo
+     * @param propValue Value to store in DB for particular subId & column name
+     * @hide
+     */
+    public static void setSubscriptionProperty(int subId, String propKey, String propValue) {
+        try {
+            ISub iSub = ISub.Stub.asInterface(ServiceManager.getService("isub"));
+            if (iSub != null) {
+                iSub.setSubscriptionProperty(subId, propKey, propValue);
+            }
+        } catch (RemoteException ex) {
+            // ignore it
+        }
+    }
+
+    /**
+     * Store properties associated with SubscriptionInfo in database
+     * @param subId Subscription Id of Subscription
+     * @param propKey Column name in SubscriptionInfo database
+     * @return Value associated with subId and propKey column in database
+     * @hide
+     */
+    private static String getSubscriptionProperty(int subId, String propKey,
+            Context context) {
+        String resultValue = null;
+        try {
+            ISub iSub = ISub.Stub.asInterface(ServiceManager.getService("isub"));
+            if (iSub != null) {
+                resultValue = iSub.getSubscriptionProperty(subId, propKey, 
+                    context.getOpPackageName());
+            }
+        } catch (RemoteException ex) {
+            // ignore it
+        }
+        return resultValue;
+    }
+
+    /**
+     * Returns boolean value corresponding to query result.
+     * @param subId Subscription Id of Subscription
+     * @param propKey Column name in SubscriptionInfo database
+     * @param defValue Default boolean value to be returned
+     * @return boolean result value to be returned
+     * @hide
+     */
+    public static boolean getBooleanSubscriptionProperty(int subId, String propKey,
+            boolean defValue, Context context) {
+        String result = getSubscriptionProperty(subId, propKey, context);
+        if (result != null) {
+            try {
+                return Integer.parseInt(result) == 1;
+            } catch (NumberFormatException err) {
+                logd("getBooleanSubscriptionProperty NumberFormat exception");
+            }
+        }
+        return defValue;
+    }
+
+    /**
+     * Returns integer value corresponding to query result.
+     * @param subId Subscription Id of Subscription
+     * @param propKey Column name in SubscriptionInfo database
+     * @param defValue Default integer value to be returned
+     * @return integer result value to be returned
+     * @hide
+     */
+    public static int getIntegerSubscriptionProperty(int subId, String propKey, int defValue,
+            Context context) {
+        String result = getSubscriptionProperty(subId, propKey, context);
+        if (result != null) {
+            try {
+                return Integer.parseInt(result);
+            } catch (NumberFormatException err) {
+                logd("getBooleanSubscriptionProperty NumberFormat exception");
+            }
+        }
+        return defValue;
+    }
+
+    /**
+     * Returns the resources associated with Subscription.
+     * @param context Context object
+     * @param subId Subscription Id of Subscription who's resources are required
+     * @return Resources associated with Subscription.
+     * @hide
+     */
+    public static Resources getResourcesForSubId(Context context, int subId) {
+        final SubscriptionInfo subInfo =
+                SubscriptionManager.from(context).getActiveSubscriptionInfo(subId);
+
+        Configuration config = context.getResources().getConfiguration();
+        Configuration newConfig = new Configuration();
+        newConfig.setTo(config);
+        if (subInfo != null) {
+            newConfig.mcc = subInfo.getMcc();
+            newConfig.mnc = subInfo.getMnc();
+            if (newConfig.mnc == 0) newConfig.mnc = Configuration.MNC_ZERO;
+        }
+        DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+        DisplayMetrics newMetrics = new DisplayMetrics();
+        newMetrics.setTo(metrics);
+        return new Resources(context.getResources().getAssets(), newMetrics, newConfig);
+    }
+
+    /**
+     * @return true if the sub ID is active. i.e. The sub ID corresponds to a known subscription
+     * and the SIM providing the subscription is present in a slot and in "LOADED" state.
+     * @hide
+     */
+    public boolean isActiveSubId(int subId) {
+        try {
+            ISub iSub = ISub.Stub.asInterface(ServiceManager.getService("isub"));
+            if (iSub != null) {
+                return iSub.isActiveSubId(subId);
+            }
+        } catch (RemoteException ex) {
+        }
+        return false;
+    }
+}

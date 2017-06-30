@@ -16,18 +16,11 @@
 
 package com.android.layoutlib.bridge.impl;
 
-import static com.android.ide.common.rendering.api.Result.Status.ERROR_ANIM_NOT_FOUND;
-import static com.android.ide.common.rendering.api.Result.Status.ERROR_INFLATION;
-import static com.android.ide.common.rendering.api.Result.Status.ERROR_NOT_INFLATED;
-import static com.android.ide.common.rendering.api.Result.Status.ERROR_UNKNOWN;
-import static com.android.ide.common.rendering.api.Result.Status.ERROR_VIEWGROUP_NO_CHILDREN;
-import static com.android.ide.common.rendering.api.Result.Status.SUCCESS;
-
 import com.android.ide.common.rendering.api.AdapterBinding;
 import com.android.ide.common.rendering.api.HardwareConfig;
 import com.android.ide.common.rendering.api.IAnimationListener;
 import com.android.ide.common.rendering.api.ILayoutPullParser;
-import com.android.ide.common.rendering.api.IProjectCallback;
+import com.android.ide.common.rendering.api.LayoutlibCallback;
 import com.android.ide.common.rendering.api.RenderResources;
 import com.android.ide.common.rendering.api.RenderSession;
 import com.android.ide.common.rendering.api.ResourceReference;
@@ -36,10 +29,8 @@ import com.android.ide.common.rendering.api.Result;
 import com.android.ide.common.rendering.api.Result.Status;
 import com.android.ide.common.rendering.api.SessionParams;
 import com.android.ide.common.rendering.api.SessionParams.RenderingMode;
-import com.android.ide.common.rendering.api.StyleResourceValue;
 import com.android.ide.common.rendering.api.ViewInfo;
 import com.android.ide.common.rendering.api.ViewType;
-import com.android.internal.util.XmlUtils;
 import com.android.internal.view.menu.ActionMenuItemView;
 import com.android.internal.view.menu.BridgeMenuItemImpl;
 import com.android.internal.view.menu.IconMenuItemView;
@@ -50,38 +41,32 @@ import com.android.layoutlib.bridge.Bridge;
 import com.android.layoutlib.bridge.android.BridgeContext;
 import com.android.layoutlib.bridge.android.BridgeLayoutParamsMapAttributes;
 import com.android.layoutlib.bridge.android.BridgeXmlBlockParser;
-import com.android.layoutlib.bridge.android.SessionParamsFlags;
-import com.android.layoutlib.bridge.bars.BridgeActionBar;
-import com.android.layoutlib.bridge.bars.AppCompatActionBar;
-import com.android.layoutlib.bridge.bars.Config;
-import com.android.layoutlib.bridge.bars.NavigationBar;
-import com.android.layoutlib.bridge.bars.StatusBar;
-import com.android.layoutlib.bridge.bars.TitleBar;
-import com.android.layoutlib.bridge.bars.FrameworkActionBar;
+import com.android.layoutlib.bridge.android.RenderParamsFlags;
+import com.android.layoutlib.bridge.android.graphics.NopCanvas;
+import com.android.layoutlib.bridge.android.support.DesignLibUtil;
 import com.android.layoutlib.bridge.impl.binding.FakeAdapter;
 import com.android.layoutlib.bridge.impl.binding.FakeExpandableAdapter;
-import com.android.resources.Density;
 import com.android.resources.ResourceType;
-import com.android.resources.ScreenOrientation;
+import com.android.tools.layoutlib.java.System_Delegate;
 import com.android.util.Pair;
-
-import org.xmlpull.v1.XmlPullParserException;
+import com.android.util.PropertiesMap;
 
 import android.animation.AnimationThread;
 import android.animation.Animator;
 import android.animation.AnimatorInflater;
 import android.animation.LayoutTransition;
 import android.animation.LayoutTransition.TransitionListener;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.app.Fragment_Delegate;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap_Delegate;
 import android.graphics.Canvas;
-import android.graphics.drawable.Drawable;
+import android.os.Looper;
 import android.preference.Preference_Delegate;
-import android.util.DisplayMetrics;
-import android.util.TypedValue;
 import android.view.AttachInfo_Accessor;
 import android.view.BridgeInflater;
+import android.view.Choreographer_Delegate;
 import android.view.IWindowManager;
 import android.view.IWindowManagerImpl;
 import android.view.Surface;
@@ -113,6 +98,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static com.android.ide.common.rendering.api.Result.Status.ERROR_ANIM_NOT_FOUND;
+import static com.android.ide.common.rendering.api.Result.Status.ERROR_INFLATION;
+import static com.android.ide.common.rendering.api.Result.Status.ERROR_NOT_INFLATED;
+import static com.android.ide.common.rendering.api.Result.Status.ERROR_UNKNOWN;
+import static com.android.ide.common.rendering.api.Result.Status.ERROR_VIEWGROUP_NO_CHILDREN;
+import static com.android.ide.common.rendering.api.Result.Status.SUCCESS;
+import static com.android.layoutlib.bridge.util.ReflectionUtils.isInstanceOf;
+
 /**
  * Class implementing the render session.
  * <p/>
@@ -122,34 +115,29 @@ import java.util.Map;
  */
 public class RenderSessionImpl extends RenderAction<SessionParams> {
 
-    private static final int DEFAULT_TITLE_BAR_HEIGHT = 25;
-    private static final int DEFAULT_STATUS_BAR_HEIGHT = 25;
+    private static final Canvas NOP_CANVAS = new NopCanvas();
 
     // scene state
     private RenderSession mScene;
     private BridgeXmlBlockParser mBlockParser;
     private BridgeInflater mInflater;
-    private ResourceValue mWindowBackground;
     private ViewGroup mViewRoot;
     private FrameLayout mContentRoot;
     private Canvas mCanvas;
     private int mMeasuredScreenWidth = -1;
     private int mMeasuredScreenHeight = -1;
     private boolean mIsAlphaChannelImage;
-    private boolean mWindowIsFloating;
-    private Boolean mIsThemeAppCompat;
-
-    private int mStatusBarSize;
-    private int mNavigationBarSize;
-    private int mNavigationBarOrientation = LinearLayout.HORIZONTAL;
-    private int mTitleBarSize;
-    private int mActionBarSize;
-
+    /** If >= 0, a frame will be executed */
+    private long mElapsedFrameTimeNanos = -1;
+    /** True if one frame has been already executed to start the animations */
+    private boolean mFirstFrameExecuted = false;
 
     // information being returned through the API
     private BufferedImage mImage;
     private List<ViewInfo> mViewInfoList;
     private List<ViewInfo> mSystemViewInfoList;
+    private Layout.Builder mLayoutBuilder;
+    private boolean mNewRenderSize;
 
     private static final class PostInflateException extends Exception {
         private static final long serialVersionUID = 1L;
@@ -193,36 +181,108 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
         SessionParams params = getParams();
         BridgeContext context = getContext();
 
-
-        RenderResources resources = getParams().getResources();
-        DisplayMetrics metrics = getContext().getMetrics();
-
         // use default of true in case it's not found to use alpha by default
-        mIsAlphaChannelImage  = getBooleanThemeValue(resources, "windowIsFloating", true, true);
-        // FIXME: Find out why both variables are taking the same value.
-        mWindowIsFloating = getBooleanThemeValue(resources, "windowIsFloating", true, true);
+        mIsAlphaChannelImage = ResourceHelper.getBooleanThemeValue(params.getResources(),
+                "windowIsFloating", true, true);
 
-        findBackground(resources);
-        findStatusBar(resources, metrics);
-        findActionBar(resources, metrics);
-        findNavigationBar(resources, metrics);
+        mLayoutBuilder = new Layout.Builder(params, context);
 
         // FIXME: find those out, and possibly add them to the render params
         boolean hasNavigationBar = true;
         //noinspection ConstantConditions
         IWindowManager iwm = new IWindowManagerImpl(getContext().getConfiguration(),
-                metrics, Surface.ROTATION_0,
-                hasNavigationBar);
+                context.getMetrics(), Surface.ROTATION_0, hasNavigationBar);
         WindowManagerGlobal_Delegate.setWindowManagerService(iwm);
 
         // build the inflater and parser.
-        mInflater = new BridgeInflater(context, params.getProjectCallback());
+        mInflater = new BridgeInflater(context, params.getLayoutlibCallback());
         context.setBridgeInflater(mInflater);
 
-        mBlockParser = new BridgeXmlBlockParser(
-                params.getLayoutDescription(), context, false /* platformResourceFlag */);
+        mBlockParser = new BridgeXmlBlockParser(params.getLayoutDescription(), context, false);
 
         return SUCCESS.createResult();
+    }
+
+    /**
+     * Measures the the current layout if needed (see {@link #invalidateRenderingSize}).
+     */
+    private void measure(@NonNull SessionParams params) {
+        // only do the screen measure when needed.
+        if (mMeasuredScreenWidth != -1) {
+            return;
+        }
+
+        RenderingMode renderingMode = params.getRenderingMode();
+        HardwareConfig hardwareConfig = params.getHardwareConfig();
+
+        mNewRenderSize = true;
+        mMeasuredScreenWidth = hardwareConfig.getScreenWidth();
+        mMeasuredScreenHeight = hardwareConfig.getScreenHeight();
+
+        if (renderingMode != RenderingMode.NORMAL) {
+            int widthMeasureSpecMode = renderingMode.isHorizExpand() ?
+                    MeasureSpec.UNSPECIFIED // this lets us know the actual needed size
+                    : MeasureSpec.EXACTLY;
+            int heightMeasureSpecMode = renderingMode.isVertExpand() ?
+                    MeasureSpec.UNSPECIFIED // this lets us know the actual needed size
+                    : MeasureSpec.EXACTLY;
+
+            // We used to compare the measured size of the content to the screen size but
+            // this does not work anymore due to the 2 following issues:
+            // - If the content is in a decor (system bar, title/action bar), the root view
+            //   will not resize even with the UNSPECIFIED because of the embedded layout.
+            // - If there is no decor, but a dialog frame, then the dialog padding prevents
+            //   comparing the size of the content to the screen frame (as it would not
+            //   take into account the dialog padding).
+
+            // The solution is to first get the content size in a normal rendering, inside
+            // the decor or the dialog padding.
+            // Then measure only the content with UNSPECIFIED to see the size difference
+            // and apply this to the screen size.
+
+            // first measure the full layout, with EXACTLY to get the size of the
+            // content as it is inside the decor/dialog
+            @SuppressWarnings("deprecation")
+            Pair<Integer, Integer> exactMeasure = measureView(
+                    mViewRoot, mContentRoot.getChildAt(0),
+                    mMeasuredScreenWidth, MeasureSpec.EXACTLY,
+                    mMeasuredScreenHeight, MeasureSpec.EXACTLY);
+
+            // now measure the content only using UNSPECIFIED (where applicable, based on
+            // the rendering mode). This will give us the size the content needs.
+            @SuppressWarnings("deprecation")
+            Pair<Integer, Integer> result = measureView(
+                    mContentRoot, mContentRoot.getChildAt(0),
+                    mMeasuredScreenWidth, widthMeasureSpecMode,
+                    mMeasuredScreenHeight, heightMeasureSpecMode);
+
+            // now look at the difference and add what is needed.
+            if (renderingMode.isHorizExpand()) {
+                int measuredWidth = exactMeasure.getFirst();
+                int neededWidth = result.getFirst();
+                if (neededWidth > measuredWidth) {
+                    mMeasuredScreenWidth += neededWidth - measuredWidth;
+                }
+                if (mMeasuredScreenWidth < measuredWidth) {
+                    // If the screen width is less than the exact measured width,
+                    // expand to match.
+                    mMeasuredScreenWidth = measuredWidth;
+                }
+            }
+
+            if (renderingMode.isVertExpand()) {
+                int measuredHeight = exactMeasure.getSecond();
+                int neededHeight = result.getSecond();
+                if (neededHeight > measuredHeight) {
+                    mMeasuredScreenHeight += neededHeight - measuredHeight;
+                }
+                if (mMeasuredScreenHeight < measuredHeight) {
+                    // If the screen height is less than the exact measured height,
+                    // expand to match.
+                    mMeasuredScreenHeight = measuredHeight;
+                }
+            }
+        }
     }
 
     /**
@@ -237,175 +297,22 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
         checkLock();
 
         try {
-
+            mViewRoot = new Layout(mLayoutBuilder);
+            mLayoutBuilder = null;  // Done with the builder.
+            mContentRoot = ((Layout) mViewRoot).getContentRoot();
             SessionParams params = getParams();
-            HardwareConfig hardwareConfig = params.getHardwareConfig();
             BridgeContext context = getContext();
-            boolean isRtl = Bridge.isLocaleRtl(params.getLocale());
-            int layoutDirection = isRtl ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR;
-
-            // the view group that receives the window background.
-            ViewGroup backgroundView;
-
-            if (mWindowIsFloating || params.isForceNoDecor()) {
-                backgroundView = mViewRoot = mContentRoot = new FrameLayout(context);
-                mViewRoot.setLayoutDirection(layoutDirection);
-            } else {
-                int simulatedPlatformVersion = params.getSimulatedPlatformVersion();
-                if (hasSoftwareButtons() && mNavigationBarOrientation == LinearLayout.VERTICAL) {
-                    /*
-                     * This is a special case where the navigation bar is on the right.
-                       +-------------------------------------------------+---+
-                       | Status bar (always)                             |   |
-                       +-------------------------------------------------+   |
-                       | (Layout with background drawable)               |   |
-                       | +---------------------------------------------+ |   |
-                       | | Title/Action bar (optional)                 | |   |
-                       | +---------------------------------------------+ |   |
-                       | | Content, vertical extending                 | |   |
-                       | |                                             | |   |
-                       | +---------------------------------------------+ |   |
-                       +-------------------------------------------------+---+
-
-                       So we create a horizontal layout, with the nav bar on the right,
-                       and the left part is the normal layout below without the nav bar at
-                       the bottom
-                     */
-                    LinearLayout topLayout = new LinearLayout(context);
-                    topLayout.setLayoutDirection(layoutDirection);
-                    mViewRoot = topLayout;
-                    topLayout.setOrientation(LinearLayout.HORIZONTAL);
-
-                    if (Config.showOnScreenNavBar(simulatedPlatformVersion)) {
-                        try {
-                            NavigationBar navigationBar = createNavigationBar(context,
-                                    hardwareConfig.getDensity(), isRtl, params.isRtlSupported(),
-                                    simulatedPlatformVersion);
-                            topLayout.addView(navigationBar);
-                        } catch (XmlPullParserException ignored) {
-                        }
-                    }
-                }
-
-                /*
-                 * we're creating the following layout
-                 *
-                   +-------------------------------------------------+
-                   | Status bar (always)                             |
-                   +-------------------------------------------------+
-                   | (Layout with background drawable)               |
-                   | +---------------------------------------------+ |
-                   | | Title/Action bar (optional)                 | |
-                   | +---------------------------------------------+ |
-                   | | Content, vertical extending                 | |
-                   | |                                             | |
-                   | +---------------------------------------------+ |
-                   +-------------------------------------------------+
-                   | Navigation bar for soft buttons, maybe see above|
-                   +-------------------------------------------------+
-
-                 */
-
-                LinearLayout topLayout = new LinearLayout(context);
-                topLayout.setOrientation(LinearLayout.VERTICAL);
-                topLayout.setLayoutDirection(layoutDirection);
-                // if we don't already have a view root this is it
-                if (mViewRoot == null) {
-                    mViewRoot = topLayout;
-                } else {
-                    int topLayoutWidth =
-                            params.getHardwareConfig().getScreenWidth() - mNavigationBarSize;
-                    LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(
-                            topLayoutWidth, LayoutParams.MATCH_PARENT);
-                    topLayout.setLayoutParams(layoutParams);
-
-                    // this is the case of soft buttons + vertical bar.
-                    // this top layout is the first layout in the horizontal layout. see above)
-                    if (isRtl && params.isRtlSupported()) {
-                        // If RTL is enabled, layoutlib will mirror the layouts. So, add the
-                        // topLayout to the right of Navigation Bar and layoutlib will draw it
-                        // to the left.
-                        mViewRoot.addView(topLayout);
-                    } else {
-                        // Add the top layout to the left of the Navigation Bar.
-                        mViewRoot.addView(topLayout, 0);
-                    }
-                }
-
-                if (mStatusBarSize > 0) {
-                    // system bar
-                    try {
-                        StatusBar statusBar = createStatusBar(context, hardwareConfig.getDensity(),
-                                layoutDirection, params.isRtlSupported(),
-                                simulatedPlatformVersion);
-                        topLayout.addView(statusBar);
-                    } catch (XmlPullParserException ignored) {
-
-                    }
-                }
-
-                LinearLayout backgroundLayout = new LinearLayout(context);
-                backgroundView = backgroundLayout;
-                backgroundLayout.setOrientation(LinearLayout.VERTICAL);
-                LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(
-                        LayoutParams.MATCH_PARENT, 0);
-                layoutParams.weight = 1;
-                backgroundLayout.setLayoutParams(layoutParams);
-                topLayout.addView(backgroundLayout);
-
-
-                // if the theme says no title/action bar, then the size will be 0
-                if (mActionBarSize > 0) {
-                    BridgeActionBar actionBar = createActionBar(context, params, backgroundLayout);
-                    actionBar.createMenuPopup();
-                    mContentRoot = actionBar.getContentRoot();
-                } else if (mTitleBarSize > 0) {
-                    try {
-                        TitleBar titleBar = createTitleBar(context,
-                                params.getAppLabel(),
-                                simulatedPlatformVersion);
-                        backgroundLayout.addView(titleBar);
-                    } catch (XmlPullParserException ignored) {
-
-                    }
-                }
-
-                // content frame
-                if (mContentRoot == null) {
-                    mContentRoot = new FrameLayout(context);
-                    layoutParams = new LinearLayout.LayoutParams(
-                            LayoutParams.MATCH_PARENT, 0);
-                    layoutParams.weight = 1;
-                    mContentRoot.setLayoutParams(layoutParams);
-                    backgroundLayout.addView(mContentRoot);
-                }
-
-                if (Config.showOnScreenNavBar(simulatedPlatformVersion) &&
-                        mNavigationBarOrientation == LinearLayout.HORIZONTAL &&
-                        mNavigationBarSize > 0) {
-                    // system bar
-                    try {
-                        NavigationBar navigationBar = createNavigationBar(context,
-                                hardwareConfig.getDensity(), isRtl, params.isRtlSupported(),
-                                simulatedPlatformVersion);
-                        topLayout.addView(navigationBar);
-                    } catch (XmlPullParserException ignored) {
-
-                    }
-                }
-            }
-
 
             // Sets the project callback (custom view loader) to the fragment delegate so that
             // it can instantiate the custom Fragment.
-            Fragment_Delegate.setProjectCallback(params.getProjectCallback());
+            Fragment_Delegate.setLayoutlibCallback(params.getLayoutlibCallback());
 
-            String rootTag = params.getFlag(SessionParamsFlags.FLAG_KEY_ROOT_TAG);
+            String rootTag = params.getFlag(RenderParamsFlags.FLAG_KEY_ROOT_TAG);
             boolean isPreference = "PreferenceScreen".equals(rootTag);
             View view;
             if (isPreference) {
                 view = Preference_Delegate.inflatePreference(getContext(), mBlockParser,
-                  mContentRoot);
+                        mContentRoot);
             } else {
                 view = mInflater.inflate(mBlockParser, mContentRoot);
             }
@@ -413,19 +320,24 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
             // done with the parser, pop it.
             context.popParser();
 
-            Fragment_Delegate.setProjectCallback(null);
+            Fragment_Delegate.setLayoutlibCallback(null);
 
             // set the AttachInfo on the root view.
             AttachInfo_Accessor.setAttachInfo(mViewRoot);
 
             // post-inflate process. For now this supports TabHost/TabWidget
-            postInflateProcess(view, params.getProjectCallback(), isPreference ? view : null);
+            postInflateProcess(view, params.getLayoutlibCallback(), isPreference ? view : null);
+            mInflater.onDoneInflation();
 
-            // get the background drawable
-            if (mWindowBackground != null) {
-                Drawable d = ResourceHelper.getDrawable(mWindowBackground, context);
-                backgroundView.setBackground(d);
-            }
+            setActiveToolbar(view, context, params);
+
+            measure(params);
+            measureView(mViewRoot, null /*measuredView*/,
+                    mMeasuredScreenWidth, MeasureSpec.EXACTLY,
+                    mMeasuredScreenHeight, MeasureSpec.EXACTLY);
+            mViewRoot.layout(0, 0, mMeasuredScreenWidth, mMeasuredScreenHeight);
+            mSystemViewInfoList = visitAllChildren(mViewRoot, 0, params.getExtendedViewInfoMode(),
+                    false);
 
             return SUCCESS.createResult();
         } catch (PostInflateException e) {
@@ -439,6 +351,42 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
 
             return ERROR_INFLATION.createResult(t.getMessage(), t);
         }
+    }
+
+    /**
+     * Sets the time for which the next frame will be selected. The time is the elapsed time from
+     * the current system nanos time. You
+     */
+    public void setElapsedFrameTimeNanos(long nanos) {
+        mElapsedFrameTimeNanos = nanos;
+    }
+
+    /**
+     * Renders the given view hierarchy to the passed canvas and returns the result of the render
+     * operation.
+     * @param canvas an optional canvas to render the views to. If null, only the measure and
+     * layout steps will be executed.
+     */
+    private static Result render(@NonNull BridgeContext context, @NonNull ViewGroup viewRoot,
+            @Nullable Canvas canvas, int width, int height) {
+        // measure again with the size we need
+        // This must always be done before the call to layout
+        measureView(viewRoot, null /*measuredView*/,
+                width, MeasureSpec.EXACTLY,
+                height, MeasureSpec.EXACTLY);
+
+        // now do the layout.
+        viewRoot.layout(0, 0, width, height);
+        handleScrolling(context, viewRoot);
+
+        if (canvas == null) {
+            return SUCCESS.createResult();
+        }
+
+        AttachInfo_Accessor.dispatchOnPreDraw(viewRoot);
+        viewRoot.draw(canvas);
+
+        return SUCCESS.createResult();
     }
 
     /**
@@ -466,92 +414,27 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
                 return ERROR_NOT_INFLATED.createResult();
             }
 
-            RenderingMode renderingMode = params.getRenderingMode();
+            measure(params);
+
             HardwareConfig hardwareConfig = params.getHardwareConfig();
-
-            // only do the screen measure when needed.
-            boolean newRenderSize = false;
-            if (mMeasuredScreenWidth == -1) {
-                newRenderSize = true;
-                mMeasuredScreenWidth = hardwareConfig.getScreenWidth();
-                mMeasuredScreenHeight = hardwareConfig.getScreenHeight();
-
-                if (renderingMode != RenderingMode.NORMAL) {
-                    int widthMeasureSpecMode = renderingMode.isHorizExpand() ?
-                            MeasureSpec.UNSPECIFIED // this lets us know the actual needed size
-                            : MeasureSpec.EXACTLY;
-                    int heightMeasureSpecMode = renderingMode.isVertExpand() ?
-                            MeasureSpec.UNSPECIFIED // this lets us know the actual needed size
-                            : MeasureSpec.EXACTLY;
-
-                    // We used to compare the measured size of the content to the screen size but
-                    // this does not work anymore due to the 2 following issues:
-                    // - If the content is in a decor (system bar, title/action bar), the root view
-                    //   will not resize even with the UNSPECIFIED because of the embedded layout.
-                    // - If there is no decor, but a dialog frame, then the dialog padding prevents
-                    //   comparing the size of the content to the screen frame (as it would not
-                    //   take into account the dialog padding).
-
-                    // The solution is to first get the content size in a normal rendering, inside
-                    // the decor or the dialog padding.
-                    // Then measure only the content with UNSPECIFIED to see the size difference
-                    // and apply this to the screen size.
-
-                    // first measure the full layout, with EXACTLY to get the size of the
-                    // content as it is inside the decor/dialog
-                    @SuppressWarnings("deprecation")
-                    Pair<Integer, Integer> exactMeasure = measureView(
-                            mViewRoot, mContentRoot.getChildAt(0),
-                            mMeasuredScreenWidth, MeasureSpec.EXACTLY,
-                            mMeasuredScreenHeight, MeasureSpec.EXACTLY);
-
-                    // now measure the content only using UNSPECIFIED (where applicable, based on
-                    // the rendering mode). This will give us the size the content needs.
-                    @SuppressWarnings("deprecation")
-                    Pair<Integer, Integer> result = measureView(
-                            mContentRoot, mContentRoot.getChildAt(0),
-                            mMeasuredScreenWidth, widthMeasureSpecMode,
-                            mMeasuredScreenHeight, heightMeasureSpecMode);
-
-                    // now look at the difference and add what is needed.
-                    if (renderingMode.isHorizExpand()) {
-                        int measuredWidth = exactMeasure.getFirst();
-                        int neededWidth = result.getFirst();
-                        if (neededWidth > measuredWidth) {
-                            mMeasuredScreenWidth += neededWidth - measuredWidth;
-                        }
-                    }
-
-                    if (renderingMode.isVertExpand()) {
-                        int measuredHeight = exactMeasure.getSecond();
-                        int neededHeight = result.getSecond();
-                        if (neededHeight > measuredHeight) {
-                            mMeasuredScreenHeight += neededHeight - measuredHeight;
-                        }
-                    }
-                }
-            }
-
-            // measure again with the size we need
-            // This must always be done before the call to layout
-            measureView(mViewRoot, null /*measuredView*/,
-                    mMeasuredScreenWidth, MeasureSpec.EXACTLY,
-                    mMeasuredScreenHeight, MeasureSpec.EXACTLY);
-
-            // now do the layout.
-            mViewRoot.layout(0, 0, mMeasuredScreenWidth, mMeasuredScreenHeight);
-
+            Result renderResult = SUCCESS.createResult();
             if (params.isLayoutOnly()) {
                 // delete the canvas and image to reset them on the next full rendering
                 mImage = null;
                 mCanvas = null;
             } else {
-                AttachInfo_Accessor.dispatchOnPreDraw(mViewRoot);
-
                 // draw the views
                 // create the BufferedImage into which the layout will be rendered.
                 boolean newImage = false;
-                if (newRenderSize || mCanvas == null) {
+
+                // When disableBitmapCaching is true, we do not reuse mImage and
+                // we create a new one in every render.
+                // This is useful when mImage is just a wrapper of Graphics2D so
+                // it doesn't get cached.
+                boolean disableBitmapCaching = Boolean.TRUE.equals(params.getFlag(
+                    RenderParamsFlags.FLAG_KEY_DISABLE_BITMAP_CACHING));
+                if (mNewRenderSize || mCanvas == null || disableBitmapCaching) {
+                    mNewRenderSize = false;
                     if (params.getImageFactory() != null) {
                         mImage = params.getImageFactory().getImage(
                                 mMeasuredScreenWidth,
@@ -578,8 +461,12 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
                     Bitmap bitmap = Bitmap_Delegate.createBitmap(mImage,
                             true /*isMutable*/, hardwareConfig.getDensity());
 
-                    // create a Canvas around the Android bitmap
-                    mCanvas = new Canvas(bitmap);
+                    if (mCanvas == null) {
+                        // create a Canvas around the Android bitmap
+                        mCanvas = new Canvas(bitmap);
+                    } else {
+                        mCanvas.setBitmap(bitmap);
+                    }
                     mCanvas.setDensity(hardwareConfig.getDensity().getDpiValue());
                 }
 
@@ -595,14 +482,28 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
                     gc.dispose();
                 }
 
-                mViewRoot.draw(mCanvas);
+                if (mElapsedFrameTimeNanos >= 0) {
+                    long initialTime = System_Delegate.nanoTime();
+                    if (!mFirstFrameExecuted) {
+                        // We need to run an initial draw call to initialize the animations
+                        render(getContext(), mViewRoot, NOP_CANVAS, mMeasuredScreenWidth, mMeasuredScreenHeight);
+
+                        // The first frame will initialize the animations
+                        Choreographer_Delegate.doFrame(initialTime);
+                        mFirstFrameExecuted = true;
+                    }
+                    // Second frame will move the animations
+                    Choreographer_Delegate.doFrame(initialTime + mElapsedFrameTimeNanos);
+                }
+                renderResult = render(getContext(), mViewRoot, mCanvas, mMeasuredScreenWidth,
+                        mMeasuredScreenHeight);
             }
 
             mSystemViewInfoList = visitAllChildren(mViewRoot, 0, params.getExtendedViewInfoMode(),
                     false);
 
             // success!
-            return SUCCESS.createResult();
+            return renderResult;
         } catch (Throwable e) {
             // get the real cause of the exception.
             Throwable t = e;
@@ -630,7 +531,7 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
      * @return the measured width/height if measuredView is non-null, null otherwise.
      */
     @SuppressWarnings("deprecation")  // For the use of Pair
-    private Pair<Integer, Integer> measureView(ViewGroup viewToMeasure, View measuredView,
+    private static Pair<Integer, Integer> measureView(ViewGroup viewToMeasure, View measuredView,
             int width, int widthMode, int height, int heightMode) {
         int w_spec = MeasureSpec.makeMeasureSpec(width, widthMode);
         int h_spec = MeasureSpec.makeMeasureSpec(height, heightMode);
@@ -672,7 +573,7 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
             animationResource = context.getRenderResources().getProjectResource(
                     ResourceType.ANIMATOR, animationName);
             if (animationResource != null) {
-                animationId = context.getProjectCallback().getResourceId(
+                animationId = context.getLayoutlibCallback().getResourceId(
                         ResourceType.ANIMATOR, animationName);
             }
         }
@@ -1044,199 +945,6 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
         }
     }
 
-
-    private void findBackground(RenderResources resources) {
-        if (!getParams().isBgColorOverridden()) {
-            mWindowBackground = resources.findItemInTheme("windowBackground",
-                    true /*isFrameworkAttr*/);
-            if (mWindowBackground != null) {
-                mWindowBackground = resources.resolveResValue(mWindowBackground);
-            }
-        }
-    }
-
-    private boolean hasSoftwareButtons() {
-        return getParams().getHardwareConfig().hasSoftwareButtons();
-    }
-
-    private void findStatusBar(RenderResources resources, DisplayMetrics metrics) {
-        boolean windowFullscreen = getBooleanThemeValue(resources,
-                "windowFullscreen", false, !isThemeAppCompat(resources));
-
-        if (!windowFullscreen && !mWindowIsFloating) {
-            // default value
-            mStatusBarSize = DEFAULT_STATUS_BAR_HEIGHT;
-
-            // get the real value
-            ResourceValue value = resources.getFrameworkResource(ResourceType.DIMEN,
-                    "status_bar_height");
-
-            if (value != null) {
-                TypedValue typedValue = ResourceHelper.getValue("status_bar_height",
-                        value.getValue(), true /*requireUnit*/);
-                if (typedValue != null) {
-                    // compute the pixel value based on the display metrics
-                    mStatusBarSize = (int)typedValue.getDimension(metrics);
-                }
-            }
-        }
-    }
-
-    private void findActionBar(RenderResources resources, DisplayMetrics metrics) {
-        if (mWindowIsFloating) {
-            return;
-        }
-
-        boolean windowActionBar = getBooleanThemeValue(resources,
-                "windowActionBar", true, !isThemeAppCompat(resources));
-
-        // if there's a value and it's false (default is true)
-        if (windowActionBar) {
-
-            // default size of the window title bar
-            mActionBarSize = DEFAULT_TITLE_BAR_HEIGHT;
-
-            // get value from the theme.
-            ResourceValue value = resources.findItemInTheme("actionBarSize",
-                    true /*isFrameworkAttr*/);
-
-            // resolve it
-            value = resources.resolveResValue(value);
-
-            if (value != null) {
-                // get the numerical value, if available
-                TypedValue typedValue = ResourceHelper.getValue("actionBarSize", value.getValue(),
-                        true /*requireUnit*/);
-                if (typedValue != null) {
-                    // compute the pixel value based on the display metrics
-                    mActionBarSize = (int)typedValue.getDimension(metrics);
-                }
-            }
-        } else {
-            // action bar overrides title bar so only look for this one if action bar is hidden
-            boolean windowNoTitle = getBooleanThemeValue(resources,
-                    "windowNoTitle", false, !isThemeAppCompat(resources));
-
-            if (!windowNoTitle) {
-
-                // default size of the window title bar
-                mTitleBarSize = DEFAULT_TITLE_BAR_HEIGHT;
-
-                // get value from the theme.
-                ResourceValue value = resources.findItemInTheme("windowTitleSize",
-                        true /*isFrameworkAttr*/);
-
-                // resolve it
-                value = resources.resolveResValue(value);
-
-                if (value != null) {
-                    // get the numerical value, if available
-                    TypedValue typedValue = ResourceHelper.getValue("windowTitleSize",
-                            value.getValue(), true /*requireUnit*/);
-                    if (typedValue != null) {
-                        // compute the pixel value based on the display metrics
-                        mTitleBarSize = (int)typedValue.getDimension(metrics);
-                    }
-                }
-            }
-
-        }
-    }
-
-    private void findNavigationBar(RenderResources resources, DisplayMetrics metrics) {
-        if (hasSoftwareButtons() && !mWindowIsFloating) {
-
-            // default value
-            mNavigationBarSize = 48; // ??
-
-            HardwareConfig hardwareConfig = getParams().getHardwareConfig();
-
-            boolean barOnBottom = true;
-
-            if (hardwareConfig.getOrientation() == ScreenOrientation.LANDSCAPE) {
-                // compute the dp of the screen.
-                int shortSize = hardwareConfig.getScreenHeight();
-
-                // compute in dp
-                int shortSizeDp = shortSize * DisplayMetrics.DENSITY_DEFAULT /
-                        hardwareConfig.getDensity().getDpiValue();
-
-                // 0-599dp: "phone" UI with bar on the side
-                // 600+dp: "tablet" UI with bar on the bottom
-                barOnBottom = shortSizeDp >= 600;
-            }
-
-            if (barOnBottom) {
-                mNavigationBarOrientation = LinearLayout.HORIZONTAL;
-            } else {
-                mNavigationBarOrientation = LinearLayout.VERTICAL;
-            }
-
-            // get the real value
-            ResourceValue value = resources.getFrameworkResource(ResourceType.DIMEN,
-                    barOnBottom ? "navigation_bar_height" : "navigation_bar_width");
-
-            if (value != null) {
-                TypedValue typedValue = ResourceHelper.getValue("navigation_bar_height",
-                        value.getValue(), true /*requireUnit*/);
-                if (typedValue != null) {
-                    // compute the pixel value based on the display metrics
-                    mNavigationBarSize = (int)typedValue.getDimension(metrics);
-                }
-            }
-        }
-    }
-
-    private boolean isThemeAppCompat(RenderResources resources) {
-        // Ideally, we should check if the corresponding activity extends
-        // android.support.v7.app.ActionBarActivity, and not care about the theme name at all.
-        if (mIsThemeAppCompat == null) {
-            StyleResourceValue defaultTheme = resources.getDefaultTheme();
-          // We can't simply check for parent using resources.themeIsParentOf() since the
-          // inheritance structure isn't really what one would expect. The first common parent
-          // between Theme.AppCompat.Light and Theme.AppCompat is Theme.Material (for v21).
-            boolean isThemeAppCompat = false;
-            for (int i = 0; i < 50; i++) {
-                // for loop ensures that we don't run into cyclic theme inheritance.
-                if (defaultTheme.getName().startsWith("Theme.AppCompat")) {
-                    isThemeAppCompat = true;
-                    break;
-                }
-                defaultTheme = resources.getParent(defaultTheme);
-                if (defaultTheme == null) {
-                    break;
-                }
-            }
-            mIsThemeAppCompat = isThemeAppCompat;
-        }
-        return mIsThemeAppCompat;
-    }
-
-    /**
-     * Looks for an attribute in the current theme.
-     *
-     * @param resources the render resources
-     * @param name the name of the attribute
-     * @param defaultValue the default value.
-     * @param isFrameworkAttr if the attribute is in android namespace
-     * @return the value of the attribute or the default one if not found.
-     */
-    private boolean getBooleanThemeValue(RenderResources resources,
-            String name, boolean defaultValue, boolean isFrameworkAttr) {
-
-        ResourceValue value = resources.findItemInTheme(name, isFrameworkAttr);
-
-        // because it may reference something else, we resolve it.
-        value = resources.resolveResValue(value);
-
-        // if there's no value, return the default.
-        if (value == null || value.getValue() == null) {
-            return defaultValue;
-        }
-
-        return XmlUtils.convertValueToBoolean(value.getValue(), defaultValue);
-    }
-
     /**
      * Post process on a view hierarchy that was just inflated.
      * <p/>
@@ -1244,17 +952,17 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
      * {@link TabWidget}, and the corresponding {@link FrameLayout} and make new tabs automatically
      * based on the content of the {@link FrameLayout}.
      * @param view the root view to process.
-     * @param projectCallback callback to the project.
+     * @param layoutlibCallback callback to the project.
      * @param skip the view and it's children are not processed.
      */
     @SuppressWarnings("deprecation")  // For the use of Pair
-    private void postInflateProcess(View view, IProjectCallback projectCallback, View skip)
+    private void postInflateProcess(View view, LayoutlibCallback layoutlibCallback, View skip)
             throws PostInflateException {
         if (view == skip) {
             return;
         }
         if (view instanceof TabHost) {
-            setupTabHost((TabHost) view, projectCallback);
+            setupTabHost((TabHost) view, layoutlibCallback);
         } else if (view instanceof QuickContactBadge) {
             QuickContactBadge badge = (QuickContactBadge) view;
             badge.setImageToDefault();
@@ -1273,8 +981,8 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
 
                 // if there was no adapter binding, trying to get it from the call back.
                 if (binding == null) {
-                    binding = params.getProjectCallback().getAdapterBinding(listRef,
-                            context.getViewKey(view), view);
+                    binding = layoutlibCallback.getAdapterBinding(
+                            listRef, context.getViewKey(view), view);
                 }
 
                 if (binding != null) {
@@ -1290,7 +998,7 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
                             for (int i = 0; i < count; i++) {
                                 Pair<View, Boolean> pair = context.inflateView(
                                         binding.getHeaderAt(i),
-                                        list, false /*attachToRoot*/, skipCallbackParser);
+                                        list, false, skipCallbackParser);
                                 if (pair.getFirst() != null) {
                                     list.addHeaderView(pair.getFirst());
                                 }
@@ -1302,7 +1010,7 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
                             for (int i = 0; i < count; i++) {
                                 Pair<View, Boolean> pair = context.inflateView(
                                         binding.getFooterAt(i),
-                                        list, false /*attachToRoot*/, skipCallbackParser);
+                                        list, false, skipCallbackParser);
                                 if (pair.getFirst() != null) {
                                     list.addFooterView(pair.getFirst());
                                 }
@@ -1313,37 +1021,128 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
 
                         if (view instanceof ExpandableListView) {
                             ((ExpandableListView) view).setAdapter(
-                                    new FakeExpandableAdapter(
-                                            listRef, binding, params.getProjectCallback()));
+                                    new FakeExpandableAdapter(listRef, binding, layoutlibCallback));
                         } else {
                             ((AbsListView) view).setAdapter(
-                                    new FakeAdapter(
-                                            listRef, binding, params.getProjectCallback()));
+                                    new FakeAdapter(listRef, binding, layoutlibCallback));
                         }
                     } else if (view instanceof AbsSpinner) {
                         ((AbsSpinner) view).setAdapter(
-                                new FakeAdapter(
-                                        listRef, binding, params.getProjectCallback()));
+                                new FakeAdapter(listRef, binding, layoutlibCallback));
                     }
                 }
             }
         } else if (view instanceof ViewGroup) {
+            mInflater.postInflateProcess(view);
             ViewGroup group = (ViewGroup) view;
             final int count = group.getChildCount();
             for (int c = 0; c < count; c++) {
                 View child = group.getChildAt(c);
-                postInflateProcess(child, projectCallback, skip);
+                postInflateProcess(child, layoutlibCallback, skip);
             }
+        }
+    }
+
+    /**
+     * If the root layout is a CoordinatorLayout with an AppBar:
+     * Set the title of the AppBar to the title of the activity context.
+     */
+    private void setActiveToolbar(View view, BridgeContext context, SessionParams params) {
+        View coordinatorLayout = findChildView(view, DesignLibUtil.CN_COORDINATOR_LAYOUT);
+        if (coordinatorLayout == null) {
+            return;
+        }
+        View appBar = findChildView(coordinatorLayout, DesignLibUtil.CN_APPBAR_LAYOUT);
+        if (appBar == null) {
+            return;
+        }
+        ViewGroup collapsingToolbar =
+                (ViewGroup) findChildView(appBar, DesignLibUtil.CN_COLLAPSING_TOOLBAR_LAYOUT);
+        if (collapsingToolbar == null) {
+            return;
+        }
+        if (!hasToolbar(collapsingToolbar)) {
+            return;
+        }
+        RenderResources res = context.getRenderResources();
+        String title = params.getAppLabel();
+        ResourceValue titleValue = res.findResValue(title, false);
+        if (titleValue != null && titleValue.getValue() != null) {
+            title = titleValue.getValue();
+        }
+        DesignLibUtil.setTitle(collapsingToolbar, title);
+    }
+
+    private View findChildView(View view, String className) {
+        if (!(view instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            if (isInstanceOf(group.getChildAt(i), className)) {
+                return group.getChildAt(i);
+            }
+        }
+        return null;
+    }
+
+    private boolean hasToolbar(View collapsingToolbar) {
+        if (!(collapsingToolbar instanceof ViewGroup)) {
+            return false;
+        }
+        ViewGroup group = (ViewGroup) collapsingToolbar;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            if (isInstanceOf(group.getChildAt(i), DesignLibUtil.CN_TOOLBAR)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Set the scroll position on all the components with the "scrollX" and "scrollY" attribute. If
+     * the component supports nested scrolling attempt that first, then use the unconsumed scroll
+     * part to scroll the content in the component.
+     */
+    private static void handleScrolling(BridgeContext context, View view) {
+        int scrollPosX = context.getScrollXPos(view);
+        int scrollPosY = context.getScrollYPos(view);
+        if (scrollPosX != 0 || scrollPosY != 0) {
+            if (view.isNestedScrollingEnabled()) {
+                int[] consumed = new int[2];
+                int axis = scrollPosX != 0 ? View.SCROLL_AXIS_HORIZONTAL : 0;
+                axis |= scrollPosY != 0 ? View.SCROLL_AXIS_VERTICAL : 0;
+                if (view.startNestedScroll(axis)) {
+                    view.dispatchNestedPreScroll(scrollPosX, scrollPosY, consumed, null);
+                    view.dispatchNestedScroll(consumed[0], consumed[1], scrollPosX, scrollPosY,
+                            null);
+                    view.stopNestedScroll();
+                    scrollPosX -= consumed[0];
+                    scrollPosY -= consumed[1];
+                }
+            }
+            if (scrollPosX != 0 || scrollPosY != 0) {
+                view.scrollTo(scrollPosX, scrollPosY);
+            }
+        }
+
+        if (!(view instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            handleScrolling(context, child);
         }
     }
 
     /**
      * Sets up a {@link TabHost} object.
      * @param tabHost the TabHost to setup.
-     * @param projectCallback The project callback object to access the project R class.
+     * @param layoutlibCallback The project callback object to access the project R class.
      * @throws PostInflateException
      */
-    private void setupTabHost(TabHost tabHost, IProjectCallback projectCallback)
+    private void setupTabHost(TabHost tabHost, LayoutlibCallback layoutlibCallback)
             throws PostInflateException {
         // look for the TabWidget, and the FrameLayout. They have their own specific names
         View v = tabHost.findViewById(android.R.id.tabs);
@@ -1386,8 +1185,9 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
 
         if (count == 0) {
             // Create a dummy child to get a single tab
-            TabSpec spec = tabHost.newTabSpec("tag").setIndicator("Tab Label",
-                    tabHost.getResources().getDrawable(android.R.drawable.ic_menu_info_details))
+            TabSpec spec = tabHost.newTabSpec("tag")
+                    .setIndicator("Tab Label", tabHost.getResources()
+                            .getDrawable(android.R.drawable.ic_menu_info_details, null))
                     .setContent(new TabHost.TabContentFactory() {
                         @Override
                         public View createTabContent(String tag) {
@@ -1403,7 +1203,7 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
                 @SuppressWarnings("ConstantConditions")  // child cannot be null.
                 int id = child.getId();
                 @SuppressWarnings("deprecation")
-                Pair<ResourceType, String> resource = projectCallback.resolveResourceId(id);
+                Pair<ResourceType, String> resource = layoutlibCallback.resolveResourceId(id);
                 String name;
                 if (resource != null) {
                     name = resource.getSecond();
@@ -1494,6 +1294,7 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
      * @return an array of length two, with ViewInfo at index 0 is without offset and ViewInfo at
      *         index 1 is with the offset.
      */
+    @NonNull
     private ViewInfo[] visitContentRoot(View view, int offset, boolean setExtendedInfo) {
         ViewInfo[] result = new ViewInfo[2];
         if (view == null) {
@@ -1522,14 +1323,20 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
             return null;
         }
 
+        ViewParent parent = view.getParent();
         ViewInfo result;
         if (isContentFrame) {
+            // Account for parent scroll values when calculating the bounding box
+            int scrollX = parent != null ? ((View)parent).getScrollX() : 0;
+            int scrollY = parent != null ? ((View)parent).getScrollY() : 0;
+
             // The view is part of the layout added by the user. Hence,
             // the ViewCookie may be obtained only through the Context.
             result = new ViewInfo(view.getClass().getName(),
                     getContext().getViewKey(view),
-                    view.getLeft(), view.getTop() + offset, view.getRight(),
-                    view.getBottom() + offset, view, view.getLayoutParams());
+                    -scrollX + view.getLeft(), -scrollY + view.getTop() + offset,
+                    -scrollX + view.getRight(), -scrollY + view.getBottom() + offset,
+                    view, view.getLayoutParams());
         } else {
             // We are part of the system decor.
             SystemViewInfo r = new SystemViewInfo(view.getClass().getName(),
@@ -1557,7 +1364,6 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
                     // its parent is of type ActionMenuView. We can also check if the view is
                     // instanceof ActionMenuItemView but that will fail for menus using
                     // actionProviderClass.
-                    ViewParent parent = view.getParent();
                     while (parent != mViewRoot && parent instanceof ViewGroup) {
                         if (parent instanceof ActionMenuView) {
                             r.setViewType(ViewType.ACTION_BAR_MENU);
@@ -1589,6 +1395,7 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
      * The cookie for menu items are stored in menu item and not in the map from View stored in
      * BridgeContext.
      */
+    @Nullable
     private Object getViewKey(View view) {
         BridgeContext context = getContext();
         if (!(view instanceof MenuView.ItemView)) {
@@ -1611,65 +1418,8 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
         return null;
     }
 
-    private void invalidateRenderingSize() {
+    public void invalidateRenderingSize() {
         mMeasuredScreenWidth = mMeasuredScreenHeight = -1;
-    }
-
-    /**
-     * Creates the status bar with wifi and battery icons.
-     */
-    private StatusBar createStatusBar(BridgeContext context, Density density, int direction,
-            boolean isRtlSupported, int platformVersion) throws XmlPullParserException {
-        StatusBar statusBar = new StatusBar(context, density,
-                direction, isRtlSupported, platformVersion);
-        statusBar.setLayoutParams(
-                new LinearLayout.LayoutParams(
-                        LayoutParams.MATCH_PARENT, mStatusBarSize));
-        return statusBar;
-    }
-
-    /**
-     * Creates the navigation bar with back, home and recent buttons.
-     *
-     * @param isRtl true if the current locale is right-to-left
-     * @param isRtlSupported true is the project manifest declares that the application
-     *        is RTL aware.
-     */
-    private NavigationBar createNavigationBar(BridgeContext context, Density density,
-            boolean isRtl, boolean isRtlSupported, int simulatedPlatformVersion)
-            throws XmlPullParserException {
-        NavigationBar navigationBar = new NavigationBar(context,
-                density, mNavigationBarOrientation, isRtl,
-                isRtlSupported, simulatedPlatformVersion);
-        if (mNavigationBarOrientation == LinearLayout.VERTICAL) {
-            navigationBar.setLayoutParams(new LinearLayout.LayoutParams(mNavigationBarSize,
-                    LayoutParams.MATCH_PARENT));
-        } else {
-            navigationBar.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT,
-                    mNavigationBarSize));
-        }
-        return navigationBar;
-    }
-
-    private TitleBar createTitleBar(BridgeContext context, String title,
-            int simulatedPlatformVersion)
-            throws XmlPullParserException {
-        TitleBar titleBar = new TitleBar(context, title, simulatedPlatformVersion);
-        titleBar.setLayoutParams(
-                new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, mTitleBarSize));
-        return titleBar;
-    }
-
-    /**
-     * Creates the action bar. Also queries the project callback for missing information.
-     */
-    private BridgeActionBar createActionBar(BridgeContext context, SessionParams params,
-            ViewGroup parentView) {
-        if (mIsThemeAppCompat == Boolean.TRUE) {
-            return new AppCompatActionBar(context, params, parentView);
-        } else {
-            return new FrameworkActionBar(context, params, parentView);
-        }
     }
 
     public BufferedImage getImage() {
@@ -1688,8 +1438,8 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
         return mSystemViewInfoList;
     }
 
-    public Map<String, String> getDefaultProperties(Object viewObject) {
-        return getContext().getDefaultPropMap(viewObject);
+    public Map<Object, PropertiesMap> getDefaultProperties() {
+        return getContext().getDefaultProperties();
     }
 
     public void setScene(RenderSession session) {
@@ -1698,5 +1448,35 @@ public class RenderSessionImpl extends RenderAction<SessionParams> {
 
     public RenderSession getSession() {
         return mScene;
+    }
+
+    public void dispose() {
+        boolean createdLooper = false;
+        if (Looper.myLooper() == null) {
+            // Detaching the root view from the window will try to stop any running animations.
+            // The stop method checks that it can run in the looper so, if there is no current
+            // looper, we create a temporary one to complete the shutdown.
+            Bridge.prepareThread();
+            createdLooper = true;
+        }
+        AttachInfo_Accessor.detachFromWindow(mViewRoot);
+        if (mCanvas != null) {
+            mCanvas.release();
+            mCanvas = null;
+        }
+        if (mViewInfoList != null) {
+            mViewInfoList.clear();
+        }
+        if (mSystemViewInfoList != null) {
+            mSystemViewInfoList.clear();
+        }
+        mImage = null;
+        mViewRoot = null;
+        mContentRoot = null;
+
+        if (createdLooper) {
+            Bridge.cleanupThread();
+            Choreographer_Delegate.dispose();
+        }
     }
 }

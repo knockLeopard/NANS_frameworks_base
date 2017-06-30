@@ -16,6 +16,9 @@
 
 package android.widget;
 
+import com.android.internal.R;
+
+import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.content.res.ColorStateList;
@@ -31,10 +34,7 @@ import android.util.AttributeSet;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
-import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
-
-import com.android.internal.R;
 
 public abstract class AbsSeekBar extends ProgressBar {
     private final Rect mTempRect = new Rect();
@@ -44,6 +44,12 @@ public abstract class AbsSeekBar extends ProgressBar {
     private PorterDuff.Mode mThumbTintMode = null;
     private boolean mHasThumbTint = false;
     private boolean mHasThumbTintMode = false;
+
+    private Drawable mTickMark;
+    private ColorStateList mTickMarkTintList = null;
+    private PorterDuff.Mode mTickMarkTintMode = null;
+    private boolean mHasTickMarkTint = false;
+    private boolean mHasTickMarkTintMode = false;
 
     private int mThumbOffset;
     private boolean mSplitTrack;
@@ -87,10 +93,10 @@ public abstract class AbsSeekBar extends ProgressBar {
     public AbsSeekBar(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
 
-        TypedArray a = context.obtainStyledAttributes(
-                attrs, com.android.internal.R.styleable.SeekBar, defStyleAttr, defStyleRes);
+        final TypedArray a = context.obtainStyledAttributes(
+                attrs, R.styleable.SeekBar, defStyleAttr, defStyleRes);
 
-        final Drawable thumb = a.getDrawable(com.android.internal.R.styleable.SeekBar_thumb);
+        final Drawable thumb = a.getDrawable(R.styleable.SeekBar_thumb);
         setThumb(thumb);
 
         if (a.hasValue(R.styleable.SeekBar_thumbTintMode)) {
@@ -104,20 +110,40 @@ public abstract class AbsSeekBar extends ProgressBar {
             mHasThumbTint = true;
         }
 
+        final Drawable tickMark = a.getDrawable(R.styleable.SeekBar_tickMark);
+        setTickMark(tickMark);
+
+        if (a.hasValue(R.styleable.SeekBar_tickMarkTintMode)) {
+            mTickMarkTintMode = Drawable.parseTintMode(a.getInt(
+                    R.styleable.SeekBar_tickMarkTintMode, -1), mTickMarkTintMode);
+            mHasTickMarkTintMode = true;
+        }
+
+        if (a.hasValue(R.styleable.SeekBar_tickMarkTint)) {
+            mTickMarkTintList = a.getColorStateList(R.styleable.SeekBar_tickMarkTint);
+            mHasTickMarkTint = true;
+        }
+
+        mSplitTrack = a.getBoolean(R.styleable.SeekBar_splitTrack, false);
+
         // Guess thumb offset if thumb != null, but allow layout to override.
         final int thumbOffset = a.getDimensionPixelOffset(
-                com.android.internal.R.styleable.SeekBar_thumbOffset, getThumbOffset());
+                R.styleable.SeekBar_thumbOffset, getThumbOffset());
         setThumbOffset(thumbOffset);
 
-        mSplitTrack = a.getBoolean(com.android.internal.R.styleable.SeekBar_splitTrack, false);
+        final boolean useDisabledAlpha = a.getBoolean(R.styleable.SeekBar_useDisabledAlpha, true);
         a.recycle();
 
-        a = context.obtainStyledAttributes(attrs,
-                com.android.internal.R.styleable.Theme, 0, 0);
-        mDisabledAlpha = a.getFloat(com.android.internal.R.styleable.Theme_disabledAlpha, 0.5f);
-        a.recycle();
+        if (useDisabledAlpha) {
+            final TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.Theme, 0, 0);
+            mDisabledAlpha = ta.getFloat(R.styleable.Theme_disabledAlpha, 0.5f);
+            ta.recycle();
+        } else {
+            mDisabledAlpha = 1.0f;
+        }
 
         applyThumbTint();
+        applyTickMarkTint();
 
         mScaledTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
     }
@@ -310,6 +336,123 @@ public abstract class AbsSeekBar extends ProgressBar {
     }
 
     /**
+     * Sets the drawable displayed at each progress position, e.g. at each
+     * possible thumb position.
+     *
+     * @param tickMark the drawable to display at each progress position
+     */
+    public void setTickMark(Drawable tickMark) {
+        if (mTickMark != null) {
+            mTickMark.setCallback(null);
+        }
+
+        mTickMark = tickMark;
+
+        if (tickMark != null) {
+            tickMark.setCallback(this);
+            tickMark.setLayoutDirection(getLayoutDirection());
+            if (tickMark.isStateful()) {
+                tickMark.setState(getDrawableState());
+            }
+            applyTickMarkTint();
+        }
+
+        invalidate();
+    }
+
+    /**
+     * @return the drawable displayed at each progress position
+     */
+    public Drawable getTickMark() {
+        return mTickMark;
+    }
+
+    /**
+     * Applies a tint to the tick mark drawable. Does not modify the current tint
+     * mode, which is {@link PorterDuff.Mode#SRC_IN} by default.
+     * <p>
+     * Subsequent calls to {@link #setTickMark(Drawable)} will automatically
+     * mutate the drawable and apply the specified tint and tint mode using
+     * {@link Drawable#setTintList(ColorStateList)}.
+     *
+     * @param tint the tint to apply, may be {@code null} to clear tint
+     *
+     * @attr ref android.R.styleable#SeekBar_tickMarkTint
+     * @see #getTickMarkTintList()
+     * @see Drawable#setTintList(ColorStateList)
+     */
+    public void setTickMarkTintList(@Nullable ColorStateList tint) {
+        mTickMarkTintList = tint;
+        mHasTickMarkTint = true;
+
+        applyTickMarkTint();
+    }
+
+    /**
+     * Returns the tint applied to the tick mark drawable, if specified.
+     *
+     * @return the tint applied to the tick mark drawable
+     * @attr ref android.R.styleable#SeekBar_tickMarkTint
+     * @see #setTickMarkTintList(ColorStateList)
+     */
+    @Nullable
+    public ColorStateList getTickMarkTintList() {
+        return mTickMarkTintList;
+    }
+
+    /**
+     * Specifies the blending mode used to apply the tint specified by
+     * {@link #setTickMarkTintList(ColorStateList)}} to the tick mark drawable. The
+     * default mode is {@link PorterDuff.Mode#SRC_IN}.
+     *
+     * @param tintMode the blending mode used to apply the tint, may be
+     *                 {@code null} to clear tint
+     *
+     * @attr ref android.R.styleable#SeekBar_tickMarkTintMode
+     * @see #getTickMarkTintMode()
+     * @see Drawable#setTintMode(PorterDuff.Mode)
+     */
+    public void setTickMarkTintMode(@Nullable PorterDuff.Mode tintMode) {
+        mTickMarkTintMode = tintMode;
+        mHasTickMarkTintMode = true;
+
+        applyTickMarkTint();
+    }
+
+    /**
+     * Returns the blending mode used to apply the tint to the tick mark drawable,
+     * if specified.
+     *
+     * @return the blending mode used to apply the tint to the tick mark drawable
+     * @attr ref android.R.styleable#SeekBar_tickMarkTintMode
+     * @see #setTickMarkTintMode(PorterDuff.Mode)
+     */
+    @Nullable
+    public PorterDuff.Mode getTickMarkTintMode() {
+        return mTickMarkTintMode;
+    }
+
+    private void applyTickMarkTint() {
+        if (mTickMark != null && (mHasTickMarkTint || mHasTickMarkTintMode)) {
+            mTickMark = mTickMark.mutate();
+
+            if (mHasTickMarkTint) {
+                mTickMark.setTintList(mTickMarkTintList);
+            }
+
+            if (mHasTickMarkTintMode) {
+                mTickMark.setTintMode(mTickMarkTintMode);
+            }
+
+            // The drawable (or one of its children) may not have been
+            // stateful before applying the tint, so let's try again.
+            if (mTickMark.isStateful()) {
+                mTickMark.setState(getDrawableState());
+            }
+        }
+    }
+
+    /**
      * Sets the amount of progress changed via the arrow keys.
      *
      * @param increment The amount to increment or decrement when the user
@@ -343,8 +486,8 @@ public abstract class AbsSeekBar extends ProgressBar {
     }
 
     @Override
-    protected boolean verifyDrawable(Drawable who) {
-        return who == mThumb || super.verifyDrawable(who);
+    protected boolean verifyDrawable(@NonNull Drawable who) {
+        return who == mThumb || who == mTickMark || super.verifyDrawable(who);
     }
 
     @Override
@@ -354,6 +497,10 @@ public abstract class AbsSeekBar extends ProgressBar {
         if (mThumb != null) {
             mThumb.jumpToCurrentState();
         }
+
+        if (mTickMark != null) {
+            mTickMark.jumpToCurrentState();
+        }
     }
 
     @Override
@@ -361,13 +508,20 @@ public abstract class AbsSeekBar extends ProgressBar {
         super.drawableStateChanged();
 
         final Drawable progressDrawable = getProgressDrawable();
-        if (progressDrawable != null) {
+        if (progressDrawable != null && mDisabledAlpha < 1.0f) {
             progressDrawable.setAlpha(isEnabled() ? NO_ALPHA : (int) (NO_ALPHA * mDisabledAlpha));
         }
 
         final Drawable thumb = mThumb;
-        if (thumb != null && thumb.isStateful()) {
-            thumb.setState(getDrawableState());
+        if (thumb != null && thumb.isStateful()
+                && thumb.setState(getDrawableState())) {
+            invalidateDrawable(thumb);
+        }
+
+        final Drawable tickMark = mTickMark;
+        if (tickMark != null && tickMark.isStateful()
+                && tickMark.setState(getDrawableState())) {
+            invalidateDrawable(tickMark);
         }
     }
 
@@ -381,17 +535,19 @@ public abstract class AbsSeekBar extends ProgressBar {
     }
 
     @Override
-    void onProgressRefresh(float scale, boolean fromUser) {
-        super.onProgressRefresh(scale, fromUser);
+    void onVisualProgressChanged(int id, float scale) {
+        super.onVisualProgressChanged(id, scale);
 
-        final Drawable thumb = mThumb;
-        if (thumb != null) {
-            setThumbPos(getWidth(), thumb, scale, Integer.MIN_VALUE);
+        if (id == R.id.progress) {
+            final Drawable thumb = mThumb;
+            if (thumb != null) {
+                setThumbPos(getWidth(), thumb, scale, Integer.MIN_VALUE);
 
-            // Since we draw translated, the drawable's bounds that it signals
-            // for invalidation won't be the actual bounds we want invalidated,
-            // so just invalidate this whole view.
-            invalidate();
+                // Since we draw translated, the drawable's bounds that it signals
+                // for invalidation won't be the actual bounds we want invalidated,
+                // so just invalidate this whole view.
+                invalidate();
+            }
         }
     }
 
@@ -403,28 +559,31 @@ public abstract class AbsSeekBar extends ProgressBar {
     }
 
     private void updateThumbAndTrackPos(int w, int h) {
+        final int paddedHeight = h - mPaddingTop - mPaddingBottom;
         final Drawable track = getCurrentDrawable();
         final Drawable thumb = mThumb;
 
         // The max height does not incorporate padding, whereas the height
         // parameter does.
-        final int trackHeight = Math.min(mMaxHeight, h - mPaddingTop - mPaddingBottom);
+        final int trackHeight = Math.min(mMaxHeight, paddedHeight);
         final int thumbHeight = thumb == null ? 0 : thumb.getIntrinsicHeight();
 
         // Apply offset to whichever item is taller.
         final int trackOffset;
         final int thumbOffset;
         if (thumbHeight > trackHeight) {
-            trackOffset = (thumbHeight - trackHeight) / 2;
-            thumbOffset = 0;
+            final int offsetHeight = (paddedHeight - thumbHeight) / 2;
+            trackOffset = offsetHeight + (thumbHeight - trackHeight) / 2;
+            thumbOffset = offsetHeight;
         } else {
-            trackOffset = 0;
-            thumbOffset = (trackHeight - thumbHeight) / 2;
+            final int offsetHeight = (paddedHeight - trackHeight) / 2;
+            trackOffset = offsetHeight;
+            thumbOffset = offsetHeight + (trackHeight - thumbHeight) / 2;
         }
 
         if (track != null) {
-            track.setBounds(0, trackOffset, w - mPaddingRight - mPaddingLeft,
-                    h - mPaddingBottom - trackOffset - mPaddingTop);
+            final int trackWidth = w - mPaddingRight - mPaddingLeft;
+            track.setBounds(0, trackOffset, trackWidth, trackOffset + trackHeight);
         }
 
         if (thumb != null) {
@@ -472,7 +631,6 @@ public abstract class AbsSeekBar extends ProgressBar {
 
         final Drawable background = getBackground();
         if (background != null) {
-            final Rect bounds = thumb.getBounds();
             final int offsetX = mPaddingLeft - mThumbOffset;
             final int offsetY = mPaddingTop;
             background.setHotspotBounds(left + offsetX, top + offsetY,
@@ -516,9 +674,36 @@ public abstract class AbsSeekBar extends ProgressBar {
             final int saveCount = canvas.save();
             canvas.clipRect(tempRect, Op.DIFFERENCE);
             super.drawTrack(canvas);
+            drawTickMarks(canvas);
             canvas.restoreToCount(saveCount);
         } else {
             super.drawTrack(canvas);
+            drawTickMarks(canvas);
+        }
+    }
+
+    /**
+     * Draw the tick marks.
+     */
+    void drawTickMarks(Canvas canvas) {
+        if (mTickMark != null) {
+            final int count = getMax();
+            if (count > 1) {
+                final int w = mTickMark.getIntrinsicWidth();
+                final int h = mTickMark.getIntrinsicHeight();
+                final int halfW = w >= 0 ? w / 2 : 1;
+                final int halfH = h >= 0 ? h / 2 : 1;
+                mTickMark.setBounds(-halfW, -halfH, halfW, halfH);
+
+                final float spacing = (getWidth() - mPaddingLeft - mPaddingRight) / (float) count;
+                final int saveCount = canvas.save();
+                canvas.translate(mPaddingLeft, getHeight() / 2);
+                for (int i = 0; i <= count; i++) {
+                    mTickMark.draw(canvas);
+                    canvas.translate(spacing, 0);
+                }
+                canvas.restoreToCount(saveCount);
+            }
         }
     }
 
@@ -527,12 +712,12 @@ public abstract class AbsSeekBar extends ProgressBar {
      */
     void drawThumb(Canvas canvas) {
         if (mThumb != null) {
-            canvas.save();
+            final int saveCount = canvas.save();
             // Translate the padding. For the x, we need to allow the thumb to
             // draw in its extra space
             canvas.translate(mPaddingLeft - mThumbOffset, mPaddingTop);
             mThumb.draw(canvas);
-            canvas.restore();
+            canvas.restoreToCount(saveCount);
         }
     }
 
@@ -566,13 +751,7 @@ public abstract class AbsSeekBar extends ProgressBar {
                 if (isInScrollingContainer()) {
                     mTouchDownX = event.getX();
                 } else {
-                    setPressed(true);
-                    if (mThumb != null) {
-                        invalidate(mThumb.getBounds()); // This may be within the padding region
-                    }
-                    onStartTrackingTouch();
-                    trackTouchEvent(event);
-                    attemptClaimDrag();
+                    startDrag(event);
                 }
                 break;
 
@@ -582,13 +761,7 @@ public abstract class AbsSeekBar extends ProgressBar {
                 } else {
                     final float x = event.getX();
                     if (Math.abs(x - mTouchDownX) > mScaledTouchSlop) {
-                        setPressed(true);
-                        if (mThumb != null) {
-                            invalidate(mThumb.getBounds()); // This may be within the padding region
-                        }
-                        onStartTrackingTouch();
-                        trackTouchEvent(event);
-                        attemptClaimDrag();
+                        startDrag(event);
                     }
                 }
                 break;
@@ -622,6 +795,19 @@ public abstract class AbsSeekBar extends ProgressBar {
         return true;
     }
 
+    private void startDrag(MotionEvent event) {
+        setPressed(true);
+
+        if (mThumb != null) {
+            // This may be within the padding region.
+            invalidate(mThumb.getBounds());
+        }
+
+        onStartTrackingTouch();
+        trackTouchEvent(event);
+        attemptClaimDrag();
+    }
+
     private void setHotspot(float x, float y) {
         final Drawable bg = getBackground();
         if (bg != null) {
@@ -630,18 +816,20 @@ public abstract class AbsSeekBar extends ProgressBar {
     }
 
     private void trackTouchEvent(MotionEvent event) {
+        final int x = Math.round(event.getX());
+        final int y = Math.round(event.getY());
         final int width = getWidth();
-        final int available = width - mPaddingLeft - mPaddingRight;
-        final int x = (int) event.getX();
-        float scale;
-        float progress = 0;
+        final int availableWidth = width - mPaddingLeft - mPaddingRight;
+
+        final float scale;
+        float progress = 0.0f;
         if (isLayoutRtl() && mMirrorForRtl) {
             if (x > width - mPaddingRight) {
                 scale = 0.0f;
             } else if (x < mPaddingLeft) {
                 scale = 1.0f;
             } else {
-                scale = (float)(available - x + mPaddingLeft) / (float)available;
+                scale = (availableWidth - x + mPaddingLeft) / (float) availableWidth;
                 progress = mTouchProgressOffset;
             }
         } else {
@@ -650,15 +838,16 @@ public abstract class AbsSeekBar extends ProgressBar {
             } else if (x > width - mPaddingRight) {
                 scale = 1.0f;
             } else {
-                scale = (float)(x - mPaddingLeft) / (float)available;
+                scale = (x - mPaddingLeft) / (float) availableWidth;
                 progress = mTouchProgressOffset;
             }
         }
+
         final int max = getMax();
         progress += scale * max;
 
-        setHotspot(x, (int) event.getY());
-        setProgress((int) progress, true);
+        setHotspot(x, y);
+        setProgressInternal(Math.round(progress), true, false);
     }
 
     /**
@@ -695,19 +884,22 @@ public abstract class AbsSeekBar extends ProgressBar {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (isEnabled()) {
-            int progress = getProgress();
+            int increment = mKeyProgressIncrement;
             switch (keyCode) {
                 case KeyEvent.KEYCODE_DPAD_LEFT:
-                    if (progress <= 0) break;
-                    setProgress(progress - mKeyProgressIncrement, true);
-                    onKeyChange();
-                    return true;
-
+                case KeyEvent.KEYCODE_MINUS:
+                    increment = -increment;
+                    // fallthrough
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    if (progress >= getMax()) break;
-                    setProgress(progress + mKeyProgressIncrement, true);
-                    onKeyChange();
-                    return true;
+                case KeyEvent.KEYCODE_PLUS:
+                case KeyEvent.KEYCODE_EQUALS:
+                    increment = isLayoutRtl() ? -increment : increment;
+
+                    if (setProgressInternal(getProgress() + increment, true, true)) {
+                        onKeyChange();
+                        return true;
+                    }
+                    break;
             }
         }
 
@@ -715,56 +907,76 @@ public abstract class AbsSeekBar extends ProgressBar {
     }
 
     @Override
-    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
-        super.onInitializeAccessibilityEvent(event);
-        event.setClassName(AbsSeekBar.class.getName());
+    public CharSequence getAccessibilityClassName() {
+        return AbsSeekBar.class.getName();
     }
 
+    /** @hide */
     @Override
-    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
-        super.onInitializeAccessibilityNodeInfo(info);
-        info.setClassName(AbsSeekBar.class.getName());
+    public void onInitializeAccessibilityNodeInfoInternal(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfoInternal(info);
 
         if (isEnabled()) {
             final int progress = getProgress();
             if (progress > 0) {
-                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+                info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD);
             }
             if (progress < getMax()) {
-                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+                info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD);
             }
         }
     }
 
+    /** @hide */
     @Override
-    public boolean performAccessibilityAction(int action, Bundle arguments) {
-        if (super.performAccessibilityAction(action, arguments)) {
+    public boolean performAccessibilityActionInternal(int action, Bundle arguments) {
+        if (super.performAccessibilityActionInternal(action, arguments)) {
             return true;
         }
+
         if (!isEnabled()) {
             return false;
         }
-        final int progress = getProgress();
-        final int increment = Math.max(1, Math.round((float) getMax() / 5));
+
         switch (action) {
-            case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD: {
-                if (progress <= 0) {
+            case R.id.accessibilityActionSetProgress: {
+                if (!canUserSetProgress()) {
                     return false;
                 }
-                setProgress(progress - increment, true);
-                onKeyChange();
-                return true;
+                if (arguments == null || !arguments.containsKey(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE)) {
+                    return false;
+                }
+                float value = arguments.getFloat(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE);
+                return setProgressInternal((int) value, true, true);
             }
-            case AccessibilityNodeInfo.ACTION_SCROLL_FORWARD: {
-                if (progress >= getMax()) {
+            case AccessibilityNodeInfo.ACTION_SCROLL_FORWARD:
+            case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD: {
+                if (!canUserSetProgress()) {
                     return false;
                 }
-                setProgress(progress + increment, true);
-                onKeyChange();
-                return true;
+                int increment = Math.max(1, Math.round((float) getMax() / 20));
+                if (action == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) {
+                    increment = -increment;
+                }
+
+                // Let progress bar handle clamping values.
+                if (setProgressInternal(getProgress() + increment, true, true)) {
+                    onKeyChange();
+                    return true;
+                }
+                return false;
             }
         }
         return false;
+    }
+
+    /**
+     * @return whether user can change progress on the view
+     */
+    boolean canUserSetProgress() {
+        return !isIndeterminate() && isEnabled();
     }
 
     @Override

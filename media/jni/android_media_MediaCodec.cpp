@@ -39,7 +39,7 @@
 #include <media/stagefright/foundation/AMessage.h>
 #include <media/stagefright/foundation/AString.h>
 #include <media/stagefright/MediaErrors.h>
-
+#include <media/stagefright/PersistentSurface.h>
 #include <nativehelper/ScopedLocalRef.h>
 
 #include <system/window.h>
@@ -56,6 +56,7 @@ enum {
 enum {
     EVENT_CALLBACK = 1,
     EVENT_SET_CALLBACK = 2,
+    EVENT_FRAME_RENDERED = 3,
 };
 
 static struct CryptoErrorCodes {
@@ -63,12 +64,34 @@ static struct CryptoErrorCodes {
     jint cryptoErrorKeyExpired;
     jint cryptoErrorResourceBusy;
     jint cryptoErrorInsufficientOutputProtection;
+    jint cryptoErrorSessionNotOpened;
+    jint cryptoErrorUnsupportedOperation;
 } gCryptoErrorCodes;
 
 static struct CodecActionCodes {
     jint codecActionTransient;
     jint codecActionRecoverable;
 } gCodecActionCodes;
+
+static struct CodecErrorCodes {
+    jint errorInsufficientResource;
+    jint errorReclaimed;
+} gCodecErrorCodes;
+
+static struct {
+    jclass clazz;
+    jfieldID mLock;
+    jfieldID mPersistentObject;
+    jmethodID ctor;
+    jmethodID setNativeObjectLocked;
+} gPersistentSurfaceClassInfo;
+
+static struct {
+    jint Unencrypted;
+    jint AesCtr;
+    jint AesCbc;
+} gCryptoModes;
+
 
 struct fields_t {
     jfieldID context;
@@ -79,9 +102,13 @@ struct fields_t {
     jfieldID cryptoInfoKeyID;
     jfieldID cryptoInfoIVID;
     jfieldID cryptoInfoModeID;
+    jfieldID cryptoInfoPatternID;
+    jfieldID patternEncryptBlocksID;
+    jfieldID patternSkipBlocksID;
 };
 
 static fields_t gFields;
+static const void *sRefBaseOwner;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -212,10 +239,22 @@ void JMediaCodec::deleteJavaObjects(JNIEnv *env) {
     mByteBufferLimitMethodID = NULL;
 }
 
+status_t JMediaCodec::enableOnFrameRenderedListener(jboolean enable) {
+    if (enable) {
+        if (mOnFrameRenderedNotification == NULL) {
+            mOnFrameRenderedNotification = new AMessage(kWhatFrameRendered, this);
+        }
+    } else {
+        mOnFrameRenderedNotification.clear();
+    }
+
+    return mCodec->setOnFrameRenderedNotification(mOnFrameRenderedNotification);
+}
+
 status_t JMediaCodec::setCallback(jobject cb) {
     if (cb != NULL) {
         if (mCallbackNotification == NULL) {
-            mCallbackNotification = new AMessage(kWhatCallbackNotify, id());
+            mCallbackNotification = new AMessage(kWhatCallbackNotify, this);
         }
     } else {
         mCallbackNotification.clear();
@@ -240,9 +279,27 @@ status_t JMediaCodec::configure(
     return mCodec->configure(format, mSurfaceTextureClient, crypto, flags);
 }
 
+status_t JMediaCodec::setSurface(
+        const sp<IGraphicBufferProducer> &bufferProducer) {
+    sp<Surface> client;
+    if (bufferProducer != NULL) {
+        client = new Surface(bufferProducer, true /* controlledByApp */);
+    }
+    status_t err = mCodec->setSurface(client);
+    if (err == OK) {
+        mSurfaceTextureClient = client;
+    }
+    return err;
+}
+
 status_t JMediaCodec::createInputSurface(
         sp<IGraphicBufferProducer>* bufferProducer) {
     return mCodec->createInputSurface(bufferProducer);
+}
+
+status_t JMediaCodec::setInputSurface(
+        const sp<PersistentSurface> &surface) {
+    return mCodec->setInputSurface(surface);
 }
 
 status_t JMediaCodec::start() {
@@ -279,11 +336,12 @@ status_t JMediaCodec::queueSecureInputBuffer(
         const uint8_t key[16],
         const uint8_t iv[16],
         CryptoPlugin::Mode mode,
+        const CryptoPlugin::Pattern &pattern,
         int64_t presentationTimeUs,
         uint32_t flags,
         AString *errorDetailMsg) {
     return mCodec->queueSecureInputBuffer(
-            index, offset, subSamples, numSubSamples, key, iv, mode,
+            index, offset, subSamples, numSubSamples, key, iv, mode, pattern,
             presentationTimeUs, flags, errorDetailMsg);
 }
 
@@ -394,6 +452,12 @@ status_t JMediaCodec::createByteBufferFromABuffer(
     // if this is an ABuffer that doesn't actually hold any accessible memory,
     // use a null ByteBuffer
     *buf = NULL;
+
+    if (buffer == NULL) {
+        ALOGV("createByteBufferFromABuffer - given NULL, returning NULL");
+        return OK;
+    }
+
     if (buffer->base() == NULL) {
         return OK;
     }
@@ -587,6 +651,18 @@ static jthrowable createCodecException(
         break;
     }
 
+    /* translate OS errors to Java API CodecException errorCodes */
+    switch (err) {
+        case NO_MEMORY:
+            err = gCodecErrorCodes.errorInsufficientResource;
+            break;
+        case DEAD_OBJECT:
+            err = gCodecErrorCodes.errorReclaimed;
+            break;
+        default:  /* Other error codes go out as is. */
+            break;
+    }
+
     return (jthrowable)env->NewObject(clazz.get(), ctor, err, actionCode, msgObj.get());
 }
 
@@ -684,11 +760,37 @@ void JMediaCodec::handleCallback(const sp<AMessage> &msg) {
     env->DeleteLocalRef(obj);
 }
 
+void JMediaCodec::handleFrameRenderedNotification(const sp<AMessage> &msg) {
+    int32_t arg1 = 0, arg2 = 0;
+    jobject obj = NULL;
+    JNIEnv *env = AndroidRuntime::getJNIEnv();
+
+    sp<AMessage> data;
+    CHECK(msg->findMessage("data", &data));
+
+    status_t err = ConvertMessageToMap(env, data, &obj);
+    if (err != OK) {
+        jniThrowException(env, "java/lang/IllegalStateException", NULL);
+        return;
+    }
+
+    env->CallVoidMethod(
+            mObject, gFields.postEventFromNativeID,
+            EVENT_FRAME_RENDERED, arg1, arg2, obj);
+
+    env->DeleteLocalRef(obj);
+}
+
 void JMediaCodec::onMessageReceived(const sp<AMessage> &msg) {
     switch (msg->what()) {
         case kWhatCallbackNotify:
         {
             handleCallback(msg);
+            break;
+        }
+        case kWhatFrameRendered:
+        {
+            handleFrameRenderedNotification(msg);
             break;
         }
         default:
@@ -744,25 +846,39 @@ static void throwCryptoException(JNIEnv *env, status_t err, const char *msg) {
         env->GetMethodID(clazz.get(), "<init>", "(ILjava/lang/String;)V");
     CHECK(constructID != NULL);
 
-    jstring msgObj = env->NewStringUTF(msg != NULL ? msg : "Unknown Error");
+    const char *defaultMsg = "Unknown Error";
 
     /* translate OS errors to Java API CryptoException errorCodes (which are positive) */
     switch (err) {
         case ERROR_DRM_NO_LICENSE:
             err = gCryptoErrorCodes.cryptoErrorNoKey;
+            defaultMsg = "Crypto key not available";
             break;
         case ERROR_DRM_LICENSE_EXPIRED:
             err = gCryptoErrorCodes.cryptoErrorKeyExpired;
+            defaultMsg = "License expired";
             break;
         case ERROR_DRM_RESOURCE_BUSY:
             err = gCryptoErrorCodes.cryptoErrorResourceBusy;
+            defaultMsg = "Resource busy or unavailable";
             break;
         case ERROR_DRM_INSUFFICIENT_OUTPUT_PROTECTION:
             err = gCryptoErrorCodes.cryptoErrorInsufficientOutputProtection;
+            defaultMsg = "Required output protections are not active";
+            break;
+        case ERROR_DRM_SESSION_NOT_OPENED:
+            err = gCryptoErrorCodes.cryptoErrorSessionNotOpened;
+            defaultMsg = "Attempted to use a closed session";
+            break;
+        case ERROR_DRM_CANNOT_HANDLE:
+            err = gCryptoErrorCodes.cryptoErrorUnsupportedOperation;
+            defaultMsg = "Operation not supported in this configuration";
             break;
         default:  /* Other negative DRM error codes go out as is. */
             break;
     }
+
+    jstring msgObj = env->NewStringUTF(msg != NULL ? msg : defaultMsg);
 
     jthrowable exception =
         (jthrowable)env->NewObject(clazz.get(), constructID, err, msgObj);
@@ -790,6 +906,10 @@ static jint throwExceptionAsNecessary(
             jniThrowException(env, "java/lang/IllegalStateException", msg);
             return 0;
 
+        case BAD_VALUE:
+            jniThrowException(env, "java/lang/IllegalArgumentException", msg);
+            return 0;
+
         default:
             if (isCryptoError(err)) {
                 throwCryptoException(env, err, msg);
@@ -798,6 +918,22 @@ static jint throwExceptionAsNecessary(
             throwCodecException(env, err, actionCode, msg);
             return 0;
     }
+}
+
+static void android_media_MediaCodec_native_enableOnFrameRenderedListener(
+        JNIEnv *env,
+        jobject thiz,
+        jboolean enabled) {
+    sp<JMediaCodec> codec = getMediaCodec(env, thiz);
+
+    if (codec == NULL) {
+        throwExceptionAsNecessary(env, INVALID_OPERATION);
+        return;
+    }
+
+    status_t err = codec->enableOnFrameRenderedListener(enabled);
+
+    throwExceptionAsNecessary(env, err);
 }
 
 static void android_media_MediaCodec_native_setCallback(
@@ -860,6 +996,149 @@ static void android_media_MediaCodec_native_configure(
     err = codec->configure(format, bufferProducer, crypto, flags);
 
     throwExceptionAsNecessary(env, err);
+}
+
+static void android_media_MediaCodec_native_setSurface(
+        JNIEnv *env,
+        jobject thiz,
+        jobject jsurface) {
+    sp<JMediaCodec> codec = getMediaCodec(env, thiz);
+
+    if (codec == NULL) {
+        throwExceptionAsNecessary(env, INVALID_OPERATION);
+        return;
+    }
+
+    sp<IGraphicBufferProducer> bufferProducer;
+    if (jsurface != NULL) {
+        sp<Surface> surface(android_view_Surface_getSurface(env, jsurface));
+        if (surface != NULL) {
+            bufferProducer = surface->getIGraphicBufferProducer();
+        } else {
+            jniThrowException(
+                    env,
+                    "java/lang/IllegalArgumentException",
+                    "The surface has been released");
+            return;
+        }
+    }
+
+    status_t err = codec->setSurface(bufferProducer);
+    throwExceptionAsNecessary(env, err);
+}
+
+sp<PersistentSurface> android_media_MediaCodec_getPersistentInputSurface(
+        JNIEnv* env, jobject object) {
+    sp<PersistentSurface> persistentSurface;
+
+    jobject lock = env->GetObjectField(
+            object, gPersistentSurfaceClassInfo.mLock);
+    if (env->MonitorEnter(lock) == JNI_OK) {
+        persistentSurface = reinterpret_cast<PersistentSurface *>(
+                env->GetLongField(object,
+                        gPersistentSurfaceClassInfo.mPersistentObject));
+        env->MonitorExit(lock);
+    }
+    env->DeleteLocalRef(lock);
+
+    return persistentSurface;
+}
+
+static jobject android_media_MediaCodec_createPersistentInputSurface(
+        JNIEnv* env, jclass /* clazz */) {
+    ALOGV("android_media_MediaCodec_createPersistentInputSurface");
+    sp<PersistentSurface> persistentSurface =
+        MediaCodec::CreatePersistentInputSurface();
+
+    if (persistentSurface == NULL) {
+        return NULL;
+    }
+
+    sp<Surface> surface = new Surface(
+            persistentSurface->getBufferProducer(), true);
+    if (surface == NULL) {
+        return NULL;
+    }
+
+    jobject object = env->NewObject(
+            gPersistentSurfaceClassInfo.clazz,
+            gPersistentSurfaceClassInfo.ctor);
+
+    if (object == NULL) {
+        if (env->ExceptionCheck()) {
+            ALOGE("Could not create PersistentSurface.");
+            env->ExceptionClear();
+        }
+        return NULL;
+    }
+
+    jobject lock = env->GetObjectField(
+            object, gPersistentSurfaceClassInfo.mLock);
+    if (env->MonitorEnter(lock) == JNI_OK) {
+        env->CallVoidMethod(
+                object,
+                gPersistentSurfaceClassInfo.setNativeObjectLocked,
+                (jlong)surface.get());
+        env->SetLongField(
+                object,
+                gPersistentSurfaceClassInfo.mPersistentObject,
+                (jlong)persistentSurface.get());
+        env->MonitorExit(lock);
+    } else {
+        env->DeleteLocalRef(object);
+        object = NULL;
+    }
+    env->DeleteLocalRef(lock);
+
+    if (object != NULL) {
+        surface->incStrong(&sRefBaseOwner);
+        persistentSurface->incStrong(&sRefBaseOwner);
+    }
+
+    return object;
+}
+
+static void android_media_MediaCodec_releasePersistentInputSurface(
+        JNIEnv* env, jclass /* clazz */, jobject object) {
+    sp<PersistentSurface> persistentSurface;
+
+    jobject lock = env->GetObjectField(
+            object, gPersistentSurfaceClassInfo.mLock);
+    if (env->MonitorEnter(lock) == JNI_OK) {
+        persistentSurface = reinterpret_cast<PersistentSurface *>(
+            env->GetLongField(
+                    object, gPersistentSurfaceClassInfo.mPersistentObject));
+        env->SetLongField(
+                object,
+                gPersistentSurfaceClassInfo.mPersistentObject,
+                (jlong)0);
+        env->MonitorExit(lock);
+    }
+    env->DeleteLocalRef(lock);
+
+    if (persistentSurface != NULL) {
+        persistentSurface->decStrong(&sRefBaseOwner);
+    }
+    // no need to release surface as it will be released by Surface's jni
+}
+
+static void android_media_MediaCodec_setInputSurface(
+        JNIEnv* env, jobject thiz, jobject object) {
+    ALOGV("android_media_MediaCodec_setInputSurface");
+
+    sp<JMediaCodec> codec = getMediaCodec(env, thiz);
+    if (codec == NULL) {
+        throwExceptionAsNecessary(env, INVALID_OPERATION);
+        return;
+    }
+
+    sp<PersistentSurface> persistentSurface =
+        android_media_MediaCodec_getPersistentInputSurface(env, object);
+
+    status_t err = codec->setInputSurface(persistentSurface);
+    if (err != NO_ERROR) {
+        throwExceptionAsNecessary(env, err);
+    }
 }
 
 static jobject android_media_MediaCodec_createInputSurface(JNIEnv* env,
@@ -1012,7 +1291,29 @@ static void android_media_MediaCodec_queueSecureInputBuffer(
     jbyteArray ivObj =
         (jbyteArray)env->GetObjectField(cryptoInfoObj, gFields.cryptoInfoIVID);
 
-    jint mode = env->GetIntField(cryptoInfoObj, gFields.cryptoInfoModeID);
+    jint jmode = env->GetIntField(cryptoInfoObj, gFields.cryptoInfoModeID);
+    enum CryptoPlugin::Mode mode;
+    if (jmode == gCryptoModes.Unencrypted) {
+        mode = CryptoPlugin::kMode_Unencrypted;
+    } else if (jmode == gCryptoModes.AesCtr) {
+        mode = CryptoPlugin::kMode_AES_CTR;
+    } else if (jmode == gCryptoModes.AesCbc) {
+        mode = CryptoPlugin::kMode_AES_CBC;
+    }  else {
+        throwExceptionAsNecessary(env, INVALID_OPERATION);
+        return;
+    }
+
+    jobject patternObj = env->GetObjectField(cryptoInfoObj, gFields.cryptoInfoPatternID);
+
+    CryptoPlugin::Pattern pattern;
+    if (patternObj == NULL) {
+        pattern.mEncryptBlocks = 0;
+        pattern.mSkipBlocks = 0;
+    } else {
+        pattern.mEncryptBlocks = env->GetIntField(patternObj, gFields.patternEncryptBlocksID);
+        pattern.mSkipBlocks = env->GetIntField(patternObj, gFields.patternSkipBlocksID);
+    }
 
     status_t err = OK;
 
@@ -1097,7 +1398,8 @@ static void android_media_MediaCodec_queueSecureInputBuffer(
                 index, offset,
                 subSamples, numSubSamples,
                 (const uint8_t *)key, (const uint8_t *)iv,
-                (CryptoPlugin::Mode)mode,
+                mode,
+                pattern,
                 timestampUs,
                 flags,
                 &errorDetailMsg);
@@ -1395,6 +1697,22 @@ static void android_media_MediaCodec_native_init(JNIEnv *env) {
 
     CHECK(gFields.postEventFromNativeID != NULL);
 
+    jfieldID field;
+    field = env->GetStaticFieldID(clazz.get(), "CRYPTO_MODE_UNENCRYPTED", "I");
+    CHECK(field != NULL);
+    gCryptoModes.Unencrypted =
+        env->GetStaticIntField(clazz.get(), field);
+
+    field = env->GetStaticFieldID(clazz.get(), "CRYPTO_MODE_AES_CTR", "I");
+    CHECK(field != NULL);
+    gCryptoModes.AesCtr =
+        env->GetStaticIntField(clazz.get(), field);
+
+    field = env->GetStaticFieldID(clazz.get(), "CRYPTO_MODE_AES_CBC", "I");
+    CHECK(field != NULL);
+    gCryptoModes.AesCbc =
+        env->GetStaticIntField(clazz.get(), field);
+
     clazz.reset(env->FindClass("android/media/MediaCodec$CryptoInfo"));
     CHECK(clazz.get() != NULL);
 
@@ -1419,10 +1737,22 @@ static void android_media_MediaCodec_native_init(JNIEnv *env) {
     gFields.cryptoInfoModeID = env->GetFieldID(clazz.get(), "mode", "I");
     CHECK(gFields.cryptoInfoModeID != NULL);
 
+    gFields.cryptoInfoPatternID = env->GetFieldID(clazz.get(), "pattern",
+        "Landroid/media/MediaCodec$CryptoInfo$Pattern;");
+    CHECK(gFields.cryptoInfoPatternID != NULL);
+
+    clazz.reset(env->FindClass("android/media/MediaCodec$CryptoInfo$Pattern"));
+    CHECK(clazz.get() != NULL);
+
+    gFields.patternEncryptBlocksID = env->GetFieldID(clazz.get(), "mEncryptBlocks", "I");
+    CHECK(gFields.patternEncryptBlocksID != NULL);
+
+    gFields.patternSkipBlocksID = env->GetFieldID(clazz.get(), "mSkipBlocks", "I");
+    CHECK(gFields.patternSkipBlocksID != NULL);
+
     clazz.reset(env->FindClass("android/media/MediaCodec$CryptoException"));
     CHECK(clazz.get() != NULL);
 
-    jfieldID field;
     field = env->GetStaticFieldID(clazz.get(), "ERROR_NO_KEY", "I");
     CHECK(field != NULL);
     gCryptoErrorCodes.cryptoErrorNoKey =
@@ -1443,6 +1773,16 @@ static void android_media_MediaCodec_native_init(JNIEnv *env) {
     gCryptoErrorCodes.cryptoErrorInsufficientOutputProtection =
         env->GetStaticIntField(clazz.get(), field);
 
+    field = env->GetStaticFieldID(clazz.get(), "ERROR_SESSION_NOT_OPENED", "I");
+    CHECK(field != NULL);
+    gCryptoErrorCodes.cryptoErrorSessionNotOpened =
+        env->GetStaticIntField(clazz.get(), field);
+
+    field = env->GetStaticFieldID(clazz.get(), "ERROR_UNSUPPORTED_OPERATION", "I");
+    CHECK(field != NULL);
+    gCryptoErrorCodes.cryptoErrorUnsupportedOperation =
+        env->GetStaticIntField(clazz.get(), field);
+
     clazz.reset(env->FindClass("android/media/MediaCodec$CodecException"));
     CHECK(clazz.get() != NULL);
     field = env->GetStaticFieldID(clazz.get(), "ACTION_TRANSIENT", "I");
@@ -1454,6 +1794,39 @@ static void android_media_MediaCodec_native_init(JNIEnv *env) {
     CHECK(field != NULL);
     gCodecActionCodes.codecActionRecoverable =
         env->GetStaticIntField(clazz.get(), field);
+
+    field = env->GetStaticFieldID(clazz.get(), "ERROR_INSUFFICIENT_RESOURCE", "I");
+    CHECK(field != NULL);
+    gCodecErrorCodes.errorInsufficientResource =
+        env->GetStaticIntField(clazz.get(), field);
+
+    field = env->GetStaticFieldID(clazz.get(), "ERROR_RECLAIMED", "I");
+    CHECK(field != NULL);
+    gCodecErrorCodes.errorReclaimed =
+        env->GetStaticIntField(clazz.get(), field);
+
+    clazz.reset(env->FindClass("android/view/Surface"));
+    CHECK(clazz.get() != NULL);
+
+    field = env->GetFieldID(clazz.get(), "mLock", "Ljava/lang/Object;");
+    CHECK(field != NULL);
+    gPersistentSurfaceClassInfo.mLock = field;
+
+    jmethodID method = env->GetMethodID(clazz.get(), "setNativeObjectLocked", "(J)V");
+    CHECK(method != NULL);
+    gPersistentSurfaceClassInfo.setNativeObjectLocked = method;
+
+    clazz.reset(env->FindClass("android/media/MediaCodec$PersistentSurface"));
+    CHECK(clazz.get() != NULL);
+    gPersistentSurfaceClassInfo.clazz = (jclass)env->NewGlobalRef(clazz.get());
+
+    method = env->GetMethodID(clazz.get(), "<init>", "()V");
+    CHECK(method != NULL);
+    gPersistentSurfaceClassInfo.ctor = method;
+
+    field = env->GetFieldID(clazz.get(), "mPersistentObject", "J");
+    CHECK(field != NULL);
+    gPersistentSurfaceClassInfo.mPersistentObject = field;
 }
 
 static void android_media_MediaCodec_native_setup(
@@ -1479,6 +1852,11 @@ static void android_media_MediaCodec_native_setup(
                 String8::format("Failed to initialize %s, error %#x", tmp, err));
         env->ReleaseStringUTFChars(name, tmp);
         return;
+    } if (err == NO_MEMORY) {
+        throwCodecException(env, err, ACTION_CODE_TRANSIENT,
+                String8::format("Failed to initialize %s, error %#x", tmp, err));
+        env->ReleaseStringUTFChars(name, tmp);
+        return;
     } else if (err != OK) {
         // believed possible to try again
         jniThrowException(env, "java/io/IOException",
@@ -1499,10 +1877,24 @@ static void android_media_MediaCodec_native_finalize(
     android_media_MediaCodec_release(env, thiz);
 }
 
-static JNINativeMethod gMethods[] = {
+static const JNINativeMethod gMethods[] = {
     { "native_release", "()V", (void *)android_media_MediaCodec_release },
 
     { "native_reset", "()V", (void *)android_media_MediaCodec_reset },
+
+    { "native_releasePersistentInputSurface",
+      "(Landroid/view/Surface;)V",
+       (void *)android_media_MediaCodec_releasePersistentInputSurface},
+
+    { "native_createPersistentInputSurface",
+      "()Landroid/media/MediaCodec$PersistentSurface;",
+      (void *)android_media_MediaCodec_createPersistentInputSurface },
+
+    { "native_setInputSurface", "(Landroid/view/Surface;)V",
+      (void *)android_media_MediaCodec_setInputSurface },
+
+    { "native_enableOnFrameRenderedListener", "(Z)V",
+      (void *)android_media_MediaCodec_native_enableOnFrameRenderedListener },
 
     { "native_setCallback",
       "(Landroid/media/MediaCodec$Callback;)V",
@@ -1512,6 +1904,10 @@ static JNINativeMethod gMethods[] = {
       "([Ljava/lang/String;[Ljava/lang/Object;Landroid/view/Surface;"
       "Landroid/media/MediaCrypto;I)V",
       (void *)android_media_MediaCodec_native_configure },
+
+    { "native_setSurface",
+      "(Landroid/view/Surface;)V",
+      (void *)android_media_MediaCodec_native_setSurface },
 
     { "createInputSurface", "()Landroid/view/Surface;",
       (void *)android_media_MediaCodec_createInputSurface },

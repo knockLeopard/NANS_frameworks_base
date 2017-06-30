@@ -22,11 +22,12 @@ import android.graphics.Matrix;
 import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.drawable.AnimatedVectorDrawable;
 
 /**
  * <p>A display list records a series of graphics related operations and can replay
  * them later. Display lists are usually built by recording operations on a
- * {@link HardwareCanvas}. Replaying the operations from a display list avoids
+ * {@link DisplayListCanvas}. Replaying the operations from a display list avoids
  * executing application code on every frame, and is thus much more efficient.</p>
  *
  * <p>Display lists are used internally for all views by default, and are not
@@ -43,7 +44,7 @@ import android.graphics.Rect;
  * affected paragraph needs to be recorded again.</p>
  *
  * <h3>Hardware acceleration</h3>
- * <p>Display lists can only be replayed using a {@link HardwareCanvas}. They are not
+ * <p>Display lists can only be replayed using a {@link DisplayListCanvas}. They are not
  * supported in software. Always make sure that the {@link android.graphics.Canvas}
  * you are using to render a display list is hardware accelerated using
  * {@link android.graphics.Canvas#isHardwareAccelerated()}.</p>
@@ -53,7 +54,7 @@ import android.graphics.Rect;
  *     HardwareRenderer renderer = myView.getHardwareRenderer();
  *     if (renderer != null) {
  *         DisplayList displayList = renderer.createDisplayList();
- *         HardwareCanvas canvas = displayList.start(width, height);
+ *         DisplayListCanvas canvas = displayList.start(width, height);
  *         try {
  *             // Draw onto the canvas
  *             // For instance: canvas.drawBitmap(...);
@@ -67,8 +68,8 @@ import android.graphics.Rect;
  * <pre class="prettyprint">
  *     protected void onDraw(Canvas canvas) {
  *         if (canvas.isHardwareAccelerated()) {
- *             HardwareCanvas hardwareCanvas = (HardwareCanvas) canvas;
- *             hardwareCanvas.drawDisplayList(mDisplayList);
+ *             DisplayListCanvas displayListCanvas = (DisplayListCanvas) canvas;
+ *             displayListCanvas.drawDisplayList(mDisplayList);
  *         }
  *     }
  * </pre>
@@ -92,7 +93,7 @@ import android.graphics.Rect;
  * <pre class="prettyprint">
  *     private void createDisplayList() {
  *         mDisplayList = DisplayList.create("MyDisplayList");
- *         HardwareCanvas canvas = mDisplayList.start(width, height);
+ *         DisplayListCanvas canvas = mDisplayList.start(width, height);
  *         try {
  *             for (Bitmap b : mBitmaps) {
  *                 canvas.drawBitmap(b, 0.0f, 0.0f, null);
@@ -105,8 +106,8 @@ import android.graphics.Rect;
  *
  *     protected void onDraw(Canvas canvas) {
  *         if (canvas.isHardwareAccelerated()) {
- *             HardwareCanvas hardwareCanvas = (HardwareCanvas) canvas;
- *             hardwareCanvas.drawDisplayList(mDisplayList);
+ *             DisplayListCanvas displayListCanvas = (DisplayListCanvas) canvas;
+ *             displayListCanvas.drawDisplayList(mDisplayList);
  *         }
  *     }
  *
@@ -126,45 +127,6 @@ import android.graphics.Rect;
  * @hide
  */
 public class RenderNode {
-    /**
-     * Flag used when calling
-     * {@link HardwareCanvas#drawRenderNode(RenderNode, android.graphics.Rect, int)}
-     * When this flag is set, draw operations lying outside of the bounds of the
-     * display list will be culled early. It is recommeneded to always set this
-     * flag.
-     */
-    public static final int FLAG_CLIP_CHILDREN = 0x1;
-
-    // NOTE: The STATUS_* values *must* match the enum in DrawGlInfo.h
-
-    /**
-     * Indicates that the display list is done drawing.
-     *
-     * @see HardwareCanvas#drawRenderNode(RenderNode, android.graphics.Rect, int)
-     */
-    public static final int STATUS_DONE = 0x0;
-
-    /**
-     * Indicates that the display list needs another drawing pass.
-     *
-     * @see HardwareCanvas#drawRenderNode(RenderNode, android.graphics.Rect, int)
-     */
-    public static final int STATUS_DRAW = 0x1;
-
-    /**
-     * Indicates that the display list needs to re-execute its GL functors.
-     *
-     * @see HardwareCanvas#drawRenderNode(RenderNode, android.graphics.Rect, int)
-     * @see HardwareCanvas#callDrawGLFunction(long)
-     */
-    public static final int STATUS_INVOKE = 0x2;
-
-    /**
-     * Indicates that the display list performed GL drawing operations.
-     *
-     * @see HardwareCanvas#drawRenderNode(RenderNode, android.graphics.Rect, int)
-     */
-    public static final int STATUS_DREW = 0x4;
 
     private boolean mValid;
     // Do not access directly unless you are ThreadedRenderer
@@ -174,6 +136,9 @@ public class RenderNode {
     private RenderNode(String name, View owningView) {
         mNativeRenderNode = nCreate(name);
         mOwningView = owningView;
+        if (mOwningView instanceof SurfaceView) {
+            nRequestPositionUpdates(mNativeRenderNode, (SurfaceView) mOwningView);
+        }
     }
 
     /**
@@ -213,7 +178,7 @@ public class RenderNode {
      * stored in this display list.
      *
      * Calling this method will mark the render node invalid until
-     * {@link #end(HardwareCanvas)} is called.
+     * {@link #end(DisplayListCanvas)} is called.
      * Only valid render nodes can be replayed.
      *
      * @param width The width of the recording viewport
@@ -221,15 +186,11 @@ public class RenderNode {
      *
      * @return A canvas to record drawing operations.
      *
-     * @see #end(HardwareCanvas)
+     * @see #end(DisplayListCanvas)
      * @see #isValid()
      */
-    public HardwareCanvas start(int width, int height) {
-        HardwareCanvas canvas = GLES20RecordingCanvas.obtain(this);
-        canvas.setViewport(width, height);
-        // The dirty rect should always be null for a display list
-        canvas.onPreDraw(null);
-        return canvas;
+    public DisplayListCanvas start(int width, int height) {
+        return DisplayListCanvas.obtain(this, width, height);
     }
 
     /**
@@ -240,15 +201,9 @@ public class RenderNode {
      * @see #start(int, int)
      * @see #isValid()
      */
-    public void end(HardwareCanvas endCanvas) {
-        if (!(endCanvas instanceof GLES20RecordingCanvas)) {
-            throw new IllegalArgumentException("Passed an invalid canvas to end!");
-        }
-
-        GLES20RecordingCanvas canvas = (GLES20RecordingCanvas) endCanvas;
-        canvas.onPostDraw();
-        long renderNodeData = canvas.finishRecording();
-        nSetDisplayListData(mNativeRenderNode, renderNodeData);
+    public void end(DisplayListCanvas canvas) {
+        long displayList = canvas.finishRecording();
+        nSetDisplayList(mNativeRenderNode, displayList);
         canvas.recycle();
         mValid = true;
     }
@@ -258,10 +213,10 @@ public class RenderNode {
      * during destruction of hardware resources, to ensure that we do not hold onto
      * obsolete resources after related resources are gone.
      */
-    public void destroyDisplayListData() {
+    public void discardDisplayList() {
         if (!mValid) return;
 
-        nSetDisplayListData(mNativeRenderNode, 0);
+        nSetDisplayList(mNativeRenderNode, 0);
         mValid = false;
     }
 
@@ -304,8 +259,8 @@ public class RenderNode {
         return nSetLayerType(mNativeRenderNode, layerType);
     }
 
-    public boolean setLayerPaint(Paint paint) {
-        return nSetLayerPaint(mNativeRenderNode, paint != null ? paint.mNativePaint : 0);
+    public boolean setLayerPaint(@Nullable Paint paint) {
+        return nSetLayerPaint(mNativeRenderNode, paint != null ? paint.getNativeInstance() : 0);
     }
 
     public boolean setClipBounds(@Nullable Rect rect) {
@@ -352,18 +307,22 @@ public class RenderNode {
      *
      * Deep copies the data into native to simplify reference ownership.
      */
-    public boolean setOutline(Outline outline) {
+    public boolean setOutline(@Nullable Outline outline) {
         if (outline == null) {
             return nSetOutlineNone(mNativeRenderNode);
-        } else if (outline.isEmpty()) {
-            return nSetOutlineEmpty(mNativeRenderNode);
-        } else if (outline.mRect != null) {
-            return nSetOutlineRoundRect(mNativeRenderNode, outline.mRect.left, outline.mRect.top,
-                    outline.mRect.right, outline.mRect.bottom, outline.mRadius, outline.mAlpha);
-        } else if (outline.mPath != null) {
-            return nSetOutlineConvexPath(mNativeRenderNode, outline.mPath.mNativePath,
-                    outline.mAlpha);
         }
+
+        switch(outline.mMode) {
+            case Outline.MODE_EMPTY:
+                return nSetOutlineEmpty(mNativeRenderNode);
+            case Outline.MODE_ROUND_RECT:
+                return nSetOutlineRoundRect(mNativeRenderNode, outline.mRect.left, outline.mRect.top,
+                        outline.mRect.right, outline.mRect.bottom, outline.mRadius, outline.mAlpha);
+            case Outline.MODE_CONVEX_PATH:
+                return nSetOutlineConvexPath(mNativeRenderNode, outline.mPath.mNativePath,
+                        outline.mAlpha);
+        }
+
         throw new IllegalArgumentException("Unrecognized outline?");
     }
 
@@ -808,6 +767,16 @@ public class RenderNode {
         return nGetDebugSize(mNativeRenderNode);
     }
 
+    /**
+     * Called by native when the passed displaylist is removed from the draw tree
+     */
+    void onRenderNodeDetached() {
+        discardDisplayList();
+        if (mOwningView != null) {
+            mOwningView.onRenderNodeDetached(this);
+        }
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // Animations
     ///////////////////////////////////////////////////////////////////////////
@@ -820,6 +789,18 @@ public class RenderNode {
         mOwningView.mAttachInfo.mViewRootImpl.registerAnimatingRenderNode(this);
     }
 
+    public boolean isAttached() {
+        return mOwningView != null && mOwningView.mAttachInfo != null;
+    }
+
+    public void registerVectorDrawableAnimator(
+            AnimatedVectorDrawable.VectorDrawableAnimatorRT animatorSet) {
+        if (mOwningView == null || mOwningView.mAttachInfo == null) {
+            throw new IllegalStateException("Cannot start this animator on a detached view!");
+        }
+        mOwningView.mAttachInfo.mViewRootImpl.registerVectorDrawableAnimator(animatorSet);
+    }
+
     public void endAllAnimators() {
         nEndAllAnimators(mNativeRenderNode);
     }
@@ -828,9 +809,11 @@ public class RenderNode {
     // Native methods
     ///////////////////////////////////////////////////////////////////////////
 
-    private static native long nCreate(String name);
+    // Intentionally not static because it acquires a reference to 'this'
+    private native long nCreate(String name);
+
     private static native void nDestroyRenderNode(long renderNode);
-    private static native void nSetDisplayListData(long renderNode, long newData);
+    private static native void nSetDisplayList(long renderNode, long newData);
 
     // Matrix
 
@@ -902,6 +885,8 @@ public class RenderNode {
     private static native float nGetPivotY(long renderNode);
     private static native void nOutput(long renderNode);
     private static native int nGetDebugSize(long renderNode);
+
+    private static native void nRequestPositionUpdates(long renderNode, SurfaceView callback);
 
     ///////////////////////////////////////////////////////////////////////////
     // Animations

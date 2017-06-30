@@ -18,12 +18,8 @@ package android.net.wifi;
 
 import android.os.Parcelable;
 import android.os.Parcel;
-import android.text.TextUtils;
-import java.util.HashMap;
-import java.util.Date;
-import java.util.ArrayList;
 
-import java.util.BitSet;
+import java.util.Arrays;
 
 /**
  * A class representing link layer statistics collected over a Wifi Interface.
@@ -107,6 +103,8 @@ public class WifiLinkLayerStats implements Parcelable {
     /** {@hide} */
     public int tx_time;
     /** {@hide} */
+    public int[] tx_time_per_level;
+    /** {@hide} */
     public int rx_time;
     /** {@hide} */
     public int on_time_scan;
@@ -147,9 +145,10 @@ public class WifiLinkLayerStats implements Parcelable {
                 .append(" lost=").append(Long.toString(this.lostmpdu_vo))
                 .append(" retries=").append(Long.toString(this.retries_vo)).append('\n');
         sbuf.append(" on_time : ").append(Integer.toString(this.on_time))
-                .append(" tx_time=").append(Integer.toString(this.tx_time))
                 .append(" rx_time=").append(Integer.toString(this.rx_time))
-                .append(" scan_time=").append(Integer.toString(this.on_time_scan)).append('\n');
+                .append(" scan_time=").append(Integer.toString(this.on_time_scan)).append('\n')
+                .append(" tx_time=").append(Integer.toString(this.tx_time))
+                .append(" tx_time_per_level=" + Arrays.toString(tx_time_per_level));
         return sbuf.toString();
     }
 
@@ -185,6 +184,7 @@ public class WifiLinkLayerStats implements Parcelable {
         dest.writeString(BSSID);
         dest.writeInt(on_time);
         dest.writeInt(tx_time);
+        dest.writeIntArray(tx_time_per_level);
         dest.writeInt(rx_time);
         dest.writeInt(on_time_scan);
     }
@@ -198,6 +198,7 @@ public class WifiLinkLayerStats implements Parcelable {
                 stats.BSSID = in.readString();
                 stats.on_time = in.readInt();
                 stats.tx_time = in.readInt();
+                stats.tx_time_per_level = in.createIntArray();
                 stats.rx_time = in.readInt();
                 stats.on_time_scan = in.readInt();
                 return stats;

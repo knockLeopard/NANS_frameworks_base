@@ -25,6 +25,8 @@ import android.view.DragEvent;
 import android.view.IWindow;
 import android.view.IWindowSession;
 
+import com.android.internal.os.IResultReceiver;
+
 public class BaseIWindow extends IWindow.Stub {
     private IWindowSession mSession;
     public int mSeq;
@@ -34,8 +36,9 @@ public class BaseIWindow extends IWindow.Stub {
     }
 
     @Override
-    public void resized(Rect frame, Rect overscanInsets, Rect contentInsets,
-            Rect visibleInsets, Rect stableInsets, boolean reportDraw, Configuration newConfig) {
+    public void resized(Rect frame, Rect overscanInsets, Rect contentInsets, Rect visibleInsets,
+            Rect stableInsets, Rect outsets, boolean reportDraw, Configuration newConfig,
+            Rect backDropFrame, boolean forceLayout, boolean alwaysConsumeNavBar) {
         if (reportDraw) {
             try {
                 mSession.finishDrawing(this);
@@ -83,6 +86,10 @@ public class BaseIWindow extends IWindow.Stub {
     }
 
     @Override
+    public void updatePointerIcon(float x, float y) {
+    }
+
+    @Override
     public void dispatchSystemUiVisibilityChanged(int seq, int globalUi,
             int localValue, int localChanges) {
         mSeq = seq;
@@ -100,10 +107,10 @@ public class BaseIWindow extends IWindow.Stub {
     }
 
     @Override
-    public void doneAnimating() {
+    public void dispatchWindowShown() {
     }
 
     @Override
-    public void dispatchWindowShown() {
+    public void requestAppKeyboardShortcuts(IResultReceiver receiver, int deviceId) {
     }
 }

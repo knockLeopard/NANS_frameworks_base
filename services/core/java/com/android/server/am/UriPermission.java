@@ -94,7 +94,16 @@ final class UriPermission {
     }
 
     private void updateModeFlags() {
+        final int oldModeFlags = modeFlags;
         modeFlags = ownedModeFlags | globalModeFlags | persistableModeFlags | persistedModeFlags;
+
+        if (Log.isLoggable(TAG, Log.VERBOSE) && (modeFlags != oldModeFlags)) {
+            Slog.d(TAG,
+                    "Permission for " + targetPkg + " to " + uri + " is changing from 0x"
+                            + Integer.toHexString(oldModeFlags) + " to 0x"
+                            + Integer.toHexString(modeFlags),
+                    new Throwable());
+        }
     }
 
     /**

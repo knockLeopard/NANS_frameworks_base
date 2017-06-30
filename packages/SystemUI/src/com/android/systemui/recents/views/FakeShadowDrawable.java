@@ -30,6 +30,7 @@ import android.graphics.drawable.Drawable;
 import android.util.Log;
 
 import com.android.systemui.R;
+import com.android.systemui.recents.Recents;
 import com.android.systemui.recents.RecentsConfiguration;
 
 /**
@@ -90,7 +91,10 @@ class FakeShadowDrawable extends Drawable {
         mCornerShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
         mCornerShadowPaint.setStyle(Paint.Style.FILL);
         mCornerShadowPaint.setDither(true);
-        mCornerRadius = config.taskViewRoundedCornerRadiusPx;
+        mCornerRadius = Recents.getConfiguration().isGridEnabled ?
+                resources.getDimensionPixelSize(
+                    R.dimen.recents_grid_task_view_rounded_corners_radius) :
+                resources.getDimensionPixelSize(R.dimen.recents_task_view_rounded_corners_radius);
         mCardBounds = new RectF();
         mEdgeShadowPaint = new Paint(mCornerShadowPaint);
     }
@@ -159,9 +163,9 @@ class FakeShadowDrawable extends Drawable {
     }
 
     @Override
-    public void setColorFilter(ColorFilter cf) {
-        mCornerShadowPaint.setColorFilter(cf);
-        mEdgeShadowPaint.setColorFilter(cf);
+    public void setColorFilter(ColorFilter colorFilter) {
+        mCornerShadowPaint.setColorFilter(colorFilter);
+        mEdgeShadowPaint.setColorFilter(colorFilter);
     }
 
     @Override

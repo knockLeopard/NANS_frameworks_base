@@ -24,11 +24,9 @@ import android.util.Log;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -100,6 +98,19 @@ public class NetlinkTracker extends BaseNetworkObserver {
     private void maybeLog(String operation, Object o) {
         if (DBG) {
             Log.d(TAG, operation + ": " + o.toString());
+        }
+    }
+
+    @Override
+    public void interfaceRemoved(String iface) {
+        maybeLog("interfaceRemoved", iface);
+        if (mInterfaceName.equals(iface)) {
+            // Our interface was removed. Clear our LinkProperties and tell our owner that they are
+            // now empty. Note that from the moment that the interface is removed, any further
+            // interface-specific messages (e.g., RTM_DELADDR) will not reach us, because the netd
+            // code that parses them will not be able to resolve the ifindex to an interface name.
+            clearLinkProperties();
+            mCallback.update();
         }
     }
 

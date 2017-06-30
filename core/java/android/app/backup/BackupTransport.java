@@ -49,6 +49,11 @@ public class BackupTransport {
     public static final int TRANSPORT_PACKAGE_REJECTED = -1002;
     public static final int AGENT_ERROR = -1003;
     public static final int AGENT_UNKNOWN = -1004;
+    public static final int TRANSPORT_QUOTA_EXCEEDED = -1005;
+
+    // Indicates that operation was initiated by user, not a scheduled one.
+    // Transport should ignore its own moratoriums for call with this flag set.
+    public static final int FLAG_USER_INITIATED = 1;
 
     IBackupTransport mBinderImpl = new TransportImpl();
 
@@ -162,8 +167,17 @@ public class BackupTransport {
      * this is called, {@link #finishBackup} will be called to ensure the request
      * is sent and received successfully.
      *
+     * <p>If the transport returns anything other than TRANSPORT_OK from this method,
+     * the OS will halt the current initialize operation and schedule a retry in the
+     * near future.  Even if the transport is in a state such that attempting to
+     * "initialize" the backend storage is meaningless -- for example, if there is
+     * no current live dataset at all, or there is no authenticated account under which
+     * to store the data remotely -- the transport should return TRANSPORT_OK here
+     * and treat the initializeDevice() / finishBackup() pair as a graceful no-op.
+     *
      * @return One of {@link BackupTransport#TRANSPORT_OK} (OK so far) or
-     *   {@link BackupTransport#TRANSPORT_ERROR} (on network error or other failure).
+     *   {@link BackupTransport#TRANSPORT_ERROR} (to retry following network error
+     *   or other failure).
      */
     public int initializeDevice() {
         return BackupTransport.TRANSPORT_ERROR;
@@ -219,19 +233,24 @@ public class BackupTransport {
      *
      * @param packageInfo The identity of the application whose data is being backed up.
      *   This specifically includes the signature list for the package.
-     * @param data The data stream that resulted from invoking the application's
+     * @param inFd Descriptor of file with data that resulted from invoking the application's
      *   BackupService.doBackup() method.  This may be a pipe rather than a file on
      *   persistent media, so it may not be seekable.
-     * @param wipeAllFirst When true, <i>all</i> backed-up data for the current device/account
-     *   must be erased prior to the storage of the data provided here.  The purpose of this
-     *   is to provide a guarantee that no stale data exists in the restore set when the
-     *   device begins providing incremental backups.
+     * @param flags {@link BackupTransport#FLAG_USER_INITIATED} or 0.
      * @return one of {@link BackupTransport#TRANSPORT_OK} (OK so far),
      *  {@link BackupTransport#TRANSPORT_PACKAGE_REJECTED} (to suppress backup of this
      *  specific package, but allow others to proceed),
      *  {@link BackupTransport#TRANSPORT_ERROR} (on network error or other failure), or
      *  {@link BackupTransport#TRANSPORT_NOT_INITIALIZED} (if the backend dataset has
      *  become lost due to inactivity purge or some other reason and needs re-initializing)
+     */
+    public int performBackup(PackageInfo packageInfo, ParcelFileDescriptor inFd, int flags) {
+        return performBackup(packageInfo, inFd);
+    }
+
+    /**
+     * Legacy version of {@link #performBackup(PackageInfo, ParcelFileDescriptor, int)} that
+     * doesn't use flags parameter.
      */
     public int performBackup(PackageInfo packageInfo, ParcelFileDescriptor inFd) {
         return BackupTransport.TRANSPORT_ERROR;
@@ -383,13 +402,50 @@ public class BackupTransport {
      *    close this file descriptor now; otherwise it should be cached for use during
      *    succeeding calls to {@link #sendBackupData(int)}, and closed in response to
      *    {@link #finishBackup()}.
+     * @param flags {@link BackupTransport#FLAG_USER_INITIATED} or 0.
      * @return TRANSPORT_PACKAGE_REJECTED to indicate that the stated application is not
      *    to be backed up; TRANSPORT_OK to indicate that the OS may proceed with delivering
      *    backup data; TRANSPORT_ERROR to indicate a fatal error condition that precludes
      *    performing a backup at this time.
      */
+    public int performFullBackup(PackageInfo targetPackage, ParcelFileDescriptor socket,
+            int flags) {
+        return performFullBackup(targetPackage, socket);
+    }
+
+    /**
+     * Legacy version of {@link #performFullBackup(PackageInfo, ParcelFileDescriptor, int)} that
+     * doesn't use flags parameter.
+     */
     public int performFullBackup(PackageInfo targetPackage, ParcelFileDescriptor socket) {
         return BackupTransport.TRANSPORT_PACKAGE_REJECTED;
+    }
+
+    /**
+     * Called after {@link #performFullBackup} to make sure that the transport is willing to
+     * handle a full-data backup operation of the specified size on the current package.
+     * If the transport returns anything other than TRANSPORT_OK, the package's backup
+     * operation will be skipped (and {@link #finishBackup() invoked} with no data for that
+     * package being passed to {@link #sendBackupData}.
+     *
+     * <p class="note">The platform does no size-based rejection of full backup attempts on
+     * its own: it is always the responsibility of the transport to implement its own policy.
+     * In particular, even if the preflighted payload size is zero, the platform will still call
+     * this method and will proceed to back up an archive metadata header with no file content
+     * if this method returns TRANSPORT_OK.  To avoid storing such payloads the transport
+     * must recognize this case and return TRANSPORT_PACKAGE_REJECTED.
+     *
+     * Added in {@link android.os.Build.VERSION_CODES#M}.
+     *
+     * @param size The estimated size of the full-data payload for this app.  This includes
+     *         manifest and archive format overhead, but is not guaranteed to be precise.
+     * @return TRANSPORT_OK if the platform is to proceed with the full-data backup,
+     *         TRANSPORT_PACKAGE_REJECTED if the proposed payload size is too large for
+     *         the transport to handle, or TRANSPORT_ERROR to indicate a fatal error
+     *         condition that means the platform cannot perform a backup at this time.
+     */
+    public int checkFullBackupSize(long size) {
+        return BackupTransport.TRANSPORT_OK;
     }
 
     /**
@@ -427,6 +483,30 @@ public class BackupTransport {
                 "Transport cancelFullBackup() not implemented");
     }
 
+    /**
+     * Ask the transport whether this app is eligible for backup.
+     *
+     * @param targetPackage The identity of the application.
+     * @param isFullBackup If set, transport should check if app is eligible for full data backup,
+     *   otherwise to check if eligible for key-value backup.
+     * @return Whether this app is eligible for backup.
+     */
+    public boolean isAppEligibleForBackup(PackageInfo targetPackage, boolean isFullBackup) {
+        return true;
+    }
+
+    /**
+     * Ask the transport about current quota for backup size of the package.
+     *
+     * @param packageName ID of package to provide the quota.
+     * @param isFullBackup If set, transport should return limit for full data backup, otherwise
+     *                     for key-value backup.
+     * @return Current limit on backup size in bytes.
+     */
+    public long getBackupQuota(String packageName, boolean isFullBackup) {
+        return Long.MAX_VALUE;
+    }
+
     // ------------------------------------------------------------------------------------
     // Full restore interfaces
 
@@ -444,7 +524,7 @@ public class BackupTransport {
      * transport level).
      *
      * <p>After this method returns zero, the system will then call
-     * {@link #getNextFullRestorePackage()} to begin the restore process for the next
+     * {@link #nextRestorePackage()} to begin the restore process for the next
      * application, and the sequence begins again.
      *
      * <p>The transport should always close this socket when returning from this method.
@@ -532,9 +612,9 @@ public class BackupTransport {
         }
 
         @Override
-        public int performBackup(PackageInfo packageInfo, ParcelFileDescriptor inFd)
+        public int performBackup(PackageInfo packageInfo, ParcelFileDescriptor inFd, int flags)
                 throws RemoteException {
-            return BackupTransport.this.performBackup(packageInfo, inFd);
+            return BackupTransport.this.performBackup(packageInfo, inFd, flags);
         }
 
         @Override
@@ -583,8 +663,14 @@ public class BackupTransport {
         }
 
         @Override
-        public int performFullBackup(PackageInfo targetPackage, ParcelFileDescriptor socket) throws RemoteException {
-            return BackupTransport.this.performFullBackup(targetPackage, socket);
+        public int performFullBackup(PackageInfo targetPackage, ParcelFileDescriptor socket,
+                int flags) throws RemoteException {
+            return BackupTransport.this.performFullBackup(targetPackage, socket, flags);
+        }
+
+        @Override
+        public int checkFullBackupSize(long size) {
+            return BackupTransport.this.checkFullBackupSize(size);
         }
 
         @Override
@@ -595,6 +681,17 @@ public class BackupTransport {
         @Override
         public void cancelFullBackup() throws RemoteException {
             BackupTransport.this.cancelFullBackup();
+        }
+
+        @Override
+        public boolean isAppEligibleForBackup(PackageInfo targetPackage, boolean isFullBackup)
+                throws RemoteException {
+            return BackupTransport.this.isAppEligibleForBackup(targetPackage, isFullBackup);
+        }
+
+        @Override
+        public long getBackupQuota(String packageName, boolean isFullBackup) {
+            return BackupTransport.this.getBackupQuota(packageName, isFullBackup);
         }
 
         @Override

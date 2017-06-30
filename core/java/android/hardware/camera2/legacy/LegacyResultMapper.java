@@ -42,7 +42,7 @@ import static android.hardware.camera2.CaptureResult.*;
 @SuppressWarnings("deprecation")
 public class LegacyResultMapper {
     private static final String TAG = "LegacyResultMapper";
-    private static final boolean VERBOSE = Log.isLoggable(TAG, Log.VERBOSE);
+    private static final boolean DEBUG = false;
 
     private LegacyRequest mCachedRequest = null;
     private CameraMetadataNative mCachedResult = null;
@@ -67,7 +67,9 @@ public class LegacyResultMapper {
         /*
          * Attempt to look up the result from the cache if the parameters haven't changed
          */
-        if (mCachedRequest != null && legacyRequest.parameters.same(mCachedRequest.parameters)) {
+        if (mCachedRequest != null &&
+                legacyRequest.parameters.same(mCachedRequest.parameters) &&
+                legacyRequest.captureRequest.equals(mCachedRequest.captureRequest)) {
             result = new CameraMetadataNative(mCachedResult);
             cached = true;
         } else {
@@ -88,7 +90,7 @@ public class LegacyResultMapper {
             result.set(SENSOR_TIMESTAMP, timestamp);
         }
 
-        if (VERBOSE) {
+        if (DEBUG) {
             Log.v(TAG, "cachedConvertResultMetadata - cached? " + cached +
                     " timestamp = " + timestamp);
 
@@ -124,8 +126,8 @@ public class LegacyResultMapper {
          */
         // colorCorrection.aberrationMode
         {
-            // Always hardcoded to FAST
-            result.set(COLOR_CORRECTION_ABERRATION_MODE, COLOR_CORRECTION_ABERRATION_MODE_FAST);
+            result.set(COLOR_CORRECTION_ABERRATION_MODE,
+                    request.get(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE));
         }
 
         /*
@@ -282,7 +284,7 @@ public class LegacyResultMapper {
          * noiseReduction.*
          */
         // noiseReduction.mode
-        result.set(NOISE_REDUCTION_MODE, NOISE_REDUCTION_MODE_FAST);
+        result.set(NOISE_REDUCTION_MODE, request.get(CaptureRequest.NOISE_REDUCTION_MODE));
 
         return result;
     }
@@ -306,7 +308,7 @@ public class LegacyResultMapper {
         {
             boolean lock = p.isAutoExposureLockSupported() ? p.getAutoExposureLock() : false;
             m.set(CONTROL_AE_LOCK, lock);
-            if (VERBOSE) {
+            if (DEBUG) {
                 Log.v(TAG,
                         "mapAe - android.control.aeLock = " + lock +
                         ", supported = " + p.isAutoExposureLockSupported());
@@ -332,7 +334,7 @@ public class LegacyResultMapper {
 
         // control.aeRegions
         if (p.getMaxNumMeteringAreas() > 0) {
-            if (VERBOSE) {
+            if (DEBUG) {
                 String meteringAreas = p.get("metering-areas");
                 Log.v(TAG, "mapAe - parameter dump; metering-areas: " + meteringAreas);
             }
@@ -352,7 +354,7 @@ public class LegacyResultMapper {
 
         // control.afRegions
         if (p.getMaxNumFocusAreas() > 0) {
-            if (VERBOSE) {
+            if (DEBUG) {
                 String focusAreas = p.get("focus-areas");
                 Log.v(TAG, "mapAe - parameter dump; focus-areas: " + focusAreas);
             }
@@ -392,7 +394,7 @@ public class LegacyResultMapper {
             }
         }
 
-        if (VERBOSE) {
+        if (DEBUG) {
             Log.v(TAG,
                     "Metering rectangles for " + regionName + ": "
                      + ListUtils.listToString(meteringRectList));

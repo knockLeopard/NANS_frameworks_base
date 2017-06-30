@@ -16,7 +16,6 @@
 
 package android.net;
 
-import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.util.Log;
 
@@ -31,6 +30,7 @@ import java.net.Proxy.Type;
 import java.net.ProxySelector;
 import java.net.SocketAddress;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.List;
 
 /**
@@ -68,14 +68,22 @@ public class PacProxySelector extends ProxySelector {
         String response = null;
         String urlString;
         try {
+            // Strip path and username/password from URI so it's not visible to PAC script. The
+            // path often contains credentials the app does not want exposed to a potentially
+            // malicious PAC script.
+            if (!"http".equalsIgnoreCase(uri.getScheme())) {
+                uri = new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(), "/", null, null);
+            }
             urlString = uri.toURL().toString();
+        } catch (URISyntaxException e) {
+            urlString = uri.getHost();
         } catch (MalformedURLException e) {
             urlString = uri.getHost();
         }
         try {
             response = mProxyService.resolvePacFile(uri.getHost(), urlString);
-        } catch (RemoteException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
+            Log.e(TAG, "Error resolving PAC File", e);
         }
         if (response == null) {
             return mDefaultList;

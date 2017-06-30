@@ -16,8 +16,6 @@
 
 package com.android.layoutlib.bridge.bars;
 
-import com.android.annotations.NonNull;
-import com.android.annotations.Nullable;
 import com.android.ide.common.rendering.api.ActionBarCallback;
 import com.android.ide.common.rendering.api.RenderResources;
 import com.android.ide.common.rendering.api.ResourceValue;
@@ -31,6 +29,8 @@ import com.android.internal.widget.DecorToolbar;
 import com.android.layoutlib.bridge.android.BridgeContext;
 import com.android.layoutlib.bridge.impl.ResourceHelper;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.app.ActionBar;
 import android.app.ActionBar.Tab;
 import android.app.ActionBar.TabListener;
@@ -43,6 +43,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowCallback;
 import android.widget.ActionMenuPresenter;
+import android.widget.ActionMenuView;
 import android.widget.Toolbar;
 import android.widget.Toolbar_Accessor;
 
@@ -79,7 +80,7 @@ public abstract class FrameworkActionBarWrapper {
         }
     }
 
-    FrameworkActionBarWrapper(@NonNull BridgeContext context, ActionBarCallback callback,
+    FrameworkActionBarWrapper(@NonNull BridgeContext context, @NonNull ActionBarCallback callback,
             @NonNull ActionBar actionBar) {
         mActionBar = actionBar;
         mCallback = callback;
@@ -196,11 +197,16 @@ public abstract class FrameworkActionBarWrapper {
         @Override
         protected void inflateMenus() {
             super.inflateMenus();
-            // Inflating the menus doesn't initialize the ActionMenuPresenter. Setting a fake menu
-            // and then setting it back does the trick.
+            // Inflating the menus isn't enough. ActionMenuPresenter needs to be initialized too.
             MenuBuilder menu = getMenuBuilder();
             DecorToolbar decorToolbar = getDecorToolbar();
+            // Setting a menu different from the above initializes the presenter.
             decorToolbar.setMenu(new MenuBuilder(getActionMenuContext()), null);
+            // ActionMenuView needs to be recreated to be able to set the menu back.
+            ActionMenuPresenter presenter = getActionMenuPresenter();
+            if (presenter != null) {
+                presenter.setMenuView(new ActionMenuView(getPopupContext()));
+            }
             decorToolbar.setMenu(menu, null);
         }
 
@@ -255,7 +261,7 @@ public abstract class FrameworkActionBarWrapper {
                 @NonNull ActionBarView actionBarView) {
             super(context, callback, new WindowDecorActionBar(decorContentRoot));
             mActionBarView = actionBarView;
-            mActionBar = ((WindowDecorActionBar) super.mActionBar);
+            mActionBar = (WindowDecorActionBar) super.mActionBar;
             mDecorContentRoot = decorContentRoot;
         }
 

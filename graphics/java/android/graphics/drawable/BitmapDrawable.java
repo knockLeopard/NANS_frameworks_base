@@ -17,6 +17,7 @@
 package android.graphics.drawable;
 
 import android.annotation.NonNull;
+import android.content.pm.ActivityInfo.Config;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.content.res.Resources.Theme;
@@ -219,7 +220,8 @@ public class BitmapDrawable extends Drawable {
         }
     }
 
-    private void setBitmap(Bitmap bitmap) {
+    /** @hide */
+    public void setBitmap(Bitmap bitmap) {
         if (mBitmapState.mBitmap != bitmap) {
             mBitmapState.mBitmap = bitmap;
             computeBitmapSize();
@@ -352,6 +354,11 @@ public class BitmapDrawable extends Drawable {
     }
 
     @Override
+    public boolean isFilterBitmap() {
+        return mBitmapState.mPaint.isFilterBitmap();
+    }
+
+    @Override
     public void setDither(boolean dither) {
         mBitmapState.mPaint.setDither(dither);
         invalidateSelf();
@@ -448,39 +455,22 @@ public class BitmapDrawable extends Drawable {
     }
 
     @Override
-    public int getChangingConfigurations() {
-        return super.getChangingConfigurations() | mBitmapState.mChangingConfigurations;
+    public @Config int getChangingConfigurations() {
+        return super.getChangingConfigurations() | mBitmapState.getChangingConfigurations();
     }
 
     private boolean needMirroring() {
         return isAutoMirrored() && getLayoutDirection() == LayoutDirection.RTL;
     }
 
-    private void updateMirrorMatrix(float dx) {
-        if (mMirrorMatrix == null) {
-            mMirrorMatrix = new Matrix();
-        }
-        mMirrorMatrix.setTranslate(dx, 0);
-        mMirrorMatrix.preScale(-1.0f, 1.0f);
-    }
-
     @Override
     protected void onBoundsChange(Rect bounds) {
         mDstRectAndInsetsDirty = true;
 
+        final Bitmap bitmap = mBitmapState.mBitmap;
         final Shader shader = mBitmapState.mPaint.getShader();
-        if (shader != null) {
-            if (needMirroring()) {
-                updateMirrorMatrix(bounds.right - bounds.left);
-                shader.setLocalMatrix(mMirrorMatrix);
-                mBitmapState.mPaint.setShader(shader);
-            } else {
-                if (mMirrorMatrix != null) {
-                    mMirrorMatrix = null;
-                    shader.setLocalMatrix(Matrix.IDENTITY_MATRIX);
-                    mBitmapState.mPaint.setShader(shader);
-                }
-            }
+        if (bitmap != null && shader != null) {
+            updateShaderMatrix(bitmap, mBitmapState.mPaint, shader, needMirroring());
         }
     }
 
@@ -541,19 +531,7 @@ public class BitmapDrawable extends Drawable {
                 canvas.restore();
             }
         } else {
-            if (needMirroring) {
-                // Mirror the bitmap
-                updateMirrorMatrix(mDstRect.right - mDstRect.left);
-                shader.setLocalMatrix(mMirrorMatrix);
-                paint.setShader(shader);
-            } else {
-                if (mMirrorMatrix != null) {
-                    mMirrorMatrix = null;
-                    shader.setLocalMatrix(Matrix.IDENTITY_MATRIX);
-                    paint.setShader(shader);
-                }
-            }
-
+            updateShaderMatrix(bitmap, paint, shader, needMirroring);
             canvas.drawRect(mDstRect, paint);
         }
 
@@ -564,6 +542,51 @@ public class BitmapDrawable extends Drawable {
         if (restoreAlpha >= 0) {
             paint.setAlpha(restoreAlpha);
         }
+    }
+
+    /**
+     * Updates the {@code paint}'s shader matrix to be consistent with the
+     * destination size and layout direction.
+     *
+     * @param bitmap the bitmap to be drawn
+     * @param paint the paint used to draw the bitmap
+     * @param shader the shader to set on the paint
+     * @param needMirroring whether the bitmap should be mirrored
+     */
+    private void updateShaderMatrix(@NonNull Bitmap bitmap, @NonNull Paint paint,
+            @NonNull Shader shader, boolean needMirroring) {
+        final int sourceDensity = bitmap.getDensity();
+        final int targetDensity = mTargetDensity;
+        final boolean needScaling = sourceDensity != 0 && sourceDensity != targetDensity;
+        if (needScaling || needMirroring) {
+            final Matrix matrix = getOrCreateMirrorMatrix();
+            matrix.reset();
+
+            if (needMirroring) {
+                final int dx = mDstRect.right - mDstRect.left;
+                matrix.setTranslate(dx, 0);
+                matrix.setScale(-1, 1);
+            }
+
+            if (needScaling) {
+                final float densityScale = targetDensity / (float) sourceDensity;
+                matrix.postScale(densityScale, densityScale);
+            }
+
+            shader.setLocalMatrix(matrix);
+        } else {
+            mMirrorMatrix = null;
+            shader.setLocalMatrix(Matrix.IDENTITY_MATRIX);
+        }
+
+        paint.setShader(shader);
+    }
+
+    private Matrix getOrCreateMirrorMatrix() {
+        if (mMirrorMatrix == null) {
+            mMirrorMatrix = new Matrix();
+        }
+        return mMirrorMatrix;
     }
 
     private void updateDstRectAndInsetsIfDirty() {
@@ -623,8 +646,8 @@ public class BitmapDrawable extends Drawable {
     }
 
     @Override
-    public void setColorFilter(ColorFilter cf) {
-        mBitmapState.mPaint.setColorFilter(cf);
+    public void setColorFilter(ColorFilter colorFilter) {
+        mBitmapState.mPaint.setColorFilter(colorFilter);
         invalidateSelf();
     }
 
@@ -635,16 +658,22 @@ public class BitmapDrawable extends Drawable {
 
     @Override
     public void setTintList(ColorStateList tint) {
-        mBitmapState.mTint = tint;
-        mTintFilter = updateTintFilter(mTintFilter, tint, mBitmapState.mTintMode);
-        invalidateSelf();
+        final BitmapState state = mBitmapState;
+        if (state.mTint != tint) {
+            state.mTint = tint;
+            mTintFilter = updateTintFilter(mTintFilter, tint, mBitmapState.mTintMode);
+            invalidateSelf();
+        }
     }
 
     @Override
     public void setTintMode(PorterDuff.Mode tintMode) {
-        mBitmapState.mTintMode = tintMode;
-        mTintFilter = updateTintFilter(mTintFilter, mBitmapState.mTint, tintMode);
-        invalidateSelf();
+        final BitmapState state = mBitmapState;
+        if (state.mTintMode != tintMode) {
+            state.mTintMode = tintMode;
+            mTintFilter = updateTintFilter(mTintFilter, mBitmapState.mTint, tintMode);
+            invalidateSelf();
+        }
     }
 
     /**
@@ -705,8 +734,8 @@ public class BitmapDrawable extends Drawable {
 
     @Override
     public boolean isStateful() {
-        final BitmapState s = mBitmapState;
-        return super.isStateful() || (s.mTint != null && s.mTint.isStateful());
+        return (mBitmapState.mTint != null && mBitmapState.mTint.isStateful())
+                || super.isStateful();
     }
 
     @Override
@@ -716,8 +745,11 @@ public class BitmapDrawable extends Drawable {
 
         final TypedArray a = obtainAttributes(r, theme, attrs, R.styleable.BitmapDrawable);
         updateStateFromTypedArray(a);
-        verifyState(a);
+        verifyRequiredAttributes(a);
         a.recycle();
+
+        // Update local properties.
+        updateLocalState(r);
     }
 
     /**
@@ -725,11 +757,13 @@ public class BitmapDrawable extends Drawable {
      *
      * @throws XmlPullParserException if any required attributes are missing
      */
-    private void verifyState(TypedArray a) throws XmlPullParserException {
+    private void verifyRequiredAttributes(TypedArray a) throws XmlPullParserException {
+        // If we're not waiting on a theme, verify required attributes.
         final BitmapState state = mBitmapState;
-        if (state.mBitmap == null) {
+        if (state.mBitmap == null && (state.mThemeAttrs == null
+                || state.mThemeAttrs[R.styleable.BitmapDrawable_src] == 0)) {
             throw new XmlPullParserException(a.getPositionDescription() +
-                    ": <bitmap> requires a valid src attribute");
+                    ": <bitmap> requires a valid 'src' attribute");
         }
     }
 
@@ -751,7 +785,7 @@ public class BitmapDrawable extends Drawable {
             final Bitmap bitmap = BitmapFactory.decodeResource(r, srcResId);
             if (bitmap == null) {
                 throw new XmlPullParserException(a.getPositionDescription() +
-                        ": <bitmap> requires a valid src attribute");
+                        ": <bitmap> requires a valid 'src' attribute");
             }
 
             state.mBitmap = bitmap;
@@ -801,8 +835,7 @@ public class BitmapDrawable extends Drawable {
             setTileModeY(parseTileMode(tileModeY));
         }
 
-        // Update local properties.
-        initializeWithState(state, r);
+        state.mTargetDensity = Drawable.resolveDensity(r, 0);
     }
 
     @Override
@@ -810,18 +843,28 @@ public class BitmapDrawable extends Drawable {
         super.applyTheme(t);
 
         final BitmapState state = mBitmapState;
-        if (state == null || state.mThemeAttrs == null) {
+        if (state == null) {
             return;
         }
 
-        final TypedArray a = t.resolveAttributes(state.mThemeAttrs, R.styleable.BitmapDrawable);
-        try {
-            updateStateFromTypedArray(a);
-        } catch (XmlPullParserException e) {
-            throw new RuntimeException(e);
-        } finally {
-            a.recycle();
+        if (state.mThemeAttrs != null) {
+            final TypedArray a = t.resolveAttributes(state.mThemeAttrs, R.styleable.BitmapDrawable);
+            try {
+                updateStateFromTypedArray(a);
+            } catch (XmlPullParserException e) {
+                rethrowAsRuntimeException(e);
+            } finally {
+                a.recycle();
+            }
         }
+
+        // Apply theme to contained color state list.
+        if (state.mTint != null && state.mTint.canApplyTheme()) {
+            state.mTint = state.mTint.obtainForTheme(t);
+        }
+
+        // Update local properties.
+        updateLocalState(t.getResources());
     }
 
     private static Shader.TileMode parseTileMode(int tileMode) {
@@ -839,7 +882,7 @@ public class BitmapDrawable extends Drawable {
 
     @Override
     public boolean canApplyTheme() {
-        return mBitmapState != null && mBitmapState.mThemeAttrs != null;
+        return mBitmapState != null && mBitmapState.canApplyTheme();
     }
 
     @Override
@@ -865,7 +908,7 @@ public class BitmapDrawable extends Drawable {
 
     @Override
     public final ConstantState getConstantState() {
-        mBitmapState.mChangingConfigurations = getChangingConfigurations();
+        mBitmapState.mChangingConfigurations |= getChangingConfigurations();
         return mBitmapState;
     }
 
@@ -884,7 +927,7 @@ public class BitmapDrawable extends Drawable {
         int mTargetDensity = DisplayMetrics.DENSITY_DEFAULT;
         boolean mAutoMirrored = false;
 
-        int mChangingConfigurations;
+        @Config int mChangingConfigurations;
         boolean mRebuildShader;
 
         BitmapState(Bitmap bitmap) {
@@ -910,7 +953,7 @@ public class BitmapDrawable extends Drawable {
 
         @Override
         public boolean canApplyTheme() {
-            return mThemeAttrs != null;
+            return mThemeAttrs != null || mTint != null && mTint.canApplyTheme();
         }
 
         @Override
@@ -932,8 +975,9 @@ public class BitmapDrawable extends Drawable {
         }
 
         @Override
-        public int getChangingConfigurations() {
-            return mChangingConfigurations;
+        public @Config int getChangingConfigurations() {
+            return mChangingConfigurations
+                    | (mTint != null ? mTint.getChangingConfigurations() : 0);
         }
     }
 
@@ -944,7 +988,7 @@ public class BitmapDrawable extends Drawable {
     private BitmapDrawable(BitmapState state, Resources res) {
         mBitmapState = state;
 
-        initializeWithState(mBitmapState, res);
+        updateLocalState(res);
     }
 
     /**
@@ -952,14 +996,9 @@ public class BitmapDrawable extends Drawable {
      * after significant state changes, e.g. from the One True Constructor and
      * after inflating or applying a theme.
      */
-    private void initializeWithState(BitmapState state, Resources res) {
-        if (res != null) {
-            mTargetDensity = res.getDisplayMetrics().densityDpi;
-        } else {
-            mTargetDensity = state.mTargetDensity;
-        }
-
-        mTintFilter = updateTintFilter(mTintFilter, state.mTint, state.mTintMode);
+    private void updateLocalState(Resources res) {
+        mTargetDensity = resolveDensity(res, mBitmapState.mTargetDensity);
+        mTintFilter = updateTintFilter(mTintFilter, mBitmapState.mTint, mBitmapState.mTintMode);
         computeBitmapSize();
     }
 }

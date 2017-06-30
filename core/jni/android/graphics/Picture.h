@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_GRAPHICS_PICTURE_H
-#define ANDROID_GRAPHICS_PICTURE_H
+#ifndef ANDROID_GRAPHICS_PICTURE_H_
+#define ANDROID_GRAPHICS_PICTURE_H_
 
 #include "SkPicture.h"
 #include "SkPictureRecorder.h"
 #include "SkRefCnt.h"
-#include "SkTemplates.h"
+
+#include <memory>
 
 class SkStream;
 class SkWStream;
@@ -55,12 +56,14 @@ private:
     int mWidth;
     int mHeight;
     SkAutoTUnref<const SkPicture> mPicture;
-    SkAutoTDelete<SkPictureRecorder> mRecorder;
+    std::unique_ptr<SkPictureRecorder> mRecorder;
 
     // Make a copy of a picture that is in the midst of being recorded. The
     // resulting picture will have balanced saves and restores.
     SkPicture* makePartialCopy() const;
+
+    void validate() const;
 };
 
 }; // namespace android
-#endif // ANDROID_GRAPHICS_PICTURE_H
+#endif // ANDROID_GRAPHICS_PICTURE_H_

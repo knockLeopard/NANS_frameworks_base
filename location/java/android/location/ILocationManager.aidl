@@ -21,9 +21,9 @@ import android.location.Address;
 import android.location.Criteria;
 import android.location.GeocoderParams;
 import android.location.Geofence;
-import android.location.IGpsMeasurementsListener;
-import android.location.IGpsNavigationMessageListener;
-import android.location.IGpsStatusListener;
+import android.location.IGnssMeasurementsListener;
+import android.location.IGnssStatusListener;
+import android.location.IGnssNavigationMessageListener;
 import android.location.ILocationListener;
 import android.location.Location;
 import android.location.LocationRequest;
@@ -48,8 +48,8 @@ interface ILocationManager
 
     Location getLastLocation(in LocationRequest request, String packageName);
 
-    boolean addGpsStatusListener(IGpsStatusListener listener, String packageName);
-    void removeGpsStatusListener(IGpsStatusListener listener);
+    boolean registerGnssStatusCallback(IGnssStatusListener callback, String packageName);
+    void unregisterGnssStatusCallback(IGnssStatusListener callback);
 
     boolean geocoderIsPresent();
     String getFromLocation(double latitude, double longitude, int maxResults,
@@ -61,13 +61,15 @@ interface ILocationManager
 
     boolean sendNiResponse(int notifId, int userResponse);
 
-    boolean addGpsMeasurementsListener(in IGpsMeasurementsListener listener, in String packageName);
-    void removeGpsMeasurementsListener(in IGpsMeasurementsListener listener);
+    boolean addGnssMeasurementsListener(in IGnssMeasurementsListener listener, in String packageName);
+    void removeGnssMeasurementsListener(in IGnssMeasurementsListener listener);
 
-    boolean addGpsNavigationMessageListener(
-            in IGpsNavigationMessageListener listener,
+    boolean addGnssNavigationMessageListener(
+            in IGnssNavigationMessageListener listener,
             in String packageName);
-    void removeGpsNavigationMessageListener(in IGpsNavigationMessageListener listener);
+    void removeGnssNavigationMessageListener(in IGnssNavigationMessageListener listener);
+
+    int getGnssYearOfHardware();
 
     // --- deprecated ---
     List<String> getAllProviders();
@@ -75,16 +77,18 @@ interface ILocationManager
     String getBestProvider(in Criteria criteria, boolean enabledOnly);
     boolean providerMeetsCriteria(String provider, in Criteria criteria);
     ProviderProperties getProviderProperties(String provider);
+    String getNetworkProviderPackage();
     boolean isProviderEnabled(String provider);
 
-    void addTestProvider(String name, in ProviderProperties properties);
-    void removeTestProvider(String provider);
-    void setTestProviderLocation(String provider, in Location loc);
-    void clearTestProviderLocation(String provider);
-    void setTestProviderEnabled(String provider, boolean enabled);
-    void clearTestProviderEnabled(String provider);
-    void setTestProviderStatus(String provider, int status, in Bundle extras, long updateTime);
-    void clearTestProviderStatus(String provider);
+    void addTestProvider(String name, in ProviderProperties properties, String opPackageName);
+    void removeTestProvider(String provider, String opPackageName);
+    void setTestProviderLocation(String provider, in Location loc, String opPackageName);
+    void clearTestProviderLocation(String provider, String opPackageName);
+    void setTestProviderEnabled(String provider, boolean enabled, String opPackageName);
+    void clearTestProviderEnabled(String provider, String opPackageName);
+    void setTestProviderStatus(String provider, int status, in Bundle extras, long updateTime,
+            String opPackageName);
+    void clearTestProviderStatus(String provider, String opPackageName);
 
     boolean sendExtraCommand(String provider, String command, inout Bundle extras);
 

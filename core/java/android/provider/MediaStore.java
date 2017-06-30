@@ -22,6 +22,7 @@ import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
 import android.database.Cursor;
 import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteException;
@@ -33,6 +34,7 @@ import android.media.ThumbnailUtils;
 import android.net.Uri;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
+import android.service.media.CameraPrewarmService;
 import android.util.Log;
 
 import java.io.FileInputStream;
@@ -226,6 +228,23 @@ public final class MediaStore {
     public static final String INTENT_ACTION_STILL_IMAGE_CAMERA = "android.media.action.STILL_IMAGE_CAMERA";
 
     /**
+     * Name under which an activity handling {@link #INTENT_ACTION_STILL_IMAGE_CAMERA} or
+     * {@link #INTENT_ACTION_STILL_IMAGE_CAMERA_SECURE} publishes the service name for its prewarm
+     * service.
+     * <p>
+     * This meta-data should reference the fully qualified class name of the prewarm service
+     * extending {@link CameraPrewarmService}.
+     * <p>
+     * The prewarm service will get bound and receive a prewarm signal
+     * {@link CameraPrewarmService#onPrewarm()} when a camera launch intent fire might be imminent.
+     * An application implementing a prewarm service should do the absolute minimum amount of work
+     * to initialize the camera in order to reduce startup time in likely case that shortly after a
+     * camera launch intent would be sent.
+     */
+    public static final String META_DATA_STILL_IMAGE_CAMERA_PREWARM_SERVICE =
+            "android.media.still_image_camera_preview_service";
+
+    /**
      * The name of the Intent action used to launch a camera in still image mode
      * for use when the device is secured (e.g. with a pin, password, pattern,
      * or face unlock). Applications responding to this intent must not expose
@@ -261,7 +280,13 @@ public final class MediaStore {
      * supply the uri through the EXTRA_OUTPUT field for compatibility with old applications.
      * If you don't set a ClipData, it will be copied there for you when calling
      * {@link Context#startActivity(Intent)}.
-     * @see #EXTRA_OUTPUT
+     *
+     * <p>Note: if you app targets {@link android.os.Build.VERSION_CODES#M M} and above
+     * and declares as using the {@link android.Manifest.permission#CAMERA} permission which
+     * is not granted, then attempting to use this action will result in a {@link
+     * java.lang.SecurityException}.
+     *
+     *  @see #EXTRA_OUTPUT
      */
     @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
     public final static String ACTION_IMAGE_CAPTURE = "android.media.action.IMAGE_CAPTURE";
@@ -309,6 +334,12 @@ public final class MediaStore {
      * supply the uri through the EXTRA_OUTPUT field for compatibility with old applications.
      * If you don't set a ClipData, it will be copied there for you when calling
      * {@link Context#startActivity(Intent)}.
+     *
+     * <p>Note: if you app targets {@link android.os.Build.VERSION_CODES#M M} and above
+     * and declares as using the {@link android.Manifest.permission#CAMERA} permission which
+     * is not granted, then atempting to use this action will result in a {@link
+     * java.lang.SecurityException}.
+     *
      * @see #EXTRA_OUTPUT
      * @see #EXTRA_VIDEO_QUALITY
      * @see #EXTRA_SIZE_LIMIT
@@ -353,8 +384,14 @@ public final class MediaStore {
 
     public interface MediaColumns extends BaseColumns {
         /**
-         * The data stream for the file
-         * <P>Type: DATA STREAM</P>
+         * Path to the file on disk.
+         * <p>
+         * Note that apps may not have filesystem permissions to directly access
+         * this path. Instead of trying to open this path directly, apps should
+         * use {@link ContentResolver#openFileDescriptor(Uri, String)} to gain
+         * access.
+         * <p>
+         * Type: TEXT
          */
         public static final String DATA = "_data";
 
@@ -1118,8 +1155,15 @@ public final class MediaStore {
             public static final String DEFAULT_SORT_ORDER = "image_id ASC";
 
             /**
-             * The data stream for the thumbnail
-             * <P>Type: DATA STREAM</P>
+             * Path to the thumbnail file on disk.
+             * <p>
+             * Note that apps may not have filesystem permissions to directly
+             * access this path. Instead of trying to open this path directly,
+             * apps should use
+             * {@link ContentResolver#openFileDescriptor(Uri, String)} to gain
+             * access.
+             * <p>
+             * Type: TEXT
              */
             public static final String DATA = "_data";
 
@@ -1565,8 +1609,15 @@ public final class MediaStore {
             public static final String NAME = "name";
 
             /**
-             * The data stream for the playlist file
-             * <P>Type: DATA STREAM</P>
+             * Path to the playlist file on disk.
+             * <p>
+             * Note that apps may not have filesystem permissions to directly
+             * access this path. Instead of trying to open this path directly,
+             * apps should use
+             * {@link ContentResolver#openFileDescriptor(Uri, String)} to gain
+             * access.
+             * <p>
+             * Type: TEXT
              */
             public static final String DATA = "_data";
 
@@ -2161,8 +2212,15 @@ public final class MediaStore {
             public static final String DEFAULT_SORT_ORDER = "video_id ASC";
 
             /**
-             * The data stream for the thumbnail
-             * <P>Type: DATA STREAM</P>
+             * Path to the thumbnail file on disk.
+             * <p>
+             * Note that apps may not have filesystem permissions to directly
+             * access this path. Instead of trying to open this path directly,
+             * apps should use
+             * {@link ContentResolver#openFileDescriptor(Uri, String)} to gain
+             * access.
+             * <p>
+             * Type: TEXT
              */
             public static final String DATA = "_data";
 
@@ -2239,5 +2297,4 @@ public final class MediaStore {
         }
         return null;
     }
-
 }

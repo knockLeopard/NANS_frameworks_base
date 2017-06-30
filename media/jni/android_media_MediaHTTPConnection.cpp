@@ -128,13 +128,12 @@ static jobject android_media_MediaHTTPConnection_native_getIMemory(
         JNIEnv *env, jobject thiz) {
     sp<JMediaHTTPConnection> conn = getObject(env, thiz);
 
-    return javaObjectForIBinder(env, conn->getIMemory()->asBinder());
+    return javaObjectForIBinder(env, IInterface::asBinder(conn->getIMemory()));
 }
 
 static jint android_media_MediaHTTPConnection_native_readAt(
         JNIEnv *env, jobject thiz, jlong offset, jint size) {
     sp<JMediaHTTPConnection> conn = getObject(env, thiz);
-
     if (size > JMediaHTTPConnection::kBufferSize) {
         size = JMediaHTTPConnection::kBufferSize;
     }
@@ -155,7 +154,7 @@ static jint android_media_MediaHTTPConnection_native_readAt(
     return n;
 }
 
-static JNINativeMethod gMethods[] = {
+static const JNINativeMethod gMethods[] = {
     { "native_getIMemory", "()Landroid/os/IBinder;",
       (void *)android_media_MediaHTTPConnection_native_getIMemory },
 

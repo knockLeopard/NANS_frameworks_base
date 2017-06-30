@@ -2,6 +2,23 @@ page.title=Designing for Auto
 page.tags="design","Auto"
 @jd:body
 
+<div class="sidebox-wrapper">
+<div class="sidebox">
+  <h2><strong>UI Guidelines</strong></h2>
+  <ul>
+  <li><a href="{@docRoot}shareables/auto/AndroidAuto-audio-apps.pdf">
+    <strong>Auto Audio Apps</strong></a>
+  </li>
+  <li><a href="{@docRoot}shareables/auto/AndroidAuto-messaging-apps.pdf">
+    <strong>Auto Messaging Apps</strong></a>
+  </li>
+  <li><a href="{@docRoot}shareables/auto/AndroidAuto-custom-colors.pdf">
+    <strong>Auto Color Customization</strong></a>
+  </li>
+ </ul>
+</div>
+</div>
+
 <a class="notice-developers" href="{@docRoot}training/auto/index.html">
   <div>
     <h3>Developer Docs</h3>
@@ -9,22 +26,14 @@ page.tags="design","Auto"
   </div>
 </a>
 
-<div class="sidebox-wrapper">
-<div class="sidebox">
-  <h2><strong>UI Guidelines</strong></h2>
-  <ul>
-  <li><a href="{@docRoot}shareables/auto/AndroidAuto-media-apps.pdf">
-    <strong>Auto Media Apps (PDF)</strong></a>
-  </li>
-  <li><a href="{@docRoot}shareables/auto/AndroidAuto-messaging-apps.pdf">
-    <strong>Auto Messaging Apps (PDF)</strong></a>
-  </li>
-  <li><a href="{@docRoot}shareables/auto/AndroidAuto-custom-colors.pdf">
-    <strong>Auto Color Customization (PDF)</strong></a>
-  </li>
- </ul>
+<a href="http://www.youtube.com/watch?v=vG9c5egwEYY"
+        class="notice-developers-video">
+<div>
+    <h3>Video</h3>
+    <p>Designing For Drivers</p>
 </div>
-</div>
+</a>
+
 
 <p>Android Auto provide a standardized user interface and user interaction
 model that works across vehicles. As a designer, you do not

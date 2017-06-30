@@ -31,7 +31,7 @@ page.title=USB Host
         <li><a href="{@docRoot}resources/samples/USB/AdbTest/index.html">AdbTest</a></li>
 
         <li><a href=
-        "{@docRoot}resources/samples/USB/MissileLauncher/index.html">MissleLauncher</a></li>
+        "{@docRoot}resources/samples/USB/MissileLauncher/index.html">MissileLauncher</a></li>
       </ol>
     </div>
   </div>
@@ -263,7 +263,7 @@ UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE
   obtain a device from the map.</p>
   <pre>
 UsbManager manager = (UsbManager) getSystemService(Context.USB_SERVICE);
-...  
+...
 HashMap&lt;String, UsbDevice&gt; deviceList = manager.getDeviceList();
 UsbDevice device = deviceList.get("deviceName");
 </pre>
@@ -276,14 +276,14 @@ UsbManager manager = (UsbManager) getSystemService(Context.USB_SERVICE);
 HashMap&lt;String, UsbDevice&gt; deviceList = manager.getDeviceList();
 Iterator&lt;UsbDevice&gt; deviceIterator = deviceList.values().iterator();
 while(deviceIterator.hasNext()){
-    UsbDevice device = deviceIterator.next()
+    UsbDevice device = deviceIterator.next();
     //your code
 }
 </pre>
 
   <h3 id="permission-d">Obtaining permission to communicate with a device</h3>
 
-  <p>Before communicating with the USB device, your applicaton must have permission from your
+  <p>Before communicating with the USB device, your application must have permission from your
   users.</p>
 
   <p class="note"><strong>Note:</strong> If your application <a href="#using-intents">uses an
@@ -317,7 +317,7 @@ private final BroadcastReceiver mUsbReceiver = new BroadcastReceiver() {
                     if(device != null){
                       //call method to set up device communication
                    }
-                } 
+                }
                 else {
                     Log.d(TAG, "permission denied for device " + device);
                 }
@@ -388,7 +388,7 @@ mUsbManager.requestPermission(device, mPermissionIntent);
   should have more logic to correctly find the correct interface and endpoints to communicate on
   and also should do any transferring of data in a different thread than the main UI thread:</p>
   <pre>
-private Byte[] bytes
+private Byte[] bytes;
 private static int TIMEOUT = 0;
 private boolean forceClaim = true;
 
@@ -396,7 +396,7 @@ private boolean forceClaim = true;
 
 UsbInterface intf = device.getInterface(0);
 UsbEndpoint endpoint = intf.getEndpoint(0);
-UsbDeviceConnection connection = mUsbManager.openDevice(device); 
+UsbDeviceConnection connection = mUsbManager.openDevice(device);
 connection.claimInterface(intf, forceClaim);
 connection.bulkTransfer(endpoint, bytes, bytes.length, TIMEOUT); //do in another thread
 </pre>
@@ -409,7 +409,7 @@ connection.bulkTransfer(endpoint, bytes, bytes.length, TIMEOUT); //do in another
   <p>For more information, see the <a href=
   "{@docRoot}resources/samples/USB/AdbTest/index.html">AdbTest sample</a>, which shows how to do
   asynchronous bulk transfers, and the <a href=
-  "{@docRoot}resources/samples/USB/MissileLauncher/index.html">MissleLauncher sample</a>, which
+  "{@docRoot}resources/samples/USB/MissileLauncher/index.html">MissileLauncher sample</a>, which
   shows how to listen on an interrupt endpoint asynchronously.</p>
 
   <h3 id="terminating-d">Terminating communication with a device</h3>
@@ -422,7 +422,7 @@ connection.bulkTransfer(endpoint, bytes, bytes.length, TIMEOUT); //do in another
   <pre>
 BroadcastReceiver mUsbReceiver = new BroadcastReceiver() {
     public void onReceive(Context context, Intent intent) {
-        String action = intent.getAction(); 
+        String action = intent.getAction();
 
       if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
             UsbDevice device = (UsbDevice)intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);

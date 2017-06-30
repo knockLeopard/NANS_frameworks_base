@@ -40,7 +40,6 @@ public class LauncherActivityInfo {
     private ActivityInfo mActivityInfo;
     private ComponentName mComponentName;
     private UserHandle mUser;
-    private long mFirstInstallTime;
 
     /**
      * Create a launchable activity object for a given ResolveInfo and user.
@@ -49,13 +48,11 @@ public class LauncherActivityInfo {
      * @param info ResolveInfo from which to create the LauncherActivityInfo.
      * @param user The UserHandle of the profile to which this activity belongs.
      */
-    LauncherActivityInfo(Context context, ResolveInfo info, UserHandle user,
-            long firstInstallTime) {
+    LauncherActivityInfo(Context context, ActivityInfo info, UserHandle user) {
         this(context);
-        mActivityInfo = info.activityInfo;
-        mComponentName = LauncherApps.getComponentName(info);
+        mActivityInfo = info;
+        mComponentName =  new ComponentName(info.packageName, info.name);
         mUser = user;
-        mFirstInstallTime = firstInstallTime;
     }
 
     LauncherActivityInfo(Context context) {
@@ -101,11 +98,25 @@ public class LauncherActivityInfo {
      * density DPI values from {@link DisplayMetrics}.
      * @see #getBadgedIcon(int)
      * @see DisplayMetrics
-     * @return The drawable associated with the activity
+     * @return The drawable associated with the activity.
      */
     public Drawable getIcon(int density) {
-        // TODO: Use density
-        return mActivityInfo.loadIcon(mPm);
+        final int iconRes = mActivityInfo.getIconResource();
+        Drawable icon = null;
+        // Get the preferred density icon from the app's resources
+        if (density != 0 && iconRes != 0) {
+            try {
+                final Resources resources
+                        = mPm.getResourcesForApplication(mActivityInfo.applicationInfo);
+                icon = resources.getDrawableForDensity(iconRes, density);
+            } catch (NameNotFoundException | Resources.NotFoundException exc) {
+            }
+        }
+        // Get the default density icon
+        if (icon == null) {
+            icon = mActivityInfo.loadIcon(mPm);
+        }
+        return icon;
     }
 
     /**
@@ -132,7 +143,13 @@ public class LauncherActivityInfo {
      * @return The time of installation of the package, in milliseconds.
      */
     public long getFirstInstallTime() {
-        return mFirstInstallTime;
+        try {
+            return mPm.getPackageInfo(mActivityInfo.packageName,
+                    PackageManager.GET_UNINSTALLED_PACKAGES).firstInstallTime;
+        } catch (NameNotFoundException nnfe) {
+            // Sorry, can't find package
+            return 0;
+        }
     }
 
     /**
@@ -151,23 +168,7 @@ public class LauncherActivityInfo {
      * @return A badged icon for the activity.
      */
     public Drawable getBadgedIcon(int density) {
-        int iconRes = mActivityInfo.getIconResource();
-        Resources resources = null;
-        Drawable originalIcon = null;
-        try {
-            resources = mPm.getResourcesForApplication(mActivityInfo.applicationInfo);
-            try {
-                if (density != 0) {
-                    originalIcon = resources.getDrawableForDensity(iconRes, density);
-                }
-            } catch (Resources.NotFoundException e) {
-            }
-        } catch (NameNotFoundException nnfe) {
-        }
-
-        if (originalIcon == null) {
-            originalIcon = mActivityInfo.loadIcon(mPm);
-        }
+        Drawable originalIcon = getIcon(density);
 
         if (originalIcon instanceof BitmapDrawable) {
             return mPm.getUserBadgedIcon(originalIcon, mUser);

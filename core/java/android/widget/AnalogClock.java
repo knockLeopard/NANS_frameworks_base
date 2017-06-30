@@ -40,8 +40,10 @@ import java.util.TimeZone;
  * @attr ref android.R.styleable#AnalogClock_dial
  * @attr ref android.R.styleable#AnalogClock_hand_hour
  * @attr ref android.R.styleable#AnalogClock_hand_minute
+ * @deprecated This widget is no longer supported.
  */
 @RemoteView
+@Deprecated
 public class AnalogClock extends View {
     private Time mCalendar;
 
@@ -54,7 +56,6 @@ public class AnalogClock extends View {
 
     private boolean mAttached;
 
-    private final Handler mHandler = new Handler();
     private float mMinutes;
     private float mHour;
     private boolean mChanged;
@@ -119,7 +120,7 @@ public class AnalogClock extends View {
             // home screen. Therefore, we register the receiver as the current
             // user not the one the context is for.
             getContext().registerReceiverAsUser(mIntentReceiver,
-                    android.os.Process.myUserHandle(), filter, null, mHandler);
+                    android.os.Process.myUserHandle(), filter, null, getHandler());
         }
 
         // NOTE: It's safe to do these after registering the receiver since the receiver always runs

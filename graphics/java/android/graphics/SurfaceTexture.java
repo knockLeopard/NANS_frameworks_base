@@ -77,6 +77,8 @@ public class SurfaceTexture {
     private long mProducer;
     private long mFrameAvailableListener;
 
+    private boolean mIsSingleBuffered;
+
     /**
      * Callback interface for being notified that a new stream frame is available.
      */
@@ -130,6 +132,7 @@ public class SurfaceTexture {
      */
     public SurfaceTexture(int texName, boolean singleBufferMode) {
         mCreatorLooper = Looper.myLooper();
+        mIsSingleBuffered = singleBufferMode;
         nativeInit(false, texName, singleBufferMode, new WeakReference<SurfaceTexture>(this));
     }
 
@@ -157,6 +160,7 @@ public class SurfaceTexture {
      */
     public SurfaceTexture(boolean singleBufferMode) {
         mCreatorLooper = Looper.myLooper();
+        mIsSingleBuffered = singleBufferMode;
         nativeInit(true, 0, singleBufferMode, new WeakReference<SurfaceTexture>(this));
     }
 
@@ -347,6 +351,14 @@ public class SurfaceTexture {
         nativeRelease();
     }
 
+    /**
+     * Returns true if the SurfaceTexture was released
+     * @hide
+     */
+    public boolean isReleased() {
+        return nativeIsReleased();
+    }
+
     @Override
     protected void finalize() throws Throwable {
         try {
@@ -370,6 +382,14 @@ public class SurfaceTexture {
         }
     }
 
+    /**
+     * Returns true if the SurfaceTexture is single-buffered
+     * @hide
+     */
+    public boolean isSingleBuffered() {
+        return mIsSingleBuffered;
+    }
+
     private native void nativeInit(boolean isDetached, int texName,
             boolean singleBufferMode, WeakReference<SurfaceTexture> weakSelf)
             throws Surface.OutOfResourcesException;
@@ -383,6 +403,7 @@ public class SurfaceTexture {
     private native int nativeAttachToGLContext(int texName);
     private native int nativeGetQueuedCount();
     private native void nativeRelease();
+    private native boolean nativeIsReleased();
 
     /*
      * We use a class initializer to allow the native code to cache some

@@ -22,6 +22,7 @@
     android:focusable="true"
     android:clickable="true"
     >
+
     <com.android.systemui.statusbar.NotificationBackgroundView android:id="@+id/backgroundNormal"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -31,7 +32,7 @@
         android:layout_height="match_parent"
         />
 
-    <LinearLayout
+    <com.android.keyguard.AlphaOptimizedLinearLayout
         android:id="@+id/content"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
@@ -63,6 +64,11 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             />
-    </LinearLayout>
+    </com.android.keyguard.AlphaOptimizedLinearLayout>
+
+    <com.android.systemui.statusbar.notification.FakeShadowView
+        android:id="@+id/fake_shadow"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
 </com.android.systemui.statusbar.NotificationOverflowContainer>

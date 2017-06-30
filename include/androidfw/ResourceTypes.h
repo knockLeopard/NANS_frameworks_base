@@ -21,6 +21,7 @@
 #define _LIBS_UTILS_RESOURCE_TYPES_H
 
 #include <androidfw/Asset.h>
+#include <androidfw/LocaleData.h>
 #include <utils/ByteOrder.h>
 #include <utils/Errors.h>
 #include <utils/String16.h>
@@ -33,6 +34,8 @@
 #include <sys/types.h>
 
 #include <android/configuration.h>
+
+#include <memory>
 
 namespace android {
 
@@ -112,7 +115,7 @@ struct __assertChar16Size {
  *
  * The PNG chunk type is "npTc".
  */
-struct Res_png_9patch
+struct alignas(uintptr_t) Res_png_9patch
 {
     Res_png_9patch() : wasDeserialized(false), xDivsOffset(0),
                        yDivsOffset(0), colorsOffset(0) { }
@@ -247,8 +250,8 @@ enum {
 #define Res_MAKEINTERNAL(entry) (0x01000000 | (entry&0xFFFF))
 #define Res_MAKEARRAY(entry) (0x02000000 | (entry&0xFFFF))
 
-#define Res_MAXPACKAGE 255
-#define Res_MAXTYPE 255
+static const size_t Res_MAXPACKAGE = 255;
+static const size_t Res_MAXTYPE = 255;
 
 /**
  * Representation of a value in a resource, supplying type
@@ -286,6 +289,9 @@ struct Res_value
         // The 'data' holds a dynamic ResTable_ref, which needs to be
         // resolved before it can be used like a TYPE_REFERENCE.
         TYPE_DYNAMIC_REFERENCE = 0x07,
+        // The 'data' holds an attribute resource identifier, which needs to be resolved
+        // before it can be used like a TYPE_ATTRIBUTE.
+        TYPE_DYNAMIC_ATTRIBUTE = 0x08,
 
         // Beginning of integer flavors...
         TYPE_FIRST_INT = 0x10,
@@ -372,7 +378,8 @@ struct Res_value
     };
 
     // The data for this item, as interpreted according to dataType.
-    uint32_t data;
+    typedef uint32_t data_type;
+    data_type data;
 
     void copyFrom_dtoh(const Res_value& src);
 };
@@ -1127,9 +1134,35 @@ struct ResTable_config
     // the locale field.
     char localeScript[4];
 
-    // A single BCP-47 variant subtag. Will vary in length between 5 and 8
+    // A single BCP-47 variant subtag. Will vary in length between 4 and 8
     // chars. Interpreted in conjunction with the locale field.
     char localeVariant[8];
+
+    enum {
+        // screenLayout2 bits for round/notround.
+        MASK_SCREENROUND = 0x03,
+        SCREENROUND_ANY = ACONFIGURATION_SCREENROUND_ANY,
+        SCREENROUND_NO = ACONFIGURATION_SCREENROUND_NO,
+        SCREENROUND_YES = ACONFIGURATION_SCREENROUND_YES,
+    };
+
+    // An extension of screenConfig.
+    union {
+        struct {
+            uint8_t screenLayout2;      // Contains round/notround qualifier.
+            uint8_t screenConfigPad1;   // Reserved padding.
+            uint16_t screenConfigPad2;  // Reserved padding.
+        };
+        uint32_t screenConfig2;
+    };
+
+    // If false and localeScript is set, it means that the script of the locale
+    // was explicitly provided.
+    //
+    // If true, it means that localeScript was automatically computed.
+    // localeScript may still not be set in this case, which means that we
+    // tried but could not compute a script.
+    bool localeScriptWasComputed;
 
     void copyFromDeviceNoSwap(const ResTable_config& o);
     
@@ -1159,6 +1192,7 @@ struct ResTable_config
         CONFIG_SCREEN_LAYOUT = ACONFIGURATION_SCREEN_LAYOUT,
         CONFIG_UI_MODE = ACONFIGURATION_UI_MODE,
         CONFIG_LAYOUTDIR = ACONFIGURATION_LAYOUTDIR,
+        CONFIG_SCREEN_ROUND = ACONFIGURATION_SCREEN_ROUND,
     };
     
     // Compare two configuration, returning CONFIG_* flags set for each value
@@ -1195,6 +1229,12 @@ struct ResTable_config
     // Example: en-US, en-Latn-US, en-POSIX.
     void getBcp47Locale(char* out) const;
 
+    // Append to str the resource-qualifer string representation of the
+    // locale component of this Config. If the locale is only country
+    // and language, it will look like en-rUS. If it has scripts and
+    // variants, it will be a modified bcp47 tag: b+en+Latn+US.
+    void appendDirLocale(String8& str) const;
+
     // Sets the values of language, region, script and variant to the
     // well formed BCP-47 locale contained in |in|. The input locale is
     // assumed to be valid and no validation is performed.
@@ -1202,8 +1242,13 @@ struct ResTable_config
 
     inline void clearLocale() {
         locale = 0;
+        localeScriptWasComputed = false;
         memset(localeScript, 0, sizeof(localeScript));
         memset(localeVariant, 0, sizeof(localeVariant));
+    }
+
+    inline void computeScript() {
+        localeDataComputeScript(localeScript, language, country);
     }
 
     // Get the 2 or 3 letter language code of this configuration. Trailing
@@ -1228,6 +1273,12 @@ struct ResTable_config
     // with respect to their locales, a negative integer if |o| is more specific
     // and 0 if they're equally specific.
     int isLocaleMoreSpecificThan(const ResTable_config &o) const;
+
+    // Return true if 'this' is a better locale match than 'o' for the
+    // 'requested' configuration. Similar to isBetterThan(), this assumes that
+    // match() has already been used to remove any configurations that don't
+    // match the requested configuration at all.
+    bool isLocaleBetterThan(const ResTable_config& o, const ResTable_config* requested) const;
 
     String8 toString() const;
 };
@@ -1327,7 +1378,11 @@ struct ResTable_entry
         FLAG_COMPLEX = 0x0001,
         // If set, this resource has been declared public, so libraries
         // are allowed to reference it.
-        FLAG_PUBLIC = 0x0002
+        FLAG_PUBLIC = 0x0002,
+        // If set, this is a weak resource and may be overriden by strong
+        // resources of the same name/type. This is only useful during
+        // linking with other resource tables.
+        FLAG_WEAK = 0x0004
     };
     uint16_t flags;
     
@@ -1475,7 +1530,7 @@ struct ResTable_lib_entry
 class DynamicRefTable
 {
 public:
-    DynamicRefTable(uint8_t packageId);
+    DynamicRefTable(uint8_t packageId, bool appAsLib);
 
     // Loads an unmapped reference table from the package.
     status_t load(const ResTable_lib_header* const header);
@@ -1500,7 +1555,10 @@ private:
     const uint8_t                   mAssignedPackageId;
     uint8_t                         mLookupTable[256];
     KeyedVector<String16, uint8_t>  mEntries;
+    bool                            mAppAsLib;
 };
+
+bool U16StringToInt(const char16_t* s, size_t len, Res_value* outValue);
 
 /**
  * Convenience class for accessing data in a ResTable resource.
@@ -1515,12 +1573,13 @@ public:
 
     status_t add(const void* data, size_t size, const int32_t cookie=-1, bool copyData=false);
     status_t add(const void* data, size_t size, const void* idmapData, size_t idmapDataSize,
-            const int32_t cookie=-1, bool copyData=false);
+            const int32_t cookie=-1, bool copyData=false, bool appAsLib=false);
 
     status_t add(Asset* asset, const int32_t cookie=-1, bool copyData=false);
-    status_t add(Asset* asset, Asset* idmapAsset, const int32_t cookie=-1, bool copyData=false);
+    status_t add(Asset* asset, Asset* idmapAsset, const int32_t cookie=-1, bool copyData=false,
+            bool appAsLib=false, bool isSystemAsset=false);
 
-    status_t add(ResTable* src);
+    status_t add(ResTable* src, bool isSystemAsset=false);
     status_t addEmpty(const int32_t cookie);
 
     status_t getError() const;
@@ -1618,6 +1677,7 @@ public:
 
         status_t applyStyle(uint32_t resID, bool force=false);
         status_t setTo(const Theme& other);
+        status_t clear();
 
         /**
          * Retrieve a value in the theme.  If the theme defines this
@@ -1649,6 +1709,12 @@ public:
                 uint32_t* inoutTypeSpecFlags = NULL,
                 ResTable_config* inoutConfig = NULL) const;
 
+        /**
+         * Returns a bit mask of configuration changes that will impact this
+         * theme (and thus require completely reloading it).
+         */
+        uint32_t getChangingConfigurations() const;
+
         void dumpToLog() const;
         
     private:
@@ -1675,6 +1741,7 @@ public:
 
         const ResTable& mTable;
         package_info*   mPackages[Res_MAXPACKAGE];
+        uint32_t        mTypeSpecFlags;
     };
 
     void setParameters(const ResTable_config* params);
@@ -1779,9 +1846,10 @@ public:
     const DynamicRefTable* getDynamicRefTableForCookie(int32_t cookie) const;
 
     // Return the configurations (ResTable_config) that we know about
-    void getConfigurations(Vector<ResTable_config>* configs, bool ignoreMipmap=false) const;
+    void getConfigurations(Vector<ResTable_config>* configs, bool ignoreMipmap=false,
+            bool ignoreAndroidPackage=false, bool includeSystemConfigs=true) const;
 
-    void getLocales(Vector<String8>* locales) const;
+    void getLocales(Vector<String8>* locales, bool includeSystemLocales=true) const;
 
     // Generate an idmap.
     //
@@ -1793,9 +1861,7 @@ public:
             const char* targetPath, const char* overlayPath,
             void** outData, size_t* outSize) const;
 
-    enum {
-        IDMAP_HEADER_SIZE_BYTES = 4 * sizeof(uint32_t) + 2 * 256,
-    };
+    static const size_t IDMAP_HEADER_SIZE_BYTES = 4 * sizeof(uint32_t) + 2 * 256;
 
     // Retrieve idmap meta-data.
     //
@@ -1815,11 +1881,32 @@ private:
     struct Entry;
     struct Package;
     struct PackageGroup;
-    struct bag_set;
     typedef Vector<Type*> TypeList;
 
+    struct bag_set {
+        size_t numAttrs;    // number in array
+        size_t availAttrs;  // total space in array
+        uint32_t typeSpecFlags;
+        // Followed by 'numAttr' bag_entry structures.
+    };
+
+    /**
+     * Configuration dependent cached data. This must be cleared when the configuration is
+     * changed (setParameters).
+     */
+    struct TypeCacheEntry {
+        TypeCacheEntry() : cachedBags(NULL) {}
+
+        // Computed attribute bags for this type.
+        bag_set** cachedBags;
+
+        // Pre-filtered list of configurations (per asset path) that match the parameters set on this
+        // ResTable.
+        Vector<std::shared_ptr<Vector<const ResTable_type*>>> filteredConfigs;
+    };
+
     status_t addInternal(const void* data, size_t size, const void* idmapData, size_t idmapDataSize,
-            const int32_t cookie, bool copyData);
+            bool appAsLib, const int32_t cookie, bool copyData, bool isSystemAsset=false);
 
     ssize_t getResourcePackageIndex(uint32_t resID) const;
 
@@ -1832,11 +1919,23 @@ private:
             size_t nameLen, uint32_t* outTypeSpecFlags) const;
 
     status_t parsePackage(
-        const ResTable_package* const pkg, const Header* const header);
+        const ResTable_package* const pkg, const Header* const header,
+        bool appAsLib, bool isSystemAsset);
 
     void print_value(const Package* pkg, const Res_value& value) const;
-    
+
+    template <typename Func>
+    void forEachConfiguration(bool ignoreMipmap, bool ignoreAndroidPackage,
+                              bool includeSystemConfigs, const Func& f) const;
+
     mutable Mutex               mLock;
+
+    // Mutex that controls access to the list of pre-filtered configurations
+    // to check when looking up entries.
+    // When iterating over a bag, the mLock mutex is locked. While mLock is locked,
+    // we do resource lookups.
+    // Mutex is not reentrant, so we must use a different lock than mLock.
+    mutable Mutex               mFilteredConfigLock;
 
     status_t                    mError;
 

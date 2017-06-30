@@ -87,7 +87,7 @@ public final class PrintContentView extends ViewGroup implements View.OnClickLis
         super(context, attrs);
         mDragger = ViewDragHelper.create(this, new DragCallbacks());
 
-        mScrimColor = context.getResources().getColor(R.color.print_preview_scrim_color);
+        mScrimColor = context.getColor(R.color.print_preview_scrim_color);
 
         // The options view is sliding under the static header but appears
         // after it in the layout, so we will draw in opposite order.
@@ -415,6 +415,7 @@ public final class PrintContentView extends ViewGroup implements View.OnClickLis
             onDragProgress(progress);
         }
 
+        @Override
         public void onViewReleased(View child, float velocityX, float velocityY) {
             final int childTop = child.getTop();
 
@@ -435,14 +436,17 @@ public final class PrintContentView extends ViewGroup implements View.OnClickLis
             invalidate();
         }
 
+        @Override
         public int getOrderedChildIndex(int index) {
             return getChildCount() - index - 1;
         }
 
+        @Override
         public int getViewVerticalDragRange(View child) {
             return mDraggableContent.getHeight();
         }
 
+        @Override
         public int clampViewPositionVertical(View child, int top, int dy) {
             final int staticOptionBottom = mStaticContent.getBottom();
             return Math.max(Math.min(top, getOpenedOptionsY()), getClosedOptionsY());

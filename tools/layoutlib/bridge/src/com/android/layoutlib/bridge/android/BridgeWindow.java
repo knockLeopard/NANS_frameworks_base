@@ -16,6 +16,8 @@
 
 package com.android.layoutlib.bridge.android;
 
+import com.android.internal.os.IResultReceiver;
+
 import android.content.res.Configuration;
 import android.graphics.Rect;
 import android.os.Bundle;
@@ -47,8 +49,9 @@ public final class BridgeWindow implements IWindow {
     }
 
     @Override
-    public void resized(Rect rect, Rect rect2, Rect rect3, Rect rect4, Rect rect5, boolean b,
-            Configuration configuration) throws RemoteException {
+    public void resized(Rect rect, Rect rect2, Rect rect3, Rect rect4, Rect rect5, Rect rect6,
+            boolean b, Configuration configuration, Rect rect7, boolean b2, boolean b3)
+            throws RemoteException {
         // pass for now.
     }
 
@@ -85,13 +88,14 @@ public final class BridgeWindow implements IWindow {
     }
 
     @Override
-    public void dispatchSystemUiVisibilityChanged(int seq, int globalUi,
-            int localValue, int localChanges) {
-        // pass for now.
+    public void updatePointerIcon(float x, float y) {
+        // pass for now
     }
 
     @Override
-    public void doneAnimating() {
+    public void dispatchSystemUiVisibilityChanged(int seq, int globalUi,
+            int localValue, int localChanges) {
+        // pass for now.
     }
 
     @Override
@@ -99,8 +103,14 @@ public final class BridgeWindow implements IWindow {
     }
 
     @Override
+    public void requestAppKeyboardShortcuts(
+            IResultReceiver receiver, int deviceId) throws RemoteException {
+    }
+
+    @Override
     public IBinder asBinder() {
         // pass for now.
         return null;
     }
+
 }

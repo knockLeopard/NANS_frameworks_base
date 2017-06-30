@@ -169,17 +169,45 @@ public interface ViewParent {
     public void focusableViewAvailable(View v);
 
     /**
-     * Bring up a context menu for the specified view or its ancestors.
-     *
-     * <p>In most cases, a subclass does not need to override this.  However, if
+     * Shows the context menu for the specified view or its ancestors.
+     * <p>
+     * In most cases, a subclass does not need to override this. However, if
      * the subclass is added directly to the window manager (for example,
      * {@link ViewManager#addView(View, android.view.ViewGroup.LayoutParams)})
-     * then it should override this and show the context menu.</p>
-     * 
-     * @param originalView The source view where the context menu was first invoked
-     * @return true if a context menu was displayed
+     * then it should override this and show the context menu.
+     *
+     * @param originalView the source view where the context menu was first
+     *                     invoked
+     * @return {@code true} if the context menu was shown, {@code false}
+     *         otherwise
+     * @see #showContextMenuForChild(View, float, float)
      */
     public boolean showContextMenuForChild(View originalView);
+
+    /**
+     * Shows the context menu for the specified view or its ancestors anchored
+     * to the specified view-relative coordinate.
+     * <p>
+     * In most cases, a subclass does not need to override this. However, if
+     * the subclass is added directly to the window manager (for example,
+     * {@link ViewManager#addView(View, android.view.ViewGroup.LayoutParams)})
+     * then it should override this and show the context menu.
+     * <p>
+     * If a subclass overrides this method it should also override
+     * {@link #showContextMenuForChild(View)}.
+     *
+     * @param originalView the source view where the context menu was first
+     *                     invoked
+     * @param x the X coordinate in pixels relative to the original view to
+     *          which the menu should be anchored, or {@link Float#NaN} to
+     *          disable anchoring
+     * @param y the Y coordinate in pixels relative to the original view to
+     *          which the menu should be anchored, or {@link Float#NaN} to
+     *          disable anchoring
+     * @return {@code true} if the context menu was shown, {@code false}
+     *         otherwise
+     */
+    boolean showContextMenuForChild(View originalView, float x, float y);
 
     /**
      * Have the parent populate the specified context menu if it has anything to
@@ -190,7 +218,8 @@ public interface ViewParent {
     public void createContextMenu(ContextMenu menu);
 
     /**
-     * Start an action mode for the specified view.
+     * Start an action mode for the specified view with the default type
+     * {@link ActionMode#TYPE_PRIMARY}.
      *
      * <p>In most cases, a subclass does not need to override this. However, if the
      * subclass is added directly to the window manager (for example,
@@ -200,8 +229,26 @@ public interface ViewParent {
      * @param originalView The source view where the action mode was first invoked
      * @param callback The callback that will handle lifecycle events for the action mode
      * @return The new action mode if it was started, null otherwise
+     *
+     * @see #startActionModeForChild(View, android.view.ActionMode.Callback, int)
      */
     public ActionMode startActionModeForChild(View originalView, ActionMode.Callback callback);
+
+    /**
+     * Start an action mode of a specific type for the specified view.
+     *
+     * <p>In most cases, a subclass does not need to override this. However, if the
+     * subclass is added directly to the window manager (for example,
+     * {@link ViewManager#addView(View, android.view.ViewGroup.LayoutParams)})
+     * then it should override this and start the action mode.</p>
+     *
+     * @param originalView The source view where the action mode was first invoked
+     * @param callback The callback that will handle lifecycle events for the action mode
+     * @param type One of {@link ActionMode#TYPE_PRIMARY} or {@link ActionMode#TYPE_FLOATING}.
+     * @return The new action mode if it was started, null otherwise
+     */
+    public ActionMode startActionModeForChild(
+            View originalView, ActionMode.Callback callback, int type);
 
     /**
      * This method is called on the parent when a child's drawable state
@@ -210,7 +257,7 @@ public interface ViewParent {
      * @param child The child whose drawable state has changed.
      */
     public void childDrawableStateChanged(View child);
-    
+
     /**
      * Called when a child does not want this parent and its ancestors to
      * intercept touch events with
@@ -224,14 +271,14 @@ public interface ViewParent {
      *            intercept touch events.
      */
     public void requestDisallowInterceptTouchEvent(boolean disallowIntercept);
-    
+
     /**
      * Called when a child of this group wants a particular rectangle to be
      * positioned onto the screen.  {@link ViewGroup}s overriding this can trust
      * that:
      * <ul>
      *   <li>child will be a direct child of this group</li>
-     *   <li>rectangle will be in the child's coordinates</li>
+     *   <li>rectangle will be in the child's content coordinates</li>
      * </ul>
      *
      * <p>{@link ViewGroup}s overriding this should uphold the contract:</p>

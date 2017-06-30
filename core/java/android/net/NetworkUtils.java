@@ -16,9 +16,11 @@
 
 package android.net;
 
+import java.io.FileDescriptor;
 import java.net.InetAddress;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.Collection;
 import java.util.Locale;
@@ -37,68 +39,35 @@ public class NetworkUtils {
 
     private static final String TAG = "NetworkUtils";
 
-    /** Setting bit 0 indicates reseting of IPv4 addresses required */
-    public static final int RESET_IPV4_ADDRESSES = 0x01;
-
-    /** Setting bit 1 indicates reseting of IPv4 addresses required */
-    public static final int RESET_IPV6_ADDRESSES = 0x02;
-
-    /** Reset all addresses */
-    public static final int RESET_ALL_ADDRESSES = RESET_IPV4_ADDRESSES | RESET_IPV6_ADDRESSES;
+    /**
+     * Attaches a socket filter that accepts DHCP packets to the given socket.
+     */
+    public native static void attachDhcpFilter(FileDescriptor fd) throws SocketException;
 
     /**
-     * Reset IPv6 or IPv4 sockets that are connected via the named interface.
+     * Attaches a socket filter that accepts ICMPv6 router advertisements to the given socket.
+     * @param fd the socket's {@link FileDescriptor}.
+     * @param packetType the hardware address type, one of ARPHRD_*.
+     */
+    public native static void attachRaFilter(FileDescriptor fd, int packetType) throws SocketException;
+
+    /**
+     * Attaches a socket filter that accepts L2-L4 signaling traffic required for IP connectivity.
      *
-     * @param interfaceName is the interface to reset
-     * @param mask {@see #RESET_IPV4_ADDRESSES} and {@see #RESET_IPV6_ADDRESSES}
+     * This includes: all ARP, ICMPv6 RS/RA/NS/NA messages, and DHCPv4 exchanges.
+     *
+     * @param fd the socket's {@link FileDescriptor}.
+     * @param packetType the hardware address type, one of ARPHRD_*.
      */
-    public native static int resetConnections(String interfaceName, int mask);
+    public native static void attachControlPacketFilter(FileDescriptor fd, int packetType)
+            throws SocketException;
 
     /**
-     * Start the DHCP client daemon, in order to have it request addresses
-     * for the named interface, and then configure the interface with those
-     * addresses. This call blocks until it obtains a result (either success
-     * or failure) from the daemon.
-     * @param interfaceName the name of the interface to configure
-     * @param dhcpResults if the request succeeds, this object is filled in with
-     * the IP address information.
-     * @return {@code true} for success, {@code false} for failure
+     * Configures a socket for receiving ICMPv6 router solicitations and sending advertisements.
+     * @param fd the socket's {@link FileDescriptor}.
+     * @param ifIndex the interface index.
      */
-    public native static boolean runDhcp(String interfaceName, DhcpResults dhcpResults);
-
-    /**
-     * Initiate renewal on the Dhcp client daemon. This call blocks until it obtains
-     * a result (either success or failure) from the daemon.
-     * @param interfaceName the name of the interface to configure
-     * @param dhcpResults if the request succeeds, this object is filled in with
-     * the IP address information.
-     * @return {@code true} for success, {@code false} for failure
-     */
-    public native static boolean runDhcpRenew(String interfaceName, DhcpResults dhcpResults);
-
-    /**
-     * Shut down the DHCP client daemon.
-     * @param interfaceName the name of the interface for which the daemon
-     * should be stopped
-     * @return {@code true} for success, {@code false} for failure
-     */
-    public native static boolean stopDhcp(String interfaceName);
-
-    /**
-     * Release the current DHCP lease.
-     * @param interfaceName the name of the interface for which the lease should
-     * be released
-     * @return {@code true} for success, {@code false} for failure
-     */
-    public native static boolean releaseDhcpLease(String interfaceName);
-
-    /**
-     * Return the last DHCP-related error message that was recorded.
-     * <p/>NOTE: This string is not localized, but currently it is only
-     * used in logging.
-     * @return the most recent error message, if any
-     */
-    public native static String getDhcpError();
+    public native static void setupRaSocket(FileDescriptor fd, int ifIndex) throws SocketException;
 
     /**
      * Binds the current process to the network designated by {@code netId}.  All sockets created
@@ -114,7 +83,7 @@ public class NetworkUtils {
      * Return the netId last passed to {@link #bindProcessToNetwork}, or NETID_UNSET if
      * {@link #unbindProcessToNetwork} has been called since {@link #bindProcessToNetwork}.
      */
-    public native static int getNetworkBoundToProcess();
+    public native static int getBoundNetworkForProcess();
 
     /**
      * Binds host resolutions performed by this process to the network designated by {@code netId}.
@@ -133,11 +102,26 @@ public class NetworkUtils {
     public native static int bindSocketToNetwork(int socketfd, int netId);
 
     /**
+     * Protect {@code fd} from VPN connections.  After protecting, data sent through
+     * this socket will go directly to the underlying network, so its traffic will not be
+     * forwarded through the VPN.
+     */
+    public static boolean protectFromVpn(FileDescriptor fd) {
+        return protectFromVpn(fd.getInt$());
+    }
+
+    /**
      * Protect {@code socketfd} from VPN connections.  After protecting, data sent through
      * this socket will go directly to the underlying network, so its traffic will not be
      * forwarded through the VPN.
      */
     public native static boolean protectFromVpn(int socketfd);
+
+    /**
+     * Determine if {@code uid} can access network designated by {@code netId}.
+     * @return {@code true} if {@code uid} can access network, {@code false} otherwise.
+     */
+    public native static boolean queryUserAccess(int uid, int netId);
 
     /**
      * Convert a IPv4 address from an integer to an InetAddress.
@@ -190,6 +174,25 @@ public class NetworkUtils {
     public static int netmaskIntToPrefixLength(int netmask) {
         return Integer.bitCount(netmask);
     }
+
+    /**
+     * Convert an IPv4 netmask to a prefix length, checking that the netmask is contiguous.
+     * @param netmask as a {@code Inet4Address}.
+     * @return the network prefix length
+     * @throws IllegalArgumentException the specified netmask was not contiguous.
+     * @hide
+     */
+    public static int netmaskToPrefixLength(Inet4Address netmask) {
+        // inetAddressToInt returns an int in *network* byte order.
+        int i = Integer.reverseBytes(inetAddressToInt(netmask));
+        int prefixLength = Integer.bitCount(i);
+        int trailingZeros = Integer.numberOfTrailingZeros(i);
+        if (trailingZeros != 32 - prefixLength) {
+            throw new IllegalArgumentException("Non-contiguous netmask: " + Integer.toHexString(i));
+        }
+        return prefixLength;
+    }
+
 
     /**
      * Create an InetAddress from a string where the string must be a standard
@@ -268,6 +271,22 @@ public class NetworkUtils {
             throw new RuntimeException("getNetworkPart error - " + e.toString());
         }
         return netPart;
+    }
+
+    /**
+     * Returns the implicit netmask of an IPv4 address, as was the custom before 1993.
+     */
+    public static int getImplicitNetmask(Inet4Address address) {
+        int firstByte = address.getAddress()[0] & 0xff;  // Convert to an unsigned value.
+        if (firstByte < 128) {
+            return 8;
+        } else if (firstByte < 192) {
+            return 16;
+        } else if (firstByte < 224) {
+            return 24;
+        } else {
+            return 32;  // Will likely not end well for other reasons.
+        }
     }
 
     /**

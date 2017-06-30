@@ -165,7 +165,7 @@ public class TtsSpan implements ParcelableSpan {
 
     /**
      * The text associated with this span is a series of characters that have to
-     * be read verbatim. The engine will attempt to ready out any character like
+     * be read verbatim. The engine will attempt to read out any character like
      * punctuation but excluding whitespace. {@link #ARG_VERBATIM} is required.
      * Also accepts the arguments {@link #ARG_GENDER},
      * {@link #ARG_ANIMACY}, {@link #ARG_MULTIPLICITY} and {@link #ARG_CASE}.
@@ -495,12 +495,22 @@ public class TtsSpan implements ParcelableSpan {
 
     @Override
     public void writeToParcel(Parcel dest, int flags) {
+        writeToParcelInternal(dest, flags);
+    }
+
+    /** @hide */
+    public void writeToParcelInternal(Parcel dest, int flags) {
         dest.writeString(mType);
         dest.writePersistableBundle(mArgs);
     }
 
     @Override
     public int getSpanTypeId() {
+        return getSpanTypeIdInternal();
+    }
+
+    /** @hide */
+    public int getSpanTypeIdInternal() {
         return TextUtils.TTS_SPAN;
     }
 
@@ -788,7 +798,7 @@ public class TtsSpan implements ParcelableSpan {
         /**
          * Creates a TtsSpan of type {@link #TYPE_DECIMAL} and sets the
          * {@link #ARG_INTEGER_PART} and {@link #ARG_FRACTIONAL_PART} arguments.
-         * @see {@link #setArgumentsFromDouble(double, int, int)
+         * @see #setArgumentsFromDouble(double, int, int)
          */
         public DecimalBuilder(double number,
                               int minimumFractionDigits,
@@ -1003,7 +1013,7 @@ public class TtsSpan implements ParcelableSpan {
          * @return This instance.
          */
         public MeasureBuilder setIntegerPart(long integerPart) {
-            return setNumber(String.valueOf(integerPart));
+            return setIntegerPart(String.valueOf(integerPart));
         }
 
         /**
@@ -1072,7 +1082,7 @@ public class TtsSpan implements ParcelableSpan {
          * Sets the {@link #ARG_UNIT} argument.
          * @param unit The unit of the measure.
          * @return This instance.
-         * @see {@link TtsSpan.ARG_UNIT}
+         * @see TtsSpan.ARG_UNIT
          */
         public MeasureBuilder setUnit(String unit) {
             return setStringArgument(TtsSpan.ARG_UNIT, unit);
@@ -1106,7 +1116,7 @@ public class TtsSpan implements ParcelableSpan {
          * Sets the {@link #ARG_HOURS} argument.
          * @param hours The value to be set for hours. See {@link #ARG_HOURS}.
          * @return This instance.
-         * @see {@link #ARG_HOURS}
+         * @see #ARG_HOURS
          */
         public TimeBuilder setHours(int hours) {
             return setIntArgument(TtsSpan.ARG_HOURS, hours);
@@ -1117,7 +1127,7 @@ public class TtsSpan implements ParcelableSpan {
          * @param minutes The value to be set for minutes. See
          *     {@link #ARG_MINUTES}.
          * @return This instance.
-         * @see {@link #ARG_MINUTES}
+         * @see #ARG_MINUTES
          */
         public TimeBuilder setMinutes(int minutes) {
             return setIntArgument(TtsSpan.ARG_MINUTES, minutes);
@@ -1167,7 +1177,7 @@ public class TtsSpan implements ParcelableSpan {
          * @param weekday The value to be set for weekday. See
          *     {@link #ARG_WEEKDAY}.
          * @return This instance.
-         * @see {@link #ARG_WEEKDAY}
+         * @see #ARG_WEEKDAY
          */
         public DateBuilder setWeekday(int weekday) {
             return setIntArgument(TtsSpan.ARG_WEEKDAY, weekday);
@@ -1177,7 +1187,7 @@ public class TtsSpan implements ParcelableSpan {
          * Sets the {@link #ARG_DAY} argument.
          * @param day The value to be set for day. See {@link #ARG_DAY}.
          * @return This instance.
-         * @see {@link #ARG_DAY}
+         * @see #ARG_DAY
          */
         public DateBuilder setDay(int day) {
             return setIntArgument(TtsSpan.ARG_DAY, day);
@@ -1187,7 +1197,7 @@ public class TtsSpan implements ParcelableSpan {
          * Sets the {@link #ARG_MONTH} argument.
          * @param month The value to be set for month. See {@link #ARG_MONTH}.
          * @return This instance.
-         * @see {@link #ARG_MONTH}
+         * @see #ARG_MONTH
          */
         public DateBuilder setMonth(int month) {
             return setIntArgument(TtsSpan.ARG_MONTH, month);
@@ -1197,7 +1207,7 @@ public class TtsSpan implements ParcelableSpan {
          * Sets the {@link #ARG_YEAR} argument.
          * @param year The value to be set for year. See {@link #ARG_YEAR}.
          * @return This instance.
-         * @see {@link #ARG_YEAR}
+         * @see #ARG_YEAR
          */
         public DateBuilder setYear(int year) {
             return setIntArgument(TtsSpan.ARG_YEAR, year);

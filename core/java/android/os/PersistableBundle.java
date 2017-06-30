@@ -16,32 +16,42 @@
 
 package android.os;
 
+import android.annotation.Nullable;
 import android.util.ArrayMap;
+
 import com.android.internal.util.XmlUtils;
+
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlSerializer;
 
 import java.io.IOException;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
 
 /**
- * A mapping from String values to various types that can be saved to persistent and later
- * restored.
+ * A mapping from String keys to values of various types. The set of types
+ * supported by this class is purposefully restricted to simple objects that can
+ * safely be persisted to and restored from disk.
  *
+ * @see Bundle
  */
 public final class PersistableBundle extends BaseBundle implements Cloneable, Parcelable,
         XmlUtils.WriteMapCallback {
     private static final String TAG_PERSISTABLEMAP = "pbundle_as_map";
     public static final PersistableBundle EMPTY;
-    static final Parcel EMPTY_PARCEL;
 
     static {
         EMPTY = new PersistableBundle();
         EMPTY.mMap = ArrayMap.EMPTY;
-        EMPTY_PARCEL = BaseBundle.EMPTY_PARCEL;
+    }
+
+    /** @hide */
+    public static boolean isValidType(Object value) {
+        return (value instanceof Integer) || (value instanceof Long) ||
+                (value instanceof Double) || (value instanceof String) ||
+                (value instanceof int[]) || (value instanceof long[]) ||
+                (value instanceof double[]) || (value instanceof String[]) ||
+                (value instanceof PersistableBundle) || (value == null) ||
+                (value instanceof Boolean) || (value instanceof boolean[]);
     }
 
     /**
@@ -49,6 +59,7 @@ public final class PersistableBundle extends BaseBundle implements Cloneable, Pa
      */
     public PersistableBundle() {
         super();
+        mFlags = FLAG_DEFUSABLE;
     }
 
     /**
@@ -59,6 +70,7 @@ public final class PersistableBundle extends BaseBundle implements Cloneable, Pa
      */
     public PersistableBundle(int capacity) {
         super(capacity);
+        mFlags = FLAG_DEFUSABLE;
     }
 
     /**
@@ -69,6 +81,21 @@ public final class PersistableBundle extends BaseBundle implements Cloneable, Pa
      */
     public PersistableBundle(PersistableBundle b) {
         super(b);
+        mFlags = b.mFlags;
+    }
+
+
+    /**
+     * Constructs a PersistableBundle from a Bundle.
+     *
+     * @param b a Bundle to be copied.
+     *
+     * @throws IllegalArgumentException if any element of {@code b} cannot be persisted.
+     *
+     * @hide
+     */
+    public PersistableBundle(Bundle b) {
+        this(b.getMap());
     }
 
     /**
@@ -77,35 +104,32 @@ public final class PersistableBundle extends BaseBundle implements Cloneable, Pa
      * @param map a Map containing only those items that can be persisted.
      * @throws IllegalArgumentException if any element of #map cannot be persisted.
      */
-    private PersistableBundle(Map<String, Object> map) {
+    private PersistableBundle(ArrayMap<String, Object> map) {
         super();
+        mFlags = FLAG_DEFUSABLE;
 
         // First stuff everything in.
         putAll(map);
 
         // Now verify each item throwing an exception if there is a violation.
-        Set<String> keys = map.keySet();
-        Iterator<String> iterator = keys.iterator();
-        while (iterator.hasNext()) {
-            String key = iterator.next();
-            Object value = map.get(key);
-            if (value instanceof Map) {
+        final int N = mMap.size();
+        for (int i=0; i<N; i++) {
+            Object value = mMap.valueAt(i);
+            if (value instanceof ArrayMap) {
                 // Fix up any Maps by replacing them with PersistableBundles.
-                putPersistableBundle(key, new PersistableBundle((Map<String, Object>) value));
-            } else if (!(value instanceof Integer) && !(value instanceof Long) &&
-                    !(value instanceof Double) && !(value instanceof String) &&
-                    !(value instanceof int[]) && !(value instanceof long[]) &&
-                    !(value instanceof double[]) && !(value instanceof String[]) &&
-                    !(value instanceof PersistableBundle) && (value != null) &&
-                    !(value instanceof Boolean) && !(value instanceof boolean[])) {
-                throw new IllegalArgumentException("Bad value in PersistableBundle key=" + key +
-                        " value=" + value);
+                mMap.setValueAt(i, new PersistableBundle((ArrayMap<String, Object>) value));
+            } else if (value instanceof Bundle) {
+                mMap.setValueAt(i, new PersistableBundle(((Bundle) value)));
+            } else if (!isValidType(value)) {
+                throw new IllegalArgumentException("Bad value in PersistableBundle key="
+                        + mMap.keyAt(i) + " value=" + value);
             }
         }
     }
 
     /* package */ PersistableBundle(Parcel parcelledData, int length) {
         super(parcelledData, length);
+        mFlags = FLAG_DEFUSABLE;
     }
 
     /**
@@ -135,7 +159,7 @@ public final class PersistableBundle extends BaseBundle implements Cloneable, Pa
      * @param key a String, or null
      * @param value a Bundle object, or null
      */
-    public void putPersistableBundle(String key, PersistableBundle value) {
+    public void putPersistableBundle(@Nullable String key, @Nullable PersistableBundle value) {
         unparcel();
         mMap.put(key, value);
     }
@@ -148,7 +172,8 @@ public final class PersistableBundle extends BaseBundle implements Cloneable, Pa
      * @param key a String, or null
      * @return a Bundle value, or null
      */
-    public PersistableBundle getPersistableBundle(String key) {
+    @Nullable
+    public PersistableBundle getPersistableBundle(@Nullable String key) {
         unparcel();
         Object o = mMap.get(key);
         if (o == null) {
@@ -240,8 +265,9 @@ public final class PersistableBundle extends BaseBundle implements Cloneable, Pa
         while (((event = in.next()) != XmlPullParser.END_DOCUMENT) &&
                 (event != XmlPullParser.END_TAG || in.getDepth() < outerDepth)) {
             if (event == XmlPullParser.START_TAG) {
-                return new PersistableBundle((Map<String, Object>)
-                        XmlUtils.readThisMapXml(in, startTag, tagName, new MyReadMapCallback()));
+                return new PersistableBundle((ArrayMap<String, Object>)
+                        XmlUtils.readThisArrayMapXml(in, startTag, tagName,
+                        new MyReadMapCallback()));
             }
         }
         return EMPTY;
@@ -250,7 +276,7 @@ public final class PersistableBundle extends BaseBundle implements Cloneable, Pa
     @Override
     synchronized public String toString() {
         if (mParcelledData != null) {
-            if (mParcelledData == EMPTY_PARCEL) {
+            if (isEmptyParcel()) {
                 return "PersistableBundle[EMPTY_PARCEL]";
             } else {
                 return "PersistableBundle[mParcelledData.dataSize=" +
@@ -259,5 +285,4 @@ public final class PersistableBundle extends BaseBundle implements Cloneable, Pa
         }
         return "PersistableBundle[" + mMap.toString() + "]";
     }
-
 }

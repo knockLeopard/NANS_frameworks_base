@@ -19,6 +19,8 @@ package android.util;
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.GrowingArrayUtils;
 
+import java.util.Arrays;
+
 import libcore.util.EmptyArray;
 
 /**
@@ -184,6 +186,14 @@ public class SparseIntArray implements Cloneable {
     }
 
     /**
+     * Directly set the value at a particular index.
+     * @hide
+     */
+    public void setValueAt(int index, int value) {
+        mValues[index] = value;
+    }
+
+    /**
      * Returns the index for which {@link #keyAt} would return the
      * specified key, or a negative number if the specified
      * key is not mapped.
@@ -228,6 +238,18 @@ public class SparseIntArray implements Cloneable {
         mKeys = GrowingArrayUtils.append(mKeys, mSize, key);
         mValues = GrowingArrayUtils.append(mValues, mSize, value);
         mSize++;
+    }
+
+    /**
+     * Provides a copy of keys.
+     *
+     * @hide
+     * */
+    public int[] copyKeys() {
+        if (size() == 0) {
+            return null;
+        }
+        return Arrays.copyOf(mKeys, size());
     }
 
     /**

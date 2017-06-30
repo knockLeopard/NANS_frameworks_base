@@ -24,8 +24,6 @@ import android.content.res.TypedArray;
 import android.os.*;
 import android.util.AttributeSet;
 import android.util.Log;
-import android.view.accessibility.AccessibilityEvent;
-import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.RemoteViews.RemoteView;
 
 /**
@@ -98,7 +96,7 @@ public class ViewFlipper extends ViewAnimator {
         // home screen. Therefore, we register the receiver as the current
         // user not the one the context is for.
         getContext().registerReceiverAsUser(mReceiver, android.os.Process.myUserHandle(),
-                filter, null, mHandler);
+                filter, null, getHandler());
 
         if (mAutoStart) {
             // Automatically start when requested
@@ -150,15 +148,8 @@ public class ViewFlipper extends ViewAnimator {
     }
 
     @Override
-    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
-        super.onInitializeAccessibilityEvent(event);
-        event.setClassName(ViewFlipper.class.getName());
-    }
-
-    @Override
-    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
-        super.onInitializeAccessibilityNodeInfo(info);
-        info.setClassName(ViewFlipper.class.getName());
+    public CharSequence getAccessibilityClassName() {
+        return ViewFlipper.class.getName();
     }
 
     /**
@@ -182,10 +173,9 @@ public class ViewFlipper extends ViewAnimator {
         if (running != mRunning) {
             if (running) {
                 showOnly(mWhichChild, flipNow);
-                Message msg = mHandler.obtainMessage(FLIP_MSG);
-                mHandler.sendMessageDelayed(msg, mFlipInterval);
+                postDelayed(mFlipRunnable, mFlipInterval);
             } else {
-                mHandler.removeMessages(FLIP_MSG);
+                removeCallbacks(mFlipRunnable);
             }
             mRunning = running;
         }
@@ -218,17 +208,12 @@ public class ViewFlipper extends ViewAnimator {
         return mAutoStart;
     }
 
-    private final int FLIP_MSG = 1;
-
-    private final Handler mHandler = new Handler() {
+    private final Runnable mFlipRunnable = new Runnable() {
         @Override
-        public void handleMessage(Message msg) {
-            if (msg.what == FLIP_MSG) {
-                if (mRunning) {
-                    showNext();
-                    msg = obtainMessage(FLIP_MSG);
-                    sendMessageDelayed(msg, mFlipInterval);
-                }
+        public void run() {
+            if (mRunning) {
+                showNext();
+                postDelayed(mFlipRunnable, mFlipInterval);
             }
         }
     };

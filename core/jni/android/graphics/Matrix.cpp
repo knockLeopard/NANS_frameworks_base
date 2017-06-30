@@ -15,16 +15,13 @@
 ** limitations under the License.
 */
 
-#include "jni.h"
 #include "GraphicsJNI.h"
-#include <android_runtime/AndroidRuntime.h>
-
-#include "SkMatrix.h"
-#include "SkTemplates.h"
-
 #include "Matrix.h"
+#include "SkMatrix.h"
+#include "core_jni_helpers.h"
 
 #include <Caches.h>
+#include <jni.h>
 
 namespace android {
 
@@ -305,7 +302,7 @@ public:
     }
  };
 
-static JNINativeMethod methods[] = {
+static const JNINativeMethod methods[] = {
     {"finalizer", "(J)V", (void*) SkMatrixGlue::finalizer},
     {"native_create","(J)J", (void*) SkMatrixGlue::create},
 
@@ -354,11 +351,10 @@ static JNINativeMethod methods[] = {
 static jfieldID sNativeInstanceField;
 
 int register_android_graphics_Matrix(JNIEnv* env) {
-    int result = AndroidRuntime::registerNativeMethods(env, "android/graphics/Matrix", methods,
-        sizeof(methods) / sizeof(methods[0]));
+    int result = RegisterMethodsOrDie(env, "android/graphics/Matrix", methods, NELEM(methods));
 
-    jclass clazz = env->FindClass("android/graphics/Matrix");
-    sNativeInstanceField = env->GetFieldID(clazz, "native_instance", "J");
+    jclass clazz = FindClassOrDie(env, "android/graphics/Matrix");
+    sNativeInstanceField = GetFieldIDOrDie(env, clazz, "native_instance", "J");
 
     return result;
 }

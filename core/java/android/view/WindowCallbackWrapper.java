@@ -19,6 +19,8 @@ package android.view;
 
 import android.view.accessibility.AccessibilityEvent;
 
+import java.util.List;
+
 /**
  * A simple decorator stub for Window.Callback that passes through any calls
  * to the wrapped instance as a base implementation. Call super.foo() to call into
@@ -122,6 +124,11 @@ public class WindowCallbackWrapper implements Window.Callback {
     }
 
     @Override
+    public boolean onSearchRequested(SearchEvent searchEvent) {
+        return mWrapped.onSearchRequested(searchEvent);
+    }
+
+    @Override
     public boolean onSearchRequested() {
         return mWrapped.onSearchRequested();
     }
@@ -132,6 +139,11 @@ public class WindowCallbackWrapper implements Window.Callback {
     }
 
     @Override
+    public ActionMode onWindowStartingActionMode(ActionMode.Callback callback, int type) {
+        return mWrapped.onWindowStartingActionMode(callback, type);
+    }
+
+    @Override
     public void onActionModeStarted(ActionMode mode) {
         mWrapped.onActionModeStarted(mode);
     }
@@ -139,6 +151,12 @@ public class WindowCallbackWrapper implements Window.Callback {
     @Override
     public void onActionModeFinished(ActionMode mode) {
         mWrapped.onActionModeFinished(mode);
+    }
+
+    @Override
+    public void onProvideKeyboardShortcuts(
+            List<KeyboardShortcutGroup> data, Menu menu, int deviceId) {
+        mWrapped.onProvideKeyboardShortcuts(data, menu, deviceId);
     }
 }
 

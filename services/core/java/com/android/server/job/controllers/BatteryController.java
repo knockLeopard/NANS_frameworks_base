@@ -16,8 +16,6 @@
 
 package com.android.server.job.controllers;
 
-import android.app.AlarmManager;
-import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -25,6 +23,7 @@ import android.content.IntentFilter;
 import android.os.BatteryManager;
 import android.os.BatteryManagerInternal;
 import android.os.SystemClock;
+import android.os.UserHandle;
 import android.util.Slog;
 
 import com.android.internal.annotations.VisibleForTesting;
@@ -47,10 +46,6 @@ public class BatteryController extends StateController {
 
     private static final Object sCreationLock = new Object();
     private static volatile BatteryController sController;
-    private static final String ACTION_CHARGING_STABLE =
-            "com.android.server.task.controllers.BatteryController.ACTION_CHARGING_STABLE";
-    /** Wait this long after phone is plugged in before doing any work. */
-    private static final long STABLE_CHARGING_THRESHOLD_MILLIS = 2 * 60 * 1000; // 2 minutes.
 
     private List<JobStatus> mTrackedTasks = new ArrayList<JobStatus>();
     private ChargingTracker mChargeTracker;
@@ -59,7 +54,7 @@ public class BatteryController extends StateController {
         synchronized (sCreationLock) {
             if (sController == null) {
                 sController = new BatteryController(taskManagerService,
-                        taskManagerService.getContext());
+                        taskManagerService.getContext(), taskManagerService.getLock());
             }
         }
         return sController;
@@ -73,35 +68,29 @@ public class BatteryController extends StateController {
     @VisibleForTesting
     public static BatteryController getForTesting(StateChangedListener stateChangedListener,
                                            Context context) {
-        return new BatteryController(stateChangedListener, context);
+        return new BatteryController(stateChangedListener, context, new Object());
     }
 
-    private BatteryController(StateChangedListener stateChangedListener, Context context) {
-        super(stateChangedListener, context);
+    private BatteryController(StateChangedListener stateChangedListener, Context context,
+            Object lock) {
+        super(stateChangedListener, context, lock);
         mChargeTracker = new ChargingTracker();
         mChargeTracker.startTracking();
     }
 
     @Override
-    public void maybeStartTrackingJob(JobStatus taskStatus) {
+    public void maybeStartTrackingJobLocked(JobStatus taskStatus, JobStatus lastJob) {
         final boolean isOnStablePower = mChargeTracker.isOnStablePower();
         if (taskStatus.hasChargingConstraint()) {
-            synchronized (mTrackedTasks) {
-                mTrackedTasks.add(taskStatus);
-                taskStatus.chargingConstraintSatisfied.set(isOnStablePower);
-            }
-        }
-        if (isOnStablePower) {
-            mChargeTracker.setStableChargingAlarm();
+            mTrackedTasks.add(taskStatus);
+            taskStatus.setChargingConstraintSatisfied(isOnStablePower);
         }
     }
 
     @Override
-    public void maybeStopTrackingJob(JobStatus taskStatus) {
+    public void maybeStopTrackingJobLocked(JobStatus taskStatus, JobStatus incomingJob, boolean forUpdate) {
         if (taskStatus.hasChargingConstraint()) {
-            synchronized (mTrackedTasks) {
-                mTrackedTasks.remove(taskStatus);
-            }
+            mTrackedTasks.remove(taskStatus);
         }
     }
 
@@ -111,9 +100,9 @@ public class BatteryController extends StateController {
             Slog.d(TAG, "maybeReportNewChargingState: " + stablePower);
         }
         boolean reportChange = false;
-        synchronized (mTrackedTasks) {
+        synchronized (mLock) {
             for (JobStatus ts : mTrackedTasks) {
-                boolean previous = ts.chargingConstraintSatisfied.getAndSet(stablePower);
+                boolean previous = ts.setChargingConstraintSatisfied(stablePower);
                 if (previous != stablePower) {
                     reportChange = true;
                 }
@@ -131,8 +120,6 @@ public class BatteryController extends StateController {
     }
 
     public class ChargingTracker extends BroadcastReceiver {
-        private final AlarmManager mAlarm;
-        private final PendingIntent mStableChargingTriggerIntent;
         /**
          * Track whether we're "charging", where charging means that we're ready to commit to
          * doing work.
@@ -142,9 +129,6 @@ public class BatteryController extends StateController {
         private boolean mBatteryHealthy;
 
         public ChargingTracker() {
-            mAlarm = (AlarmManager) mContext.getSystemService(Context.ALARM_SERVICE);
-            Intent intent = new Intent(ACTION_CHARGING_STABLE);
-            mStableChargingTriggerIntent = PendingIntent.getBroadcast(mContext, 0, intent, 0);
         }
 
         public void startTracking() {
@@ -154,10 +138,8 @@ public class BatteryController extends StateController {
             filter.addAction(Intent.ACTION_BATTERY_LOW);
             filter.addAction(Intent.ACTION_BATTERY_OKAY);
             // Charging/not charging.
-            filter.addAction(Intent.ACTION_POWER_CONNECTED);
-            filter.addAction(Intent.ACTION_POWER_DISCONNECTED);
-            // Charging stable.
-            filter.addAction(ACTION_CHARGING_STABLE);
+            filter.addAction(BatteryManager.ACTION_CHARGING);
+            filter.addAction(BatteryManager.ACTION_DISCHARGING);
             mContext.registerReceiver(this, filter);
 
             // Initialise tracker state.
@@ -195,59 +177,39 @@ public class BatteryController extends StateController {
                 }
                 mBatteryHealthy = true;
                 maybeReportNewChargingState();
-            } else if (Intent.ACTION_POWER_CONNECTED.equals(action)) {
+            } else if (BatteryManager.ACTION_CHARGING.equals(action)) {
                 if (DEBUG) {
-                    Slog.d(TAG, "Received charging intent, setting alarm for "
-                            + STABLE_CHARGING_THRESHOLD_MILLIS);
+                    Slog.d(TAG, "Received charging intent, fired @ "
+                            + SystemClock.elapsedRealtime());
                 }
-                // Set up an alarm for ACTION_CHARGING_STABLE - we don't want to kick off tasks
-                // here if the user unplugs the phone immediately.
-                setStableChargingAlarm();
                 mCharging = true;
-            } else if (Intent.ACTION_POWER_DISCONNECTED.equals(action)) {
+                maybeReportNewChargingState();
+            } else if (BatteryManager.ACTION_DISCHARGING.equals(action)) {
                 if (DEBUG) {
-                    Slog.d(TAG, "Disconnected from power, cancelling any set alarms.");
+                    Slog.d(TAG, "Disconnected from power.");
                 }
-                // If an alarm is set, breathe a sigh of relief and cancel it - crisis averted.
-                mAlarm.cancel(mStableChargingTriggerIntent);
                 mCharging = false;
                 maybeReportNewChargingState();
-            }else if (ACTION_CHARGING_STABLE.equals(action)) {
-                // Here's where we actually do the notify for a task being ready.
-                if (DEBUG) {
-                    Slog.d(TAG, "Stable charging fired @ " + SystemClock.elapsedRealtime()
-                            + " charging: " + mCharging);
-                }
-                if (mCharging) {  // Should never receive this intent if mCharging is false.
-                    maybeReportNewChargingState();
-                }
             }
-        }
-
-        void setStableChargingAlarm() {
-            final long alarmTriggerElapsed =
-                    SystemClock.elapsedRealtime() + STABLE_CHARGING_THRESHOLD_MILLIS;
-            if (DEBUG) {
-                Slog.d(TAG, "Setting stable alarm to go off in " +
-                        (STABLE_CHARGING_THRESHOLD_MILLIS / 1000) + "s");
-            }
-            mAlarm.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, alarmTriggerElapsed,
-                    mStableChargingTriggerIntent);
         }
     }
 
     @Override
-    public void dumpControllerState(PrintWriter pw) {
-        pw.println("Batt.");
-        pw.println("Stable power: " + mChargeTracker.isOnStablePower());
-        synchronized (mTrackedTasks) {
-            Iterator<JobStatus> it = mTrackedTasks.iterator();
-            if (it.hasNext()) {
-                pw.print(String.valueOf(it.next().hashCode()));
+    public void dumpControllerStateLocked(PrintWriter pw, int filterUid) {
+        pw.print("Battery: stable power = ");
+        pw.println(mChargeTracker.isOnStablePower());
+        pw.print("Tracking ");
+        pw.print(mTrackedTasks.size());
+        pw.println(":");
+        for (int i = 0; i < mTrackedTasks.size(); i++) {
+            final JobStatus js = mTrackedTasks.get(i);
+            if (!js.shouldDump(filterUid)) {
+                continue;
             }
-            while (it.hasNext()) {
-                pw.print("," + String.valueOf(it.next().hashCode()));
-            }
+            pw.print("  #");
+            js.printUniqueId(pw);
+            pw.print(" from ");
+            UserHandle.formatUid(pw, js.getSourceUid());
             pw.println();
         }
     }

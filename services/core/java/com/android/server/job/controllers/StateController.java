@@ -29,27 +29,40 @@ import java.io.PrintWriter;
  * are ready to run, or whether they must be stopped.
  */
 public abstract class StateController {
-    protected static final boolean DEBUG = false;
-    protected Context mContext;
-    protected StateChangedListener mStateChangedListener;
+    protected static final boolean DEBUG = JobSchedulerService.DEBUG;
+    protected final Context mContext;
+    protected final Object mLock;
+    protected final StateChangedListener mStateChangedListener;
 
-    public StateController(StateChangedListener stateChangedListener, Context context) {
+    public StateController(StateChangedListener stateChangedListener, Context context,
+            Object lock) {
         mStateChangedListener = stateChangedListener;
         mContext = context;
+        mLock = lock;
     }
 
     /**
      * Implement the logic here to decide whether a job should be tracked by this controller.
-     * This logic is put here so the JobManger can be completely agnostic of Controller logic.
+     * This logic is put here so the JobManager can be completely agnostic of Controller logic.
      * Also called when updating a task, so implementing controllers have to be aware of
      * preexisting tasks.
      */
-    public abstract void maybeStartTrackingJob(JobStatus jobStatus);
+    public abstract void maybeStartTrackingJobLocked(JobStatus jobStatus, JobStatus lastJob);
+    /**
+     * Optionally implement logic here to prepare the job to be executed.
+     */
+    public void prepareForExecutionLocked(JobStatus jobStatus) {
+    }
     /**
      * Remove task - this will happen if the task is cancelled, completed, etc.
      */
-    public abstract void maybeStopTrackingJob(JobStatus jobStatus);
+    public abstract void maybeStopTrackingJobLocked(JobStatus jobStatus, JobStatus incomingJob,
+            boolean forUpdate);
+    /**
+     * Called when a new job is being created to reschedule an old failed job.
+     */
+    public void rescheduleForFailure(JobStatus newJob, JobStatus failureToReschedule) {
+    }
 
-    public abstract void dumpControllerState(PrintWriter pw);
-
+    public abstract void dumpControllerStateLocked(PrintWriter pw, int filterUid);
 }

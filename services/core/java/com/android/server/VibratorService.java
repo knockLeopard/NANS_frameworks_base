@@ -24,6 +24,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.database.ContentObserver;
 import android.hardware.input.InputManager;
+import android.media.AudioManager;
 import android.os.BatteryStats;
 import android.os.Handler;
 import android.os.IVibratorService;
@@ -47,7 +48,10 @@ import android.media.AudioAttributes;
 import com.android.internal.app.IAppOpsService;
 import com.android.internal.app.IBatteryStats;
 
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.ListIterator;
@@ -56,8 +60,11 @@ public class VibratorService extends IVibratorService.Stub
         implements InputManager.InputDeviceListener {
     private static final String TAG = "VibratorService";
     private static final boolean DEBUG = false;
+    private static final String SYSTEM_UI_PACKAGE = "com.android.systemui";
 
     private final LinkedList<Vibration> mVibrations;
+    private final LinkedList<VibrationInfo> mPreviousVibrations;
+    private final int mPreviousVibrationsLimit;
     private Vibration mCurrentVibration;
     private final WorkSource mTmpWorkSource = new WorkSource();
     private final Handler mH = new Handler();
@@ -82,6 +89,7 @@ public class VibratorService extends IVibratorService.Stub
     private SettingsObserver mSettingObserver;
 
     native static boolean vibratorExists();
+    native static void vibratorInit();
     native static void vibratorOn(long milliseconds);
     native static void vibratorOff();
 
@@ -142,11 +150,54 @@ public class VibratorService extends IVibratorService.Stub
         }
 
         public boolean isSystemHapticFeedback() {
-            return (mUid == Process.SYSTEM_UID || mUid == 0) && mRepeat < 0;
+            return (mUid == Process.SYSTEM_UID || mUid == 0 || SYSTEM_UI_PACKAGE.equals(mOpPkg))
+                    && mRepeat < 0;
+        }
+    }
+
+    private static class VibrationInfo {
+        long timeout;
+        long startTime;
+        long[] pattern;
+        int repeat;
+        int usageHint;
+        int uid;
+        String opPkg;
+
+        public VibrationInfo(long timeout, long startTime, long[] pattern, int repeat,
+                int usageHint, int uid, String opPkg) {
+            this.timeout = timeout;
+            this.startTime = startTime;
+            this.pattern = pattern;
+            this.repeat = repeat;
+            this.usageHint = usageHint;
+            this.uid = uid;
+            this.opPkg = opPkg;
+        }
+
+        @Override
+        public String toString() {
+            return new StringBuilder()
+                    .append("timeout: ")
+                    .append(timeout)
+                    .append(", startTime: ")
+                    .append(startTime)
+                    .append(", pattern: ")
+                    .append(Arrays.toString(pattern))
+                    .append(", repeat: ")
+                    .append(repeat)
+                    .append(", usageHint: ")
+                    .append(usageHint)
+                    .append(", uid: ")
+                    .append(uid)
+                    .append(", opPkg: ")
+                    .append(opPkg)
+                    .toString();
         }
     }
 
     VibratorService(Context context) {
+        vibratorInit();
         // Reset the hardware to a default state, in case this is a runtime
         // restart instead of a fresh boot.
         vibratorOff();
@@ -161,7 +212,11 @@ public class VibratorService extends IVibratorService.Stub
         mBatteryStatsService = IBatteryStats.Stub.asInterface(ServiceManager.getService(
                 BatteryStats.SERVICE_NAME));
 
-        mVibrations = new LinkedList<Vibration>();
+        mPreviousVibrationsLimit = mContext.getResources().getInteger(
+                com.android.internal.R.integer.config_previousVibrationsDumpLimit);
+
+        mVibrations = new LinkedList<>();
+        mPreviousVibrations = new LinkedList<>();
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_SCREEN_OFF);
@@ -169,7 +224,7 @@ public class VibratorService extends IVibratorService.Stub
     }
 
     public void systemReady() {
-        mIm = (InputManager)mContext.getSystemService(Context.INPUT_SERVICE);
+        mIm = mContext.getSystemService(InputManager.class);
         mSettingObserver = new SettingsObserver(mH);
 
         mPowerManagerInternal = LocalServices.getService(PowerManagerInternal.class);
@@ -251,7 +306,7 @@ public class VibratorService extends IVibratorService.Stub
             synchronized (mVibrations) {
                 removeVibrationLocked(token);
                 doCancelVibrateLocked();
-                mCurrentVibration = vib;
+                addToPreviousVibrationsLocked(vib);
                 startVibrationLocked(vib);
             }
         } finally {
@@ -312,14 +367,22 @@ public class VibratorService extends IVibratorService.Stub
                 } else {
                     // A negative repeat means that this pattern is not meant
                     // to repeat. Treat it like a simple vibration.
-                    mCurrentVibration = vib;
                     startVibrationLocked(vib);
                 }
+                addToPreviousVibrationsLocked(vib);
             }
         }
         finally {
             Binder.restoreCallingIdentity(identity);
         }
+    }
+
+    private void addToPreviousVibrationsLocked(Vibration vib) {
+        if (mPreviousVibrations.size() > mPreviousVibrationsLimit) {
+            mPreviousVibrations.removeFirst();
+        }
+        mPreviousVibrations.addLast(new VibratorService.VibrationInfo(vib.mTimeout, vib.mStartTime,
+                vib.mPattern, vib.mRepeat, vib.mUsageHint, vib.mUid, vib.mOpPkg));
     }
 
     @Override // Binder call
@@ -378,8 +441,7 @@ public class VibratorService extends IVibratorService.Stub
             mCurrentVibration = null;
             return;
         }
-        mCurrentVibration = mVibrations.getFirst();
-        startVibrationLocked(mCurrentVibration);
+        startVibrationLocked(mVibrations.getFirst());
     }
 
     // Lock held on mVibrations
@@ -390,13 +452,20 @@ public class VibratorService extends IVibratorService.Stub
                 return;
             }
 
+            if (vib.mUsageHint == AudioAttributes.USAGE_NOTIFICATION_RINGTONE &&
+                    !shouldVibrateForRingtone()) {
+                return;
+            }
+
             int mode = mAppOpsService.checkAudioOperation(AppOpsManager.OP_VIBRATE,
                     vib.mUsageHint, vib.mUid, vib.mOpPkg);
             if (mode == AppOpsManager.MODE_ALLOWED) {
                 mode = mAppOpsService.startOperation(AppOpsManager.getToken(mAppOpsService),
                     AppOpsManager.OP_VIBRATE, vib.mUid, vib.mOpPkg);
             }
-            if (mode != AppOpsManager.MODE_ALLOWED) {
+            if (mode == AppOpsManager.MODE_ALLOWED) {
+                mCurrentVibration = vib;
+            } else {
                 if (mode == AppOpsManager.MODE_ERRORED) {
                     Slog.w(TAG, "Would be an error: vibrate from uid " + vib.mUid);
                 }
@@ -413,6 +482,18 @@ public class VibratorService extends IVibratorService.Stub
             // called before startNextVibrationLocked or startVibrationLocked.
             mThread = new VibrateThread(vib);
             mThread.start();
+        }
+    }
+
+    private boolean shouldVibrateForRingtone() {
+        AudioManager audioManager = (AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE);
+        int ringerMode = audioManager.getRingerModeInternal();
+        // "Also vibrate for calls" Setting in Sound
+        if (Settings.System.getInt(
+                mContext.getContentResolver(), Settings.System.VIBRATE_WHEN_RINGING, 0) != 0) {
+            return ringerMode != AudioManager.RINGER_MODE_SILENT;
+        } else {
+            return ringerMode == AudioManager.RINGER_MODE_VIBRATE;
         }
     }
 
@@ -649,7 +730,6 @@ public class VibratorService extends IVibratorService.Stub
                 if (!mDone) {
                     // If this vibration finished naturally, start the next
                     // vibration.
-                    mVibrations.remove(mVibration);
                     unlinkVibration(mVibration);
                     startNextVibrationLocked();
                 }
@@ -685,4 +765,23 @@ public class VibratorService extends IVibratorService.Stub
             }
         }
     };
+
+    @Override
+    protected void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
+        if (mContext.checkCallingOrSelfPermission(android.Manifest.permission.DUMP)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            pw.println("Permission Denial: can't dump vibrator service from from pid="
+                    + Binder.getCallingPid()
+                    + ", uid=" + Binder.getCallingUid());
+            return;
+        }
+        pw.println("Previous vibrations:");
+        synchronized (mVibrations) {
+            for (VibrationInfo info : mPreviousVibrations) {
+                pw.print("  ");
+                pw.println(info.toString());
+            }
+        }
+    }
 }

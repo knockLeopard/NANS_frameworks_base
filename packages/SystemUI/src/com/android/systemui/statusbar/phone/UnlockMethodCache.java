@@ -17,6 +17,7 @@
 package com.android.systemui.statusbar.phone;
 
 import android.content.Context;
+import android.os.Trace;
 
 import com.android.internal.widget.LockPatternUtils;
 import com.android.keyguard.KeyguardUpdateMonitor;
@@ -39,9 +40,10 @@ public class UnlockMethodCache {
     /** Whether the user configured a secure unlock method (PIN, password, etc.) */
     private boolean mSecure;
     /** Whether the unlock method is currently insecure (insecure method or trusted environment) */
-    private boolean mCurrentlyInsecure;
+    private boolean mCanSkipBouncer;
     private boolean mTrustManaged;
     private boolean mFaceUnlockRunning;
+    private boolean mTrusted;
 
     private UnlockMethodCache(Context ctx) {
         mLockPatternUtils = new LockPatternUtils(ctx);
@@ -64,11 +66,15 @@ public class UnlockMethodCache {
         return mSecure;
     }
 
+    public boolean isTrusted() {
+        return mTrusted;
+    }
+
     /**
-     * @return whether the lockscreen is currently insecure, i. e. the bouncer won't be shown
+     * @return whether the lockscreen is currently insecure, and the bouncer won't be shown
      */
-    public boolean isCurrentlyInsecure() {
-        return mCurrentlyInsecure;
+    public boolean canSkipBouncer() {
+        return mCanSkipBouncer;
     }
 
     public void addListener(OnUnlockMethodChangedListener listener) {
@@ -80,21 +86,25 @@ public class UnlockMethodCache {
     }
 
     private void update(boolean updateAlways) {
-        int user = mLockPatternUtils.getCurrentUser();
-        boolean secure = mLockPatternUtils.isSecure();
-        boolean currentlyInsecure = !secure ||  mKeyguardUpdateMonitor.getUserHasTrust(user);
+        Trace.beginSection("UnlockMethodCache#update");
+        int user = KeyguardUpdateMonitor.getCurrentUser();
+        boolean secure = mLockPatternUtils.isSecure(user);
+        boolean canSkipBouncer = !secure ||  mKeyguardUpdateMonitor.getUserCanSkipBouncer(user);
         boolean trustManaged = mKeyguardUpdateMonitor.getUserTrustIsManaged(user);
+        boolean trusted = mKeyguardUpdateMonitor.getUserHasTrust(user);
         boolean faceUnlockRunning = mKeyguardUpdateMonitor.isFaceUnlockRunning(user)
                 && trustManaged;
-        boolean changed = secure != mSecure || currentlyInsecure != mCurrentlyInsecure ||
+        boolean changed = secure != mSecure || canSkipBouncer != mCanSkipBouncer ||
                 trustManaged != mTrustManaged  || faceUnlockRunning != mFaceUnlockRunning;
         if (changed || updateAlways) {
             mSecure = secure;
-            mCurrentlyInsecure = currentlyInsecure;
+            mCanSkipBouncer = canSkipBouncer;
+            mTrusted = trusted;
             mTrustManaged = trustManaged;
             mFaceUnlockRunning = faceUnlockRunning;
             notifyListeners();
         }
+        Trace.endSection();
     }
 
     private void notifyListeners() {
@@ -120,17 +130,28 @@ public class UnlockMethodCache {
         }
 
         @Override
-        public void onScreenTurnedOn() {
+        public void onStartedWakingUp() {
             update(false /* updateAlways */);
         }
 
         @Override
-        public void onFingerprintRecognized(int userId) {
+        public void onFingerprintAuthenticated(int userId) {
+            Trace.beginSection("KeyguardUpdateMonitorCallback#onFingerprintAuthenticated");
+            if (!mKeyguardUpdateMonitor.isUnlockingWithFingerprintAllowed()) {
+                Trace.endSection();
+                return;
+            }
             update(false /* updateAlways */);
+            Trace.endSection();
         }
 
         @Override
         public void onFaceUnlockStateChanged(boolean running, int userId) {
+            update(false /* updateAlways */);
+        }
+
+        @Override
+        public void onStrongAuthStateChanged(int userId) {
             update(false /* updateAlways */);
         }
     };

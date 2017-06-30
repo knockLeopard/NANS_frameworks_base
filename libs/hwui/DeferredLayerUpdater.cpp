@@ -24,14 +24,13 @@
 namespace android {
 namespace uirenderer {
 
-DeferredLayerUpdater::DeferredLayerUpdater(renderthread::RenderThread& thread, Layer* layer)
-        : mSurfaceTexture(0)
-        , mTransform(0)
+DeferredLayerUpdater::DeferredLayerUpdater(Layer* layer)
+        : mSurfaceTexture(nullptr)
+        , mTransform(nullptr)
         , mNeedsGLContextAttach(false)
         , mUpdateTexImage(false)
         , mLayer(layer)
-        , mCaches(Caches::getInstance())
-        , mRenderThread(thread) {
+        , mCaches(Caches::getInstance()) {
     mWidth = mLayer->layer.getWidth();
     mHeight = mLayer->layer.getHeight();
     mBlend = mLayer->isBlend();
@@ -42,19 +41,19 @@ DeferredLayerUpdater::DeferredLayerUpdater(renderthread::RenderThread& thread, L
 
 DeferredLayerUpdater::~DeferredLayerUpdater() {
     SkSafeUnref(mColorFilter);
-    setTransform(0);
+    setTransform(nullptr);
     mLayer->postDecStrong();
-    mLayer = 0;
+    mLayer = nullptr;
 }
 
 void DeferredLayerUpdater::setPaint(const SkPaint* paint) {
-    OpenGLRenderer::getAlphaAndModeDirect(paint, &mAlpha, &mMode);
-    SkColorFilter* colorFilter = (paint) ? paint->getColorFilter() : NULL;
+    mAlpha = PaintUtils::getAlphaDirect(paint);
+    mMode = PaintUtils::getXfermodeDirect(paint);
+    SkColorFilter* colorFilter = (paint) ? paint->getColorFilter() : nullptr;
     SkRefCnt_SafeAssign(mColorFilter, colorFilter);
 }
 
-bool DeferredLayerUpdater::apply() {
-    bool success = true;
+void DeferredLayerUpdater::apply() {
     // These properties are applied the same to both layer types
     mLayer->setColorFilter(mColorFilter);
     mLayer->setAlpha(mAlpha, mMode);
@@ -62,7 +61,7 @@ bool DeferredLayerUpdater::apply() {
     if (mSurfaceTexture.get()) {
         if (mNeedsGLContextAttach) {
             mNeedsGLContextAttach = false;
-            mSurfaceTexture->attachToContext(mLayer->getTexture());
+            mSurfaceTexture->attachToContext(mLayer->getTextureId());
         }
         if (mUpdateTexImage) {
             mUpdateTexImage = false;
@@ -70,10 +69,9 @@ bool DeferredLayerUpdater::apply() {
         }
         if (mTransform) {
             mLayer->getTransform().load(*mTransform);
-            setTransform(0);
+            setTransform(nullptr);
         }
     }
-    return success;
 }
 
 void DeferredLayerUpdater::doUpdateTexImage() {
@@ -95,10 +93,10 @@ void DeferredLayerUpdater::doUpdateTexImage() {
 
         bool forceFilter = false;
         sp<GraphicBuffer> buffer = mSurfaceTexture->getCurrentBuffer();
-        if (buffer != NULL) {
+        if (buffer != nullptr) {
             // force filtration if buffer size != layer size
-            forceFilter = mWidth != buffer->getWidth()
-                    || mHeight != buffer->getHeight();
+            forceFilter = mWidth != static_cast<int>(buffer->getWidth())
+                    || mHeight != static_cast<int>(buffer->getHeight());
         }
 
         #if DEBUG_RENDERER
@@ -109,6 +107,9 @@ void DeferredLayerUpdater::doUpdateTexImage() {
         mSurfaceTexture->getTransformMatrix(transform);
         GLenum renderTarget = mSurfaceTexture->getCurrentTextureTarget();
 
+        LOG_ALWAYS_FATAL_IF(renderTarget != GL_TEXTURE_2D && renderTarget != GL_TEXTURE_EXTERNAL_OES,
+                "doUpdateTexImage target %x, 2d %x, EXT %x",
+                renderTarget, GL_TEXTURE_2D, GL_TEXTURE_EXTERNAL_OES);
         LayerRenderer::updateTextureLayer(mLayer, mWidth, mHeight,
                 !mBlend, forceFilter, renderTarget, transform);
     }
@@ -116,13 +117,12 @@ void DeferredLayerUpdater::doUpdateTexImage() {
 
 void DeferredLayerUpdater::detachSurfaceTexture() {
     if (mSurfaceTexture.get()) {
-        mRenderThread.eglManager().requireGlContext();
         status_t err = mSurfaceTexture->detachFromContext();
         if (err != 0) {
             // TODO: Elevate to fatal exception
             ALOGE("Failed to detach SurfaceTexture from context %d", err);
         }
-        mSurfaceTexture = 0;
+        mSurfaceTexture = nullptr;
         mLayer->clearTexture();
     }
 }

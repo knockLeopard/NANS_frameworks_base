@@ -18,10 +18,6 @@
 package com.android.tools.layoutlib.create;
 
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -29,12 +25,14 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,11 +44,18 @@ import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+
 /**
  * Unit tests for some methods of {@link AsmGenerator}.
  */
 public class AsmGeneratorTest {
 
+    private static final String[] EMPTY_STRING_ARRAY = new String[0];
     private MockLog mLog;
     private ArrayList<String> mOsJarPath;
     private String mOsDestJar;
@@ -64,7 +69,8 @@ public class AsmGeneratorTest {
         mLog = new MockLog();
         URL url = this.getClass().getClassLoader().getResource("data/mock_android.jar");
 
-        mOsJarPath = new ArrayList<String>();
+        mOsJarPath = new ArrayList<>();
+        //noinspection ConstantConditions
         mOsJarPath.add(url.getFile());
 
         mTempFile = File.createTempFile("mock", ".jar");
@@ -92,18 +98,18 @@ public class AsmGeneratorTest {
 
             @Override
             public String[] getDelegateMethods() {
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
             public String[] getDelegateClassNatives() {
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
             public String[] getOverriddenMethods() {
                 // methods to force override
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
@@ -117,7 +123,7 @@ public class AsmGeneratorTest {
 
             @Override
             public String[] getJavaPkgClasses() {
-              return new String[0];
+              return EMPTY_STRING_ARRAY;
             }
 
             @Override
@@ -128,7 +134,17 @@ public class AsmGeneratorTest {
             @Override
             public String[] getDeleteReturns() {
                  // methods deleted from their return type.
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public String[] getPromotedFields() {
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public Map<String, InjectMethodRunnable> getInjectedMethodsMap() {
+                return Collections.emptyMap();
             }
         };
 
@@ -139,7 +155,7 @@ public class AsmGeneratorTest {
                 new String[] {        // include classes
                     "**"
                 },
-                new HashSet<String>(0) /* excluded classes */,
+                Collections.<String>emptySet() /* excluded classes */,
                 new String[]{} /* include files */);
         aa.analyze();
         agen.generate();
@@ -162,24 +178,24 @@ public class AsmGeneratorTest {
 
             @Override
             public String[] getDelegateMethods() {
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
             public String[] getDelegateClassNatives() {
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
             public String[] getOverriddenMethods() {
                 // methods to force override
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
             public String[] getRenamedClasses() {
                 // classes to rename (so that we can replace them)
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
@@ -198,7 +214,17 @@ public class AsmGeneratorTest {
             @Override
             public String[] getDeleteReturns() {
                  // methods deleted from their return type.
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public String[] getPromotedFields() {
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public Map<String, InjectMethodRunnable> getInjectedMethodsMap() {
+                return Collections.emptyMap();
             }
         };
 
@@ -209,14 +235,14 @@ public class AsmGeneratorTest {
                 new String[] {        // include classes
                     "**"
                 },
-                new HashSet<String>(1),
+                Collections.<String>emptySet(),
                 new String[] {        /* include files */
                     "mock_android/data/data*"
                 });
         aa.analyze();
         agen.generate();
-        Map<String, ClassReader> output = new TreeMap<String, ClassReader>();
-        Map<String, InputStream> filesFound = new TreeMap<String, InputStream>();
+        Map<String, ClassReader> output = new TreeMap<>();
+        Map<String, InputStream> filesFound = new TreeMap<>();
         parseZip(mOsDestJar, output, filesFound);
         boolean injectedClassFound = false;
         for (ClassReader cr: output.values()) {
@@ -239,35 +265,35 @@ public class AsmGeneratorTest {
 
             @Override
             public String[] getDelegateMethods() {
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
             public String[] getDelegateClassNatives() {
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
             public String[] getOverriddenMethods() {
                 // methods to force override
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
             public String[] getRenamedClasses() {
                 // classes to rename (so that we can replace them)
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
             public String[] getJavaPkgClasses() {
                 // classes to refactor (so that we can replace them)
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
             }
 
             @Override
             public Set<String> getExcludedClasses() {
-                Set<String> set = new HashSet<String>(2);
+                Set<String> set = new HashSet<>(2);
                 set.add("mock_android.dummy.InnerTest");
                 set.add("java.lang.JavaClass");
                 return set;
@@ -276,7 +302,17 @@ public class AsmGeneratorTest {
             @Override
             public String[] getDeleteReturns() {
                 // methods deleted from their return type.
-                return new String[0];
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public String[] getPromotedFields() {
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public Map<String, InjectMethodRunnable> getInjectedMethodsMap() {
+                return Collections.emptyMap();
             }
         };
 
@@ -293,14 +329,125 @@ public class AsmGeneratorTest {
                 });
         aa.analyze();
         agen.generate();
-        Map<String, ClassReader> output = new TreeMap<String, ClassReader>();
-        Map<String, InputStream> filesFound = new TreeMap<String, InputStream>();
+        Map<String, ClassReader> output = new TreeMap<>();
+        Map<String, InputStream> filesFound = new TreeMap<>();
         parseZip(mOsDestJar, output, filesFound);
         for (String s : output.keySet()) {
             assertFalse(excludedClasses.contains(s));
         }
         assertArrayEquals(new String[] {"mock_android/data/dataFile"},
                 filesFound.keySet().toArray());
+    }
+
+    @Test
+    public void testMethodInjection() throws IOException, LogAbortException,
+            ClassNotFoundException, IllegalAccessException, InstantiationException,
+            NoSuchMethodException, InvocationTargetException {
+        ICreateInfo ci = new ICreateInfo() {
+            @Override
+            public Class<?>[] getInjectedClasses() {
+                return new Class<?>[0];
+            }
+
+            @Override
+            public String[] getDelegateMethods() {
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public String[] getDelegateClassNatives() {
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public String[] getOverriddenMethods() {
+                // methods to force override
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public String[] getRenamedClasses() {
+                // classes to rename (so that we can replace them)
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public String[] getJavaPkgClasses() {
+                // classes to refactor (so that we can replace them)
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public Set<String> getExcludedClasses() {
+                return Collections.emptySet();
+            }
+
+            @Override
+            public String[] getDeleteReturns() {
+                // methods deleted from their return type.
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public String[] getPromotedFields() {
+                return EMPTY_STRING_ARRAY;
+            }
+
+            @Override
+            public Map<String, InjectMethodRunnable> getInjectedMethodsMap() {
+                return Collections.singletonMap("mock_android.util.EmptyArray",
+                        InjectMethodRunnables.CONTEXT_GET_FRAMEWORK_CLASS_LOADER);
+            }
+        };
+
+        AsmGenerator agen = new AsmGenerator(mLog, mOsDestJar, ci);
+        AsmAnalyzer aa = new AsmAnalyzer(mLog, mOsJarPath, agen,
+                null,                 // derived from
+                new String[] {        // include classes
+                        "**"
+                },
+                ci.getExcludedClasses(),
+                new String[] {        /* include files */
+                        "mock_android/data/data*"
+                });
+        aa.analyze();
+        agen.generate();
+        Map<String, ClassReader> output = new TreeMap<>();
+        Map<String, InputStream> filesFound = new TreeMap<>();
+        parseZip(mOsDestJar, output, filesFound);
+        final String modifiedClass = "mock_android.util.EmptyArray";
+        final String modifiedClassPath = modifiedClass.replace('.', '/').concat(".class");
+        ZipFile zipFile = new ZipFile(mOsDestJar);
+        ZipEntry entry = zipFile.getEntry(modifiedClassPath);
+        assertNotNull(entry);
+        final byte[] bytes;
+        try (InputStream inputStream = zipFile.getInputStream(entry)) {
+            bytes = getByteArray(inputStream);
+        }
+        ClassLoader classLoader = new ClassLoader(getClass().getClassLoader()) {
+            @Override
+            protected Class<?> findClass(String name) throws ClassNotFoundException {
+                if (name.equals(modifiedClass)) {
+                    return defineClass(null, bytes, 0, bytes.length);
+                }
+                throw new ClassNotFoundException(name + " not found.");
+            }
+        };
+        Class<?> emptyArrayClass = classLoader.loadClass(modifiedClass);
+        Object emptyArrayInstance = emptyArrayClass.newInstance();
+        Method method = emptyArrayClass.getMethod("getFrameworkClassLoader");
+        Object cl = method.invoke(emptyArrayInstance);
+        assertEquals(classLoader, cl);
+    }
+
+    private static byte[] getByteArray(InputStream stream) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buffer = new byte[1024];
+        int read;
+        while ((read = stream.read(buffer, 0, buffer.length)) > -1) {
+            bos.write(buffer, 0, read);
+        }
+        return bos.toByteArray();
     }
 
     private void parseZip(String jarPath,
@@ -336,7 +483,7 @@ public class AsmGeneratorTest {
         boolean mInjectedClassFound = false;
 
         TestClassVisitor() {
-            super(Opcodes.ASM4);
+            super(Main.ASM_VERSION);
         }
 
         @Override
@@ -361,7 +508,7 @@ public class AsmGeneratorTest {
         public MethodVisitor visitMethod(int access, String name, String desc,
                 String signature, String[] exceptions) {
             MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
-            return new MethodVisitor(Opcodes.ASM4, mv) {
+            return new MethodVisitor(Main.ASM_VERSION, mv) {
 
                 @Override
                 public void visitFieldInsn(int opcode, String owner, String name,
@@ -387,10 +534,10 @@ public class AsmGeneratorTest {
 
                 @Override
                 public void visitMethodInsn(int opcode, String owner, String name,
-                        String desc) {
+                        String desc, boolean itf) {
                     assertTrue(!getBase(owner).equals(JAVA_CLASS_NAME));
                     assertTrue(testType(Type.getType(desc)));
-                    super.visitMethodInsn(opcode, owner, name, desc);
+                    super.visitMethodInsn(opcode, owner, name, desc, itf);
                 }
 
             };

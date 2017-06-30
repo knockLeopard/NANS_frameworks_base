@@ -105,7 +105,9 @@ Behavior on the Android Runtime (ART)</a>. Pay particular attention if:</p>
 
 <p>Make sure your notifications take these Android 5.0 changes into account.
  To learn more about designing your notifications for Android 5.0 and higher,
- see the <a href="{@docRoot}design/patterns/notifications.html">notifications design guide</a>.
+ see the <a
+ href="https://material.google.com/patterns/notifications.html">notifications
+ design guide</a>.
 </p>
 
 <h3 id="NotificationsMaterialDesignStyle">Material design style</h3>
@@ -598,3 +600,8 @@ android.provider.MediaStore#EXTRA_OUTPUT EXTRA_OUTPUT} should contain a content
 URI specifying where the photo should be stored. The camera app can write the
 image to the location specified by that URI, and the app that fired the intent
 would be able to read that file, even if the app is on the other profile. </p>
+
+<h3>Lockscreen widget support removed</h3>
+
+<p>Android 5.0 removes support for lockscreen widgets; it continues to support
+widgets on the home screen.</p>

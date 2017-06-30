@@ -20,6 +20,7 @@ import android.content.Context;
 import android.graphics.Rect;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.method.TextKeyListener;
 import android.util.AttributeSet;
@@ -34,20 +35,29 @@ import android.view.inputmethod.InputMethodSubtype;
 import android.widget.TextView;
 import android.widget.TextView.OnEditorActionListener;
 
+import com.android.internal.widget.TextViewInputDisabler;
+
 import java.util.List;
 /**
  * Displays an alphanumeric (latin-1) key entry for the user to enter
  * an unlock password
  */
-
 public class KeyguardPasswordView extends KeyguardAbsKeyInputView
         implements KeyguardSecurityView, OnEditorActionListener, TextWatcher {
 
     private final boolean mShowImeAtScreenOn;
     private final int mDisappearYTranslation;
 
+    // A delay constant to be used in a workaround for the situation where InputMethodManagerService
+    // is not switched to the new user yet.
+    // TODO: Remove this by ensuring such a race condition never happens.
+    private static final int DELAY_MILLIS_TO_REEVALUATE_IME_SWITCH_ICON = 500;  // 500ms
+
     InputMethodManager mImm;
     private TextView mPasswordEntry;
+    private TextViewInputDisabler mPasswordEntryDisabler;
+    private View mSwitchImeButton;
+
     private Interpolator mLinearOutSlowInInterpolator;
     private Interpolator mFastOutLinearInInterpolator;
 
@@ -67,9 +77,15 @@ public class KeyguardPasswordView extends KeyguardAbsKeyInputView
                 context, android.R.interpolator.fast_out_linear_in);
     }
 
+    @Override
     protected void resetState() {
         mSecurityMessageDisplay.setMessage(R.string.kg_password_instructions, false);
-        mPasswordEntry.setEnabled(true);
+        final boolean wasDisabled = mPasswordEntry.isEnabled();
+        setPasswordEntryEnabled(true);
+        setPasswordEntryInputEnabled(true);
+        if (wasDisabled) {
+            mImm.showSoftInput(mPasswordEntry, InputMethodManager.SHOW_IMPLICIT);
+        }
     }
 
     @Override
@@ -90,7 +106,7 @@ public class KeyguardPasswordView extends KeyguardAbsKeyInputView
         post(new Runnable() {
             @Override
             public void run() {
-                if (isShown()) {
+                if (isShown() && mPasswordEntry.isEnabled()) {
                     mPasswordEntry.requestFocus();
                     if (reason != KeyguardSecurityView.SCREEN_ON || mShowImeAtScreenOn) {
                         mImm.showSoftInput(mPasswordEntry, InputMethodManager.SHOW_IMPLICIT);
@@ -98,6 +114,24 @@ public class KeyguardPasswordView extends KeyguardAbsKeyInputView
                 }
             }
         });
+    }
+
+    @Override
+    protected int getPromtReasonStringRes(int reason) {
+        switch (reason) {
+            case PROMPT_REASON_RESTART:
+                return R.string.kg_prompt_reason_restart_password;
+            case PROMPT_REASON_TIMEOUT:
+                return R.string.kg_prompt_reason_timeout_password;
+            case PROMPT_REASON_DEVICE_ADMIN:
+                return R.string.kg_prompt_reason_device_admin;
+            case PROMPT_REASON_USER_REQUEST:
+                return R.string.kg_prompt_reason_user_request;
+            case PROMPT_REASON_NONE:
+                return 0;
+            default:
+                return R.string.kg_prompt_reason_timeout_password;
+        }
     }
 
     @Override
@@ -112,64 +146,18 @@ public class KeyguardPasswordView extends KeyguardAbsKeyInputView
         mPasswordEntry.requestFocus();
     }
 
-    @Override
-    protected void onFinishInflate() {
-        super.onFinishInflate();
-
-        boolean imeOrDeleteButtonVisible = false;
-
-        mImm = (InputMethodManager) getContext().getSystemService(
-                Context.INPUT_METHOD_SERVICE);
-
-        mPasswordEntry = (TextView) findViewById(getPasswordTextViewId());
-        mPasswordEntry.setKeyListener(TextKeyListener.getInstance());
-        mPasswordEntry.setInputType(InputType.TYPE_CLASS_TEXT
-                | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        mPasswordEntry.setOnEditorActionListener(this);
-        mPasswordEntry.addTextChangedListener(this);
-
-        // Poke the wakelock any time the text is selected or modified
-        mPasswordEntry.setOnClickListener(new OnClickListener() {
-            public void onClick(View v) {
-                mCallback.userActivity();
-            }
-        });
-
-        // Set selected property on so the view can send accessibility events.
-        mPasswordEntry.setSelected(true);
-
-        mPasswordEntry.addTextChangedListener(new TextWatcher() {
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-            }
-
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-            }
-
-            public void afterTextChanged(Editable s) {
-                if (mCallback != null) {
-                    mCallback.userActivity();
-                }
-            }
-        });
-
-        mPasswordEntry.requestFocus();
-
+    private void updateSwitchImeButton() {
         // If there's more than one IME, enable the IME switcher button
-        View switchImeButton = findViewById(R.id.switch_ime_button);
-        if (switchImeButton != null && hasMultipleEnabledIMEsOrSubtypes(mImm, false)) {
-            switchImeButton.setVisibility(View.VISIBLE);
-            imeOrDeleteButtonVisible = true;
-            switchImeButton.setOnClickListener(new OnClickListener() {
-                public void onClick(View v) {
-                    mCallback.userActivity(); // Leave the screen on a bit longer
-                    mImm.showInputMethodPicker();
-                }
-            });
+        final boolean wasVisible = mSwitchImeButton.getVisibility() == View.VISIBLE;
+        final boolean shouldBeVisible = hasMultipleEnabledIMEsOrSubtypes(mImm, false);
+        if (wasVisible != shouldBeVisible) {
+            mSwitchImeButton.setVisibility(shouldBeVisible ? View.VISIBLE : View.GONE);
         }
 
+        // TODO: Check if we still need this hack.
         // If no icon is visible, reset the start margin on the password field so the text is
         // still centered.
-        if (!imeOrDeleteButtonVisible) {
+        if (mSwitchImeButton.getVisibility() != View.VISIBLE) {
             android.view.ViewGroup.LayoutParams params = mPasswordEntry.getLayoutParams();
             if (params instanceof MarginLayoutParams) {
                 final MarginLayoutParams mlp = (MarginLayoutParams) params;
@@ -180,13 +168,66 @@ public class KeyguardPasswordView extends KeyguardAbsKeyInputView
     }
 
     @Override
+    protected void onFinishInflate() {
+        super.onFinishInflate();
+
+        mImm = (InputMethodManager) getContext().getSystemService(
+                Context.INPUT_METHOD_SERVICE);
+
+        mPasswordEntry = (TextView) findViewById(getPasswordTextViewId());
+        mPasswordEntryDisabler = new TextViewInputDisabler(mPasswordEntry);
+        mPasswordEntry.setKeyListener(TextKeyListener.getInstance());
+        mPasswordEntry.setInputType(InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        mPasswordEntry.setOnEditorActionListener(this);
+        mPasswordEntry.addTextChangedListener(this);
+
+        // Poke the wakelock any time the text is selected or modified
+        mPasswordEntry.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mCallback.userActivity();
+            }
+        });
+
+        // Set selected property on so the view can send accessibility events.
+        mPasswordEntry.setSelected(true);
+
+        mPasswordEntry.requestFocus();
+
+        mSwitchImeButton = findViewById(R.id.switch_ime_button);
+        mSwitchImeButton.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mCallback.userActivity(); // Leave the screen on a bit longer
+                // Do not show auxiliary subtypes in password lock screen.
+                mImm.showInputMethodPicker(false /* showAuxiliarySubtypes */);
+            }
+        });
+
+        // If there's more than one IME, enable the IME switcher button
+        updateSwitchImeButton();
+
+        // When we the current user is switching, InputMethodManagerService sometimes has not
+        // switched internal state yet here. As a quick workaround, we check the keyboard state
+        // again.
+        // TODO: Remove this workaround by ensuring such a race condition never happens.
+        postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                updateSwitchImeButton();
+            }
+        }, DELAY_MILLIS_TO_REEVALUATE_IME_SWITCH_ICON);
+    }
+
+    @Override
     protected boolean onRequestFocusInDescendants(int direction, Rect previouslyFocusedRect) {
         // send focus to the password field
         return mPasswordEntry.requestFocus(direction, previouslyFocusedRect);
     }
 
     @Override
-    protected void resetPasswordText(boolean animate) {
+    protected void resetPasswordText(boolean animate, boolean announce) {
         mPasswordEntry.setText("");
     }
 
@@ -198,6 +239,11 @@ public class KeyguardPasswordView extends KeyguardAbsKeyInputView
     @Override
     protected void setPasswordEntryEnabled(boolean enabled) {
         mPasswordEntry.setEnabled(enabled);
+    }
+
+    @Override
+    protected void setPasswordEntryInputEnabled(boolean enabled) {
+        mPasswordEntryDisabler.setInputEnabled(enabled);
     }
 
     /**
@@ -292,6 +338,11 @@ public class KeyguardPasswordView extends KeyguardAbsKeyInputView
 
     @Override
     public void afterTextChanged(Editable s) {
+        // Poor man's user edit detection, assuming empty text is programmatic and everything else
+        // is from the user.
+        if (!TextUtils.isEmpty(s)) {
+            onUserInput();
+        }
     }
 
     @Override

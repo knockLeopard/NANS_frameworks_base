@@ -34,7 +34,7 @@ import android.os.ServiceManager;
  * local interfaces that other services within the system server may use to access
  * privileged internal functions.
  * <li>Then {@link #onBootPhase(int)} is called as many times as there are boot phases
- * until {@link #PHASE_BOOT_COMPLETE} is sent, which is the last boot phase. Each phase
+ * until {@link #PHASE_BOOT_COMPLETED} is sent, which is the last boot phase. Each phase
  * is an opportunity to do special work, like acquiring optional service dependencies,
  * waiting to see if SafeMode is enabled, or registering with a service that gets
  * started after this one.
@@ -131,6 +131,15 @@ public abstract class SystemService {
      * @param userHandle The identifier of the user.
      */
     public void onStartUser(int userHandle) {}
+
+    /**
+     * Called when an existing user is unlocked. This means the
+     * credential-encrypted storage for that user is now available, and
+     * encryption-aware component filtering is no longer in effect.
+     *
+     * @param userHandle The identifier of the user.
+     */
+    public void onUnlockUser(int userHandle) {}
 
     /**
      * Called when switching to a different foreground user, for system services that have
