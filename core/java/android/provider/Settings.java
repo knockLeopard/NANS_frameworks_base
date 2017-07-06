@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2006 The Android Open Source Project
+ * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -5384,6 +5385,7 @@ public final class Settings {
         public static final String ENABLED_PRINT_SERVICES =
             "enabled_print_services";
 
+<<<<<<< HEAD
         /**
          * List of the disabled print services.
          *
@@ -5393,6 +5395,17 @@ public final class Settings {
             "disabled_print_services";
 
         /**
+=======
+        /**
+         * List of the disabled print services.
+         *
+         * @hide
+         */
+        public static final String DISABLED_PRINT_SERVICES =
+            "disabled_print_services";
+
+        /**
+>>>>>>> 300b9329e4f87449126e0b8337c1d89786c3b868
          * The saved value for WindowManagerService.setForcedDisplayDensity()
          * formatted as a single integer representing DPI. If unset, then use
          * the real display density.
@@ -6216,6 +6229,315 @@ public final class Settings {
 
         /**
          * Controls whether double tap to wake is enabled.
+<<<<<<< HEAD
+         * @hide
+         */
+        public static final String DOUBLE_TAP_TO_WAKE = "double_tap_to_wake";
+
+        /**
+         * The current assistant component. It could be a voice interaction service,
+         * or an activity that handles ACTION_ASSIST, or empty which means using the default
+         * handling.
+         *
+         * @hide
+         */
+        public static final String ASSISTANT = "assistant";
+
+        /**
+         * Whether the camera launch gesture should be disabled.
+         *
+         * @hide
+         */
+        public static final String CAMERA_GESTURE_DISABLED = "camera_gesture_disabled";
+
+        /**
+         * Whether the camera launch gesture to double tap the power button when the screen is off
+         * should be disabled.
+         *
+         * @hide
+         */
+        public static final String CAMERA_DOUBLE_TAP_POWER_GESTURE_DISABLED =
+                "camera_double_tap_power_gesture_disabled";
+
+        /**
+         * Whether the camera double twist gesture to flip between front and back mode should be
+         * enabled.
+         *
+         * @hide
+         */
+        public static final String CAMERA_DOUBLE_TWIST_TO_FLIP_ENABLED =
+                "camera_double_twist_to_flip_enabled";
+
+        /**
+         * Control whether Night display is currently activated.
+         * @hide
+         */
+        public static final String NIGHT_DISPLAY_ACTIVATED = "night_display_activated";
+
+        /**
+         * Control whether Night display will automatically activate/deactivate.
+         * @hide
+         */
+        public static final String NIGHT_DISPLAY_AUTO_MODE = "night_display_auto_mode";
+
+        /**
+         * Custom time when Night display is scheduled to activate.
+         * Represented as milliseconds from midnight (e.g. 79200000 == 10pm).
+         * @hide
+         */
+        public static final String NIGHT_DISPLAY_CUSTOM_START_TIME = "night_display_custom_start_time";
+
+        /**
+         * Custom time when Night display is scheduled to deactivate.
+         * Represented as milliseconds from midnight (e.g. 21600000 == 6am).
+         * @hide
+         */
+        public static final String NIGHT_DISPLAY_CUSTOM_END_TIME = "night_display_custom_end_time";
+
+        /**
+         * Names of the service components that the current user has explicitly allowed to
+         * be a VR mode listener, separated by ':'.
+         *
+         * @hide
+         */
+        public static final String ENABLED_VR_LISTENERS = "enabled_vr_listeners";
+
+        /**
+         * Behavior of the display while in VR mode.
+         *
+         * One of {@link #VR_DISPLAY_MODE_LOW_PERSISTENCE} or {@link #VR_DISPLAY_MODE_OFF}.
+         *
+         * @hide
+         */
+        public static final String VR_DISPLAY_MODE = "vr_display_mode";
+
+        /**
+         * Lower the display persistence while the system is in VR mode.
+         *
+         * @see PackageManager#FEATURE_VR_MODE_HIGH_PERFORMANCE
+         *
+         * @hide.
+         */
+        public static final int VR_DISPLAY_MODE_LOW_PERSISTENCE = 0;
+
+        /**
+         * Do not alter the display persistence while the system is in VR mode.
+         *
+         * @see PackageManager#FEATURE_VR_MODE_HIGH_PERFORMANCE
+         *
+         * @hide.
+         */
+        public static final int VR_DISPLAY_MODE_OFF = 1;
+
+        /**
+         * Whether CarrierAppUtils#disableCarrierAppsUntilPrivileged has been executed at least
+         * once.
+         *
+         * <p>This is used to ensure that we only take one pass which will disable apps that are not
+         * privileged (if any). From then on, we only want to enable apps (when a matching SIM is
+         * inserted), to avoid disabling an app that the user might actively be using.
+         *
+         * <p>Will be set to 1 once executed.
+         *
+         * @hide
+         */
+        public static final String CARRIER_APPS_HANDLED = "carrier_apps_handled";
+
+        /**
+         * Whether parent user can access remote contact in managed profile.
+         *
+         * @hide
+         */
+        public static final String MANAGED_PROFILE_CONTACT_REMOTE_SEARCH =
+                "managed_profile_contact_remote_search";
+
+        /**
+         * Whether or not the automatic storage manager is enabled and should run on the device.
+         *
+         * @hide
+         */
+        public static final String AUTOMATIC_STORAGE_MANAGER_ENABLED =
+                "automatic_storage_manager_enabled";
+
+        /**
+         * How many days of information for the automatic storage manager to retain on the device.
+         *
+         * @hide
+         */
+        public static final String AUTOMATIC_STORAGE_MANAGER_DAYS_TO_RETAIN =
+                "automatic_storage_manager_days_to_retain";
+
+        /**
+         * Default number of days of information for the automatic storage manager to retain.
+         *
+         * @hide
+         */
+        public static final int AUTOMATIC_STORAGE_MANAGER_DAYS_TO_RETAIN_DEFAULT = 90;
+
+        /**
+         * How many bytes the automatic storage manager has cleared out.
+         *
+         * @hide
+         */
+        public static final String AUTOMATIC_STORAGE_MANAGER_BYTES_CLEARED =
+                "automatic_storage_manager_bytes_cleared";
+
+
+        /**
+         * Last run time for the automatic storage manager.
+         *
+         * @hide
+         */
+        public static final String AUTOMATIC_STORAGE_MANAGER_LAST_RUN =
+                "automatic_storage_manager_last_run";
+
+
+        /**
+         * Whether SystemUI navigation keys is enabled.
+         * @hide
+         */
+        public static final String SYSTEM_NAVIGATION_KEYS_ENABLED =
+                "system_navigation_keys_enabled";
+
+        /**
+         * Holds comma separated list of ordering of QS tiles.
+         * @hide
+         */
+        public static final String QS_TILES = "sysui_qs_tiles";
+
+        /**
+         * Whether preloaded APKs have been installed for the user.
+         * @hide
+         */
+        public static final String DEMO_USER_SETUP_COMPLETE
+                = "demo_user_setup_complete";
+
+        /**
+         * Specifies whether the web action API is enabled.
+         *
+         * @hide
+         */
+        public static final String WEB_ACTION_ENABLED = "web_action_enabled";
+
+        /**
+         * Has this pairable device been paired or upgraded from a previously paired system.
+         * @hide
+         */
+        public static final String DEVICE_PAIRED = "device_paired";
+
+        /**
+         * This are the settings to be backed up.
+         *
+         * NOTE: Settings are backed up and restored in the order they appear
+         *       in this array. If you have one setting depending on another,
+         *       make sure that they are ordered appropriately.
+         *
+         * @hide
+         */
+
+        /**
+         * Date: Apr 7, 2016
+         * Copyright (C) 2016 RUBIS Laboratory at Seoul National University
+         */
+        /**
+         * Setting that specifies whether the screen swiper is enabled.
+         *
+         * @hide
+         */
+        public static final String ACCESSIBILITY_SCREEN_SWIPE_ENABLED =
+            "accessibility_screen_swipe_enabled";
+        // END
+
+        public static final String[] SETTINGS_TO_BACKUP = {
+            BUGREPORT_IN_POWER_MENU,                            // moved to global
+            ALLOW_MOCK_LOCATION,
+            PARENTAL_CONTROL_ENABLED,
+            PARENTAL_CONTROL_REDIRECT_URL,
+            USB_MASS_STORAGE_ENABLED,                           // moved to global
+            ACCESSIBILITY_DISPLAY_INVERSION_ENABLED,
+            ACCESSIBILITY_DISPLAY_DALTONIZER,
+            ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED,
+            ACCESSIBILITY_DISPLAY_MAGNIFICATION_ENABLED,
+            ACCESSIBILITY_DISPLAY_MAGNIFICATION_SCALE,
+            ACCESSIBILITY_DISPLAY_MAGNIFICATION_AUTO_UPDATE,
+            ACCESSIBILITY_SCRIPT_INJECTION,
+            ACCESSIBILITY_WEB_CONTENT_KEY_BINDINGS,
+            ENABLED_ACCESSIBILITY_SERVICES,
+            ENABLED_NOTIFICATION_LISTENERS,
+            ENABLED_VR_LISTENERS,
+            ENABLED_INPUT_METHODS,
+            TOUCH_EXPLORATION_GRANTED_ACCESSIBILITY_SERVICES,
+            TOUCH_EXPLORATION_ENABLED,
+            ACCESSIBILITY_ENABLED,
+            ACCESSIBILITY_SPEAK_PASSWORD,
+            ACCESSIBILITY_HIGH_TEXT_CONTRAST_ENABLED,
+            ACCESSIBILITY_CAPTIONING_PRESET,
+            ACCESSIBILITY_CAPTIONING_ENABLED,
+            ACCESSIBILITY_CAPTIONING_LOCALE,
+            ACCESSIBILITY_CAPTIONING_BACKGROUND_COLOR,
+            ACCESSIBILITY_CAPTIONING_FOREGROUND_COLOR,
+            ACCESSIBILITY_CAPTIONING_EDGE_TYPE,
+            ACCESSIBILITY_CAPTIONING_EDGE_COLOR,
+            ACCESSIBILITY_CAPTIONING_TYPEFACE,
+            ACCESSIBILITY_CAPTIONING_FONT_SCALE,
+            ACCESSIBILITY_CAPTIONING_WINDOW_COLOR,
+            TTS_USE_DEFAULTS,
+            TTS_DEFAULT_RATE,
+            TTS_DEFAULT_PITCH,
+            TTS_DEFAULT_SYNTH,
+            TTS_DEFAULT_LANG,
+            TTS_DEFAULT_COUNTRY,
+            TTS_ENABLED_PLUGINS,
+            TTS_DEFAULT_LOCALE,
+            SHOW_IME_WITH_HARD_KEYBOARD,
+            WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON,            // moved to global
+            WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY,               // moved to global
+            WIFI_NUM_OPEN_NETWORKS_KEPT,                        // moved to global
+            SELECTED_SPELL_CHECKER,
+            SELECTED_SPELL_CHECKER_SUBTYPE,
+            SPELL_CHECKER_ENABLED,
+            MOUNT_PLAY_NOTIFICATION_SND,
+            MOUNT_UMS_AUTOSTART,
+            MOUNT_UMS_PROMPT,
+            MOUNT_UMS_NOTIFY_ENABLED,
+            SLEEP_TIMEOUT,
+            DOUBLE_TAP_TO_WAKE,
+            WAKE_GESTURE_ENABLED,
+            LONG_PRESS_TIMEOUT,
+            CAMERA_GESTURE_DISABLED,
+            ACCESSIBILITY_AUTOCLICK_ENABLED,
+            ACCESSIBILITY_AUTOCLICK_DELAY,
+            ACCESSIBILITY_LARGE_POINTER_ICON,
+            PREFERRED_TTY_MODE,
+            ENHANCED_VOICE_PRIVACY_ENABLED,
+            TTY_MODE_ENABLED,
+            INCALL_POWER_BUTTON_BEHAVIOR,
+            NIGHT_DISPLAY_CUSTOM_START_TIME,
+            NIGHT_DISPLAY_CUSTOM_END_TIME,
+            NIGHT_DISPLAY_AUTO_MODE,
+            NIGHT_DISPLAY_ACTIVATED,
+            CAMERA_DOUBLE_TWIST_TO_FLIP_ENABLED,
+            CAMERA_DOUBLE_TAP_POWER_GESTURE_DISABLED,
+            SYSTEM_NAVIGATION_KEYS_ENABLED,
+            QS_TILES,
+            DOZE_ENABLED,
+            DOZE_PULSE_ON_PICK_UP,
+            DOZE_PULSE_ON_DOUBLE_TAP,
+            NFC_PAYMENT_DEFAULT_COMPONENT,
+            /**
+             * Date: Jul 5, 2017
+             * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+             *
+             * Setting that specifies whether the screen swiper is enabled.
+             */
+            ACCESSIBILITY_SCREEN_SWIPE_ENABLED
+            // END
+        };
+
+        /**
+         * These entries are considered common between the personal and the managed profile,
+         * since the managed profile doesn't get to change them.
+         *
          * @hide
          */
         public static final String DOUBLE_TAP_TO_WAKE = "double_tap_to_wake";
@@ -6502,6 +6824,7 @@ public final class Settings {
          * These entries are considered common between the personal and the managed profile,
          * since the managed profile doesn't get to change them.
          */
+>>>>>>> 300b9329e4f87449126e0b8337c1d89786c3b868
         private static final Set<String> CLONE_TO_MANAGED_PROFILE = new ArraySet<>();
 
         static {
@@ -8672,6 +8995,8 @@ public final class Settings {
          */
         public static final String CERT_PIN_UPDATE_METADATA_URL = "cert_pin_metadata_url";
 
+<<<<<<< HEAD
+=======
         /**
          * URL for intent firewall updates
          * @hide
@@ -8683,6 +9008,150 @@ public final class Settings {
          * URL for intent firewall update metadata
          * @hide
          */
+        public static final String INTENT_FIREWALL_UPDATE_METADATA_URL =
+                "intent_firewall_metadata_url";
+
+        /**
+         * SELinux enforcement status. If 0, permissive; if 1, enforcing.
+         * @hide
+         */
+        public static final String SELINUX_STATUS = "selinux_status";
+
+        /**
+         * Developer setting to force RTL layout.
+         * @hide
+         */
+        public static final String DEVELOPMENT_FORCE_RTL = "debug.force_rtl";
+
+        /**
+         * Milliseconds after screen-off after which low battery sounds will be silenced.
+         *
+         * If zero, battery sounds will always play.
+         * Defaults to @integer/def_low_battery_sound_timeout in SettingsProvider.
+         *
+         * @hide
+         */
+        public static final String LOW_BATTERY_SOUND_TIMEOUT = "low_battery_sound_timeout";
+
+        /**
+         * Milliseconds to wait before bouncing Wi-Fi after settings is restored. Note that after
+         * the caller is done with this, they should call {@link ContentResolver#delete} to
+         * clean up any value that they may have written.
+         *
+         * @hide
+         */
+        public static final String WIFI_BOUNCE_DELAY_OVERRIDE_MS = "wifi_bounce_delay_override_ms";
+
+        /**
+         * Defines global runtime overrides to window policy.
+         *
+         * See {@link com.android.server.policy.PolicyControl} for value format.
+         *
+         * @hide
+         */
+        public static final String POLICY_CONTROL = "policy_control";
+
+        /**
+         * Defines global zen mode.  ZEN_MODE_OFF, ZEN_MODE_IMPORTANT_INTERRUPTIONS,
+         * or ZEN_MODE_NO_INTERRUPTIONS.
+         *
+         * @hide
+         */
+        public static final String ZEN_MODE = "zen_mode";
+
+        /** @hide */ public static final int ZEN_MODE_OFF = 0;
+        /** @hide */ public static final int ZEN_MODE_IMPORTANT_INTERRUPTIONS = 1;
+        /** @hide */ public static final int ZEN_MODE_NO_INTERRUPTIONS = 2;
+        /** @hide */ public static final int ZEN_MODE_ALARMS = 3;
+
+        /** @hide */ public static String zenModeToString(int mode) {
+            if (mode == ZEN_MODE_IMPORTANT_INTERRUPTIONS) return "ZEN_MODE_IMPORTANT_INTERRUPTIONS";
+            if (mode == ZEN_MODE_ALARMS) return "ZEN_MODE_ALARMS";
+            if (mode == ZEN_MODE_NO_INTERRUPTIONS) return "ZEN_MODE_NO_INTERRUPTIONS";
+            return "ZEN_MODE_OFF";
+        }
+
+        /** @hide */ public static boolean isValidZenMode(int value) {
+            switch (value) {
+                case Global.ZEN_MODE_OFF:
+                case Global.ZEN_MODE_IMPORTANT_INTERRUPTIONS:
+                case Global.ZEN_MODE_ALARMS:
+                case Global.ZEN_MODE_NO_INTERRUPTIONS:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /**
+         * Value of the ringer before entering zen mode.
+         *
+         * @hide
+         */
+        public static final String ZEN_MODE_RINGER_LEVEL = "zen_mode_ringer_level";
+
+        /**
+         * Opaque value, changes when persisted zen mode configuration changes.
+         *
+         * @hide
+         */
+        public static final String ZEN_MODE_CONFIG_ETAG = "zen_mode_config_etag";
+
+        /**
+         * Defines global heads up toggle.  One of HEADS_UP_OFF, HEADS_UP_ON.
+         *
+         * @hide
+         */
+        public static final String HEADS_UP_NOTIFICATIONS_ENABLED =
+                "heads_up_notifications_enabled";
+
+        /** @hide */ public static final int HEADS_UP_OFF = 0;
+        /** @hide */ public static final int HEADS_UP_ON = 1;
+
+        /**
+         * The name of the device
+         */
+        public static final String DEVICE_NAME = "device_name";
+
+        /**
+         * Whether the NetworkScoringService has been first initialized.
+         * <p>
+         * Type: int (0 for false, 1 for true)
+         * @hide
+         */
+        public static final String NETWORK_SCORING_PROVISIONED = "network_scoring_provisioned";
+
+        /**
+         * Whether the user wants to be prompted for password to decrypt the device on boot.
+         * This only matters if the storage is encrypted.
+         * <p>
+         * Type: int (0 for false, 1 for true)
+         * @hide
+         */
+        public static final String REQUIRE_PASSWORD_TO_DECRYPT = "require_password_to_decrypt";
+
+>>>>>>> 300b9329e4f87449126e0b8337c1d89786c3b868
+        /**
+         * Whether the Volte is enabled
+         * <p>
+         * Type: int (0 for false, 1 for true)
+         * @hide
+         */
+<<<<<<< HEAD
+        public static final String INTENT_FIREWALL_UPDATE_CONTENT_URL =
+                "intent_firewall_content_url";
+=======
+        public static final String ENHANCED_4G_MODE_ENABLED = "volte_vt_enabled";
+>>>>>>> 300b9329e4f87449126e0b8337c1d89786c3b868
+
+        /**
+         * Whether VT (Video Telephony over IMS) is enabled
+         * <p>
+         * Type: int (0 for false, 1 for true)
+         *
+         * @hide
+         */
+<<<<<<< HEAD
         public static final String INTENT_FIREWALL_UPDATE_METADATA_URL =
                 "intent_firewall_metadata_url";
 
@@ -8820,6 +9289,8 @@ public final class Settings {
          *
          * @hide
          */
+=======
+>>>>>>> 300b9329e4f87449126e0b8337c1d89786c3b868
         public static final String VT_IMS_ENABLED = "vt_ims_enabled";
 
         /**
@@ -8975,6 +9446,16 @@ public final class Settings {
         public static final String DATABASE_DOWNGRADE_REASON = "database_downgrade_reason";
 
         /**
+         * Date: Jul 5, 2017
+         * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+         */
+        /**
+         * Whether the NANS should be on. Only the NANS service should touch this.
+         */
+        public static final String NANS_ENABLED = "nans";
+        // END
+
+        /**
          * Settings to backup. This is here so that it's in the same place as the settings
          * keys and easy to update.
          *
@@ -9008,7 +9489,15 @@ public final class Settings {
             CALL_AUTO_RETRY,
             DOCK_AUDIO_MEDIA_ENABLED,
             ENCODED_SURROUND_OUTPUT,
-            LOW_POWER_MODE_TRIGGER_LEVEL
+            LOW_POWER_MODE_TRIGGER_LEVEL,
+            /**
+             * Date: Jul 5, 2017
+             * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+             *
+             * Setting that specifies whether the NANS is enabled.
+             */
+            NANS_ENABLED
+            //END
         };
 
         // Populated lazily, guarded by class object:
