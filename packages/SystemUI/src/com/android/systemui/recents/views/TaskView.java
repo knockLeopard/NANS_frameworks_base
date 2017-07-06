@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014 The Android Open Source Project
+ * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,6 +58,20 @@ import com.android.systemui.recents.misc.SystemServicesProxy;
 import com.android.systemui.recents.misc.Utilities;
 import com.android.systemui.recents.model.Task;
 import com.android.systemui.recents.model.TaskStack;
+
+/**
+ * Date: Jul 6, 2017
+ * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+ *
+ * Add libraries for NANS features.
+ */
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.hardware.display.DisplayManager;
+import android.os.RemoteException;
+import android.util.Slog;
+import android.view.Display;
+// END
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -639,6 +654,48 @@ public class TaskView extends FixedSizeFrameLayout implements Task.TaskCallbacks
         mHeaderView.bindToTask(mTask, mTouchExplorationEnabled, mIsDisabledInSafeMode);
         mHeaderView.onTaskDataLoaded();
     }
+
+    /**
+     * Date: Jul 6, 2017
+     * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+     *
+     * Add the event handler for the external display button.
+     */
+    private int index;
+    private Display[] displays;
+    void setExternalDisplay() {
+        index = 0;
+        DisplayManager dm = (DisplayManager)mContext.getSystemService(Context.DISPLAY_SERVICE);
+        displays = dm.getDisplays();
+        final String[] items = new String[displays.length];
+        for(int i=0; i<items.length; i++)
+            items[i] = displays[i].getName();
+
+        AlertDialog.Builder ab = new AlertDialog.Builder(mContext);
+        ab.setTitle("Choose Target Display Device");
+        ab.setSingleChoiceItems(items, 0,
+        new DialogInterface.OnClickListener() {
+        public void onClick(DialogInterface dialog, int whichButton) {
+            index = whichButton;
+        }
+        }).setPositiveButton("Ok",
+        new DialogInterface.OnClickListener() {
+        public void onClick(DialogInterface dialog, int whichButton) {
+            Slog.d("TaskView", "setExternalDisplay(), index="+index);
+            final TaskView tv = TaskView.this;
+            mCb.onTaskViewClicked(tv, tv.getTask(), false);
+            ActivityManager am = (ActivityManager)mContext.getSystemService(Context.ACTIVITY_SERVICE);
+            am.setExternalDisplay(tv.getTask().key.id, displays[index]);
+            dialog.dismiss();
+        }
+        }).setNegativeButton("Cancel",
+        new DialogInterface.OnClickListener() {
+        public void onClick(DialogInterface dialog, int whichButton) {
+        }
+        });
+        ab.show();
+    }
+    // END
 
     /**** View.OnClickListener Implementation ****/
 
