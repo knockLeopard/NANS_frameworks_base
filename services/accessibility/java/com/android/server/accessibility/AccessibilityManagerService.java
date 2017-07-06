@@ -1,5 +1,6 @@
 /*
  ** Copyright 2009, The Android Open Source Project
+ ** Copyright (C) 2017 RUBIS Laboratory at Seoul National University
  **
  ** Licensed under the Apache License, Version 2.0 (the "License");
  ** you may not use this file except in compliance with the License.
@@ -701,6 +702,14 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
                 userState.mIsDisplayMagnificationEnabled = false;
                 userState.mIsAutoclickEnabled = false;
                 userState.mEnabledServices.clear();
+                /**
+                 * Date: Jul 6, 2017
+                 * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+                 *
+                 * Set the temporary stste of screen swiper.
+                 */
+                userState.mIsScreenSwipeEnabled = false;
+                // END
             }
             userState.mEnabledServices.add(sFakeAccessibilityServiceComponentName);
             userState.mTouchExplorationGrantedServices.add(sFakeAccessibilityServiceComponentName);
@@ -755,6 +764,15 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
             userState.mBindingServices.clear();
             userState.mTouchExplorationGrantedServices.clear();
             userState.mTouchExplorationGrantedServices.add(service);
+
+            /**
+             * Date: Jul 6, 2017
+             * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+             *
+             * Set the temporary stste of screen swiper.
+             */
+            userState.mIsScreenSwipeEnabled = false;
+            // END
 
             // User the current state instead settings.
             onUserStateChangedLocked(userState);
@@ -1368,6 +1386,18 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
             if (userState.mIsPerformGesturesEnabled) {
                 flags |= AccessibilityInputFilter.FLAG_FEATURE_INJECT_MOTION_EVENTS;
             }
+
+            /**
+             * Date: Jul 6, 2017
+             * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+             *
+             * Set the flag for screen swiper on updateInputFilter().
+             */
+            if (userState.mIsScreenSwipeEnabled) {
+                flags |= AccessibilityInputFilter.FLAG_FEATURE_SCREEN_SWIPER;
+            }
+            // END
+
             if (flags != 0) {
                 if (!mHasInputFilter) {
                     mHasInputFilter = true;
@@ -1584,6 +1614,15 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
         somethingChanged |= readDisplayMagnificationEnabledSettingLocked(userState);
         somethingChanged |= readAutoclickEnabledSettingLocked(userState);
 
+        /**
+         * Date: Jul 6, 2017
+         * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+         *
+         * Read the configuration of screen swiper.
+         */
+        somthingChanged |= readScreenSwipeEnabledSettingLocked(userState);
+        // END
+
         return somethingChanged;
     }
 
@@ -1668,6 +1707,25 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
         }
         return false;
     }
+
+    /**
+     * Date: Jul 6, 2017
+     * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+     *
+     * Read the configuration of screen swiper.
+     */
+    private boolean readScreenSwipeEnabledSettingLocked(UserState userState) {
+        final boolean screenSwipeEnabled = Settings.Secure.getIntForUser(
+                mContext.getContentResolver(),
+                Settings.Secure.ACCESSIBILITY_SCREEN_SWIPE_ENABLED,
+                0, userState.mUserId) == 1;
+        if (screenSwipeEnabled != userState.mIsScreenSwipeEnabled) {
+            userState.mIsScreenSwipeEnabled = screenSwipeEnabled;
+            return true;
+        }
+        return false;
+    }
+    // END
 
     private void updateTouchExplorationLocked(UserState userState) {
         boolean enabled = false;
@@ -1960,6 +2018,16 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
                 pw.append(", displayMagnificationEnabled="
                         + userState.mIsDisplayMagnificationEnabled);
                 pw.append(", autoclickEnabled=" + userState.mIsAutoclickEnabled);
+
+                /**
+                 * Date: Jul 6, 2017
+                 * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+                 *
+                 * Append the mIsScreenSwiperEnabled.
+                 */
+                pw.append(", screenSwipeEnabled=" + userState.mIsScreenSwipeEnabled);
+                // END
+
                 if (userState.mUiAutomationService != null) {
                     pw.append(", ");
                     userState.mUiAutomationService.dump(fd, pw, args);
@@ -4240,6 +4308,15 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
         public boolean mIsFilterKeyEventsEnabled;
         public boolean mAccessibilityFocusOnlyInActiveWindow;
 
+        /**
+         * Date: Jul 6, 2017
+         * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+         *
+         * Add a variable for the screen swiper.
+         */
+        public boolean mIsScreenSwipeEnabled;
+        // END
+
         private Service mUiAutomationService;
         private int mUiAutomationFlags;
         private IAccessibilityServiceClient mUiAutomationServiceClient;
@@ -4304,6 +4381,16 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
             mIsEnhancedWebAccessibilityEnabled = false;
             mIsDisplayMagnificationEnabled = false;
             mIsAutoclickEnabled = false;
+
+            /**
+             * Date: Jul 6, 2017
+             * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+             *
+             * Set the initial value of mIsScreenSwiperEnabled.
+             */
+            mIsScreenSwipeEnabled = false;
+            // END
+
             mSoftKeyboardShowMode = 0;
         }
 
@@ -4359,6 +4446,16 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
         private final Uri mAccessibilitySoftKeyboardModeUri = Settings.Secure.getUriFor(
                 Settings.Secure.ACCESSIBILITY_SOFT_KEYBOARD_MODE);
 
+        /**
+         * Date: Jul 6, 2017
+         * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+         *
+         * Add a uri variable for the mScreenSwiperEnabled.
+         */
+        private final Uri mScreenSwipeEnabledUri = Settings.Secure.getUriFor(
+                Settings.Secure.ACCESSIBILITY_SCREEN_SWIPE_ENABLED);
+        // END
+
         public AccessibilityContentObserver(Handler handler) {
             super(handler);
         }
@@ -4413,6 +4510,19 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
                     if (readAutoclickEnabledSettingLocked(userState)) {
                         onUserStateChangedLocked(userState);
                     }
+
+                /**
+                 * Date: Jul 6, 2017
+                 * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+                 *
+                 * Read and handle for the changed screen swiper configuration.
+                 */
+                } else if (mScreenSwipeEnabledUri.equals(uri)) {
+                    if (readScreenSwipeEnabledSettingLocked(userState)) {
+                        onUserStateChangedLocked(userState);
+                    }
+                // END
+
                 } else if (mEnabledAccessibilityServicesUri.equals(uri)) {
                     if (readEnabledAccessibilityServicesLocked(userState)) {
                         onUserStateChangedLocked(userState);
