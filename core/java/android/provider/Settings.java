@@ -5385,7 +5385,6 @@ public final class Settings {
         public static final String ENABLED_PRINT_SERVICES =
             "enabled_print_services";
 
-<<<<<<< HEAD
         /**
          * List of the disabled print services.
          *
@@ -5395,7 +5394,7 @@ public final class Settings {
             "disabled_print_services";
 
         /**
-=======
+
         /**
          * List of the disabled print services.
          *
@@ -5405,7 +5404,6 @@ public final class Settings {
             "disabled_print_services";
 
         /**
->>>>>>> 300b9329e4f87449126e0b8337c1d89786c3b868
          * The saved value for WindowManagerService.setForcedDisplayDensity()
          * formatted as a single integer representing DPI. If unset, then use
          * the real display density.
@@ -6229,7 +6227,7 @@ public final class Settings {
 
         /**
          * Controls whether double tap to wake is enabled.
-<<<<<<< HEAD
+         *
          * @hide
          */
         public static final String DOUBLE_TAP_TO_WAKE = "double_tap_to_wake";
@@ -6824,7 +6822,6 @@ public final class Settings {
          * These entries are considered common between the personal and the managed profile,
          * since the managed profile doesn't get to change them.
          */
->>>>>>> 300b9329e4f87449126e0b8337c1d89786c3b868
         private static final Set<String> CLONE_TO_MANAGED_PROFILE = new ArraySet<>();
 
         static {
@@ -8995,8 +8992,6 @@ public final class Settings {
          */
         public static final String CERT_PIN_UPDATE_METADATA_URL = "cert_pin_metadata_url";
 
-<<<<<<< HEAD
-=======
         /**
          * URL for intent firewall updates
          * @hide
@@ -9130,19 +9125,16 @@ public final class Settings {
          */
         public static final String REQUIRE_PASSWORD_TO_DECRYPT = "require_password_to_decrypt";
 
->>>>>>> 300b9329e4f87449126e0b8337c1d89786c3b868
         /**
          * Whether the Volte is enabled
          * <p>
          * Type: int (0 for false, 1 for true)
          * @hide
          */
-<<<<<<< HEAD
         public static final String INTENT_FIREWALL_UPDATE_CONTENT_URL =
                 "intent_firewall_content_url";
-=======
+
         public static final String ENHANCED_4G_MODE_ENABLED = "volte_vt_enabled";
->>>>>>> 300b9329e4f87449126e0b8337c1d89786c3b868
 
         /**
          * Whether VT (Video Telephony over IMS) is enabled
@@ -9151,7 +9143,6 @@ public final class Settings {
          *
          * @hide
          */
-<<<<<<< HEAD
         public static final String INTENT_FIREWALL_UPDATE_METADATA_URL =
                 "intent_firewall_metadata_url";
 
@@ -9289,8 +9280,6 @@ public final class Settings {
          *
          * @hide
          */
-=======
->>>>>>> 300b9329e4f87449126e0b8337c1d89786c3b868
         public static final String VT_IMS_ENABLED = "vt_ims_enabled";
 
         /**
