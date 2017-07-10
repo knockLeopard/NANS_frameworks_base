@@ -6420,7 +6420,7 @@ public final class Settings {
          * @hide
          */
         public static final String NANS_MODE_ENABLED = "nans_mode_enabled";
-        public static final String SWIPE_GESTURE_CONTROL_ENABLED = "swipe_gesture_control_enabled";
+        public static final String SWIPE_GESTURE_ENABLED = "swipe_gesture_enabled";
         // END
 
         /**
@@ -6515,7 +6515,7 @@ public final class Settings {
              * Setting that specifies whether the NANS mode and the swipe gesture control are enabled.
              */
             NANS_MODE_ENABLED,
-            SWIPE_GESTURE_CONTROL_ENABLED
+            SWIPE_GESTURE_ENABLED
             // END
         };
 

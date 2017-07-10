@@ -86,7 +86,7 @@ class AccessibilityInputFilter extends InputFilter implements EventStreamTransfo
      */
     static final int FLAG_FEATURE_SCREEN_SWIPER = 0x00000020;
 
-    static final int FEATURES_AFFECTING_MOTION_EVENTS = FLAG_FEATURE_SCREEN_SWIPER 
+    static final int FEATURES_AFFECTING_MOTION_EVENTS = FLAG_FEATURE_SCREEN_SWIPER
             | FLAG_FEATURE_INJECT_MOTION_EVENTS
             | FLAG_FEATURE_AUTOCLICK 
             | FLAG_FEATURE_TOUCH_EXPLORATION
@@ -101,7 +101,7 @@ class AccessibilityInputFilter extends InputFilter implements EventStreamTransfo
      *
      * @see #setUserAndEnabledFeatures(int, int)
      */
-    static final int FLAG_FEATURE_CONTROL_SCREEN_MAGNIFIER = 0x00000020;
+    static final int FLAG_FEATURE_CONTROL_SCREEN_MAGNIFIER = 0x00000040;
 
     private final Runnable mProcessBatchedEventsRunnable = new Runnable() {
         @Override
@@ -153,6 +153,15 @@ class AccessibilityInputFilter extends InputFilter implements EventStreamTransfo
     private EventStreamState mTouchScreenStreamState;
 
     private EventStreamState mKeyboardStreamState;
+
+    /**
+     * Date: Jul 7, 2017
+     * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+     *
+     * Added the swipe gesture handler.
+     */
+    //private SwipeGestureHandler mSwipeGestureHandler;
+    // END
 
     AccessibilityInputFilter(Context context, AccessibilityManagerService service) {
         super(context.getMainLooper());
@@ -432,10 +441,8 @@ class AccessibilityInputFilter extends InputFilter implements EventStreamTransfo
          * Handler for enabling the swipe gesture control.
          */
         if ((mEnabledFeatures & FLAG_FEATURE_SCREEN_SWIPER) != 0) {
-            /*
-            mSwipeGestureHandler = new SwipeGestureHandler(mContext, mAms, detectControlGesture);
-            addFirstEventHandler(mSwipeGestureHandler);
-            */
+            //mSwipeGestureHandler = new SwipeGestureHandler(mContext, mAms, true);
+            //addFirstEventHandler(mSwipeGestureHandler);
             Slog.i(TAG, "enableFeatures(), FLAG_FEATURE_SCREEN_SWIPER");
         }
         // END
@@ -481,6 +488,18 @@ class AccessibilityInputFilter extends InputFilter implements EventStreamTransfo
             mKeyboardInterceptor.onDestroy();
             mKeyboardInterceptor = null;
         }
+
+        /**
+         * Date: Jul 7, 2017
+         * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+         *
+         * Handler for disabling the swipe gesture control.
+         */
+        //if (mSwipeGestureHandler != null) {
+            //mSwipeGestureHandler.onDestroy();
+            //mSwipeGestureHandler = null;
+        //}
+        // END
 
         mEventHandler = null;
         resetStreamState();

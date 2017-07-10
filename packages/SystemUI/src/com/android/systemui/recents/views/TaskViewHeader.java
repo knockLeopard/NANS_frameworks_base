@@ -67,7 +67,6 @@ import com.android.systemui.recents.model.Task;
 import android.provider.Settings;
 import android.support.v4.content.ContextCompat;
 import static android.provider.Settings.Secure.NANS_MODE_ENABLED;
-import static android.provider.Settings.Secure.SWIPE_GESTURE_CONTROL_ENABLED;
 // END
 
 import static android.app.ActivityManager.StackId.FREEFORM_WORKSPACE_STACK_ID;
