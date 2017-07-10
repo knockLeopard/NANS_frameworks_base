@@ -6413,6 +6413,17 @@ public final class Settings {
         public static final String DEVICE_PAIRED = "device_paired";
 
         /**
+         * Date: Apr 7, 2017
+         * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+         *
+         * Setting that specifies whether the NANS mode and the swipe gesture control are enabled.
+         * @hide
+         */
+        public static final String NANS_MODE_ENABLED = "nans_mode_enabled";
+        public static final String SWIPE_GESTURE_CONTROL_ENABLED = "swipe_gesture_control_enabled";
+        // END
+
+        /**
          * This are the settings to be backed up.
          *
          * NOTE: Settings are backed up and restored in the order they appear
@@ -6421,21 +6432,6 @@ public final class Settings {
          *
          * @hide
          */
-
-        /**
-         * Date: Apr 7, 2016
-         * Copyright (C) 2016 RUBIS Laboratory at Seoul National University
-         */
-        /**
-         * Setting that specifies whether the screen swiper is enabled.
-         *
-         * @hide
-         */
-        public static final String ACCESSIBILITY_SCREEN_SWIPE_ENABLED =
-            "accessibility_screen_swipe_enabled";
-        // END
-
-
         public static final String[] SETTINGS_TO_BACKUP = {
             BUGREPORT_IN_POWER_MENU,                            // moved to global
             ALLOW_MOCK_LOCATION,
@@ -6516,9 +6512,10 @@ public final class Settings {
              * Date: Jul 5, 2017
              * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
              *
-             * Setting that specifies whether the screen swiper is enabled.
+             * Setting that specifies whether the NANS mode and the swipe gesture control are enabled.
              */
-            ACCESSIBILITY_SCREEN_SWIPE_ENABLED
+            NANS_MODE_ENABLED,
+            SWIPE_GESTURE_CONTROL_ENABLED
             // END
         };
 
@@ -8999,16 +8996,6 @@ public final class Settings {
         public static final String DATABASE_DOWNGRADE_REASON = "database_downgrade_reason";
 
         /**
-         * Date: Jul 5, 2017
-         * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
-         */
-        /**
-         * Whether the NANS should be on. Only the NANS service should touch this.
-         */
-        public static final String NANS_ENABLED = "nans";
-        // END
-
-        /**
          * Settings to backup. This is here so that it's in the same place as the settings
          * keys and easy to update.
          *
@@ -9043,14 +9030,6 @@ public final class Settings {
             DOCK_AUDIO_MEDIA_ENABLED,
             ENCODED_SURROUND_OUTPUT,
             LOW_POWER_MODE_TRIGGER_LEVEL,
-            /**
-             * Date: Jul 5, 2017
-             * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
-             *
-             * Setting that specifies whether the NANS is enabled.
-             */
-            NANS_ENABLED
-            //END
         };
 
         // Populated lazily, guarded by class object:

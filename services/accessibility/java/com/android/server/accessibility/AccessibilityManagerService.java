@@ -1,18 +1,18 @@
 /*
- ** Copyright 2009, The Android Open Source Project
- ** Copyright (C) 2017 RUBIS Laboratory at Seoul National University
- **
- ** Licensed under the Apache License, Version 2.0 (the "License");
- ** you may not use this file except in compliance with the License.
- ** You may obtain a copy of the License at
- **
- **     http://www.apache.org/licenses/LICENSE-2.0
- **
- ** Unless required by applicable law or agreed to in writing, software
- ** distributed under the License is distributed on an "AS IS" BASIS,
- ** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- ** See the License for the specific language governing permissions and
- ** limitations under the License.
+ * Copyright (C) 2009, The Android Open Source Project
+ * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.android.server.accessibility;
@@ -1613,16 +1613,14 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
         somethingChanged |= readEnhancedWebAccessibilityEnabledChangedLocked(userState);
         somethingChanged |= readDisplayMagnificationEnabledSettingLocked(userState);
         somethingChanged |= readAutoclickEnabledSettingLocked(userState);
-
         /**
          * Date: Jul 6, 2017
          * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
          *
          * Read the configuration of screen swiper.
          */
-        somthingChanged |= readScreenSwipeEnabledSettingLocked(userState);
+        somethingChanged |= readScreenSwipeEnabledSettingLocked(userState);
         // END
-
         return somethingChanged;
     }
 
@@ -1717,7 +1715,7 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
     private boolean readScreenSwipeEnabledSettingLocked(UserState userState) {
         final boolean screenSwipeEnabled = Settings.Secure.getIntForUser(
                 mContext.getContentResolver(),
-                Settings.Secure.ACCESSIBILITY_SCREEN_SWIPE_ENABLED,
+                Settings.Secure.SWIPE_GESTURE_CONTROL_ENABLED,
                 0, userState.mUserId) == 1;
         if (screenSwipeEnabled != userState.mIsScreenSwipeEnabled) {
             userState.mIsScreenSwipeEnabled = screenSwipeEnabled;
@@ -4453,7 +4451,7 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
          * Add a uri variable for the mScreenSwiperEnabled.
          */
         private final Uri mScreenSwipeEnabledUri = Settings.Secure.getUriFor(
-                Settings.Secure.ACCESSIBILITY_SCREEN_SWIPE_ENABLED);
+                Settings.Secure.SWIPE_GESTURE_CONTROL_ENABLED);
         // END
 
         public AccessibilityContentObserver(Handler handler) {
@@ -4510,7 +4508,6 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
                     if (readAutoclickEnabledSettingLocked(userState)) {
                         onUserStateChangedLocked(userState);
                     }
-
                 /**
                  * Date: Jul 6, 2017
                  * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
@@ -4522,7 +4519,6 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
                         onUserStateChangedLocked(userState);
                     }
                 // END
-
                 } else if (mEnabledAccessibilityServicesUri.equals(uri)) {
                     if (readEnabledAccessibilityServicesLocked(userState)) {
                         onUserStateChangedLocked(userState);

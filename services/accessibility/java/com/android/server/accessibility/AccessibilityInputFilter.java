@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -76,10 +77,22 @@ class AccessibilityInputFilter extends InputFilter implements EventStreamTransfo
      * @see #setUserAndEnabledFeatures(int, int)
      */
     static final int FLAG_FEATURE_INJECT_MOTION_EVENTS = 0x00000010;
+    
+    /**
+     * Date: Jul 7, 2017
+     * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+     *
+     * Flag for enabling the swipe gesture control feature.
+     */
+    static final int FLAG_FEATURE_SCREEN_SWIPER = 0x00000020;
 
-    static final int FEATURES_AFFECTING_MOTION_EVENTS = FLAG_FEATURE_INJECT_MOTION_EVENTS
-            | FLAG_FEATURE_AUTOCLICK | FLAG_FEATURE_TOUCH_EXPLORATION
+    static final int FEATURES_AFFECTING_MOTION_EVENTS = FLAG_FEATURE_SCREEN_SWIPER 
+            | FLAG_FEATURE_INJECT_MOTION_EVENTS
+            | FLAG_FEATURE_AUTOCLICK 
+            | FLAG_FEATURE_TOUCH_EXPLORATION
             | FLAG_FEATURE_SCREEN_MAGNIFIER;
+    // END
+
     /**
      * Flag for enabling the feature to control the screen magnifier. If
      * {@link #FLAG_FEATURE_SCREEN_MAGNIFIER} is set this flag is ignored
@@ -411,6 +424,21 @@ class AccessibilityInputFilter extends InputFilter implements EventStreamTransfo
             mKeyboardInterceptor = new KeyboardInterceptor(mAms);
             addFirstEventHandler(mKeyboardInterceptor);
         }
+
+        /**
+         * Date: Jul 7, 2017
+         * Copyright (C) 2017 RUBIS Laboratory at Seoul National University
+         *
+         * Handler for enabling the swipe gesture control.
+         */
+        if ((mEnabledFeatures & FLAG_FEATURE_SCREEN_SWIPER) != 0) {
+            /*
+            mSwipeGestureHandler = new SwipeGestureHandler(mContext, mAms, detectControlGesture);
+            addFirstEventHandler(mSwipeGestureHandler);
+            */
+            Slog.i(TAG, "enableFeatures(), FLAG_FEATURE_SCREEN_SWIPER");
+        }
+        // END
     }
 
     /**

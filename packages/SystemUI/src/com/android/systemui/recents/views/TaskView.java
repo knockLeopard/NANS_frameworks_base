@@ -683,9 +683,10 @@ public class TaskView extends FixedSizeFrameLayout implements Task.TaskCallbacks
         public void onClick(DialogInterface dialog, int whichButton) {
             Slog.d("TaskView", "setExternalDisplay(), index="+index);
             final TaskView tv = TaskView.this;
-            mCb.onTaskViewClicked(tv, tv.getTask(), false);
+            //mCb.onTaskViewClicked(tv, tv.getTask(), false);
+            tv.onClick(mHeaderView);           
             ActivityManager am = (ActivityManager)mContext.getSystemService(Context.ACTIVITY_SERVICE);
-            am.setExternalDisplay(tv.getTask().key.id, displays[index]);
+            //am.setExternalDisplay(tv.getTask().key.id, displays[index]);
             dialog.dismiss();
         }
         }).setNegativeButton("Cancel",
@@ -700,7 +701,7 @@ public class TaskView extends FixedSizeFrameLayout implements Task.TaskCallbacks
     /**** View.OnClickListener Implementation ****/
 
     @Override
-     public void onClick(final View v) {
+    public void onClick(final View v) {
         if (mIsDisabledInSafeMode) {
             Context context = getContext();
             String msg = context.getString(R.string.recents_launch_disabled_message, mTask.title);
