@@ -3985,6 +3985,8 @@ public class Activity extends ContextThemeWrapper
     }
                 
     public void startActivityWithNewTask(Intent intent) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
         startActivity(intent);
     }
 
