@@ -3983,6 +3983,12 @@ public class Activity extends ContextThemeWrapper
     public void startActivity(Intent intent) {
         this.startActivity(intent, null);
     }
+                
+    public void startActivityWithNewTask(Intent intent) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+        startActivity(intent);
+    }
 
     /**
      * Launch a new activity.  You will not receive any information about when
